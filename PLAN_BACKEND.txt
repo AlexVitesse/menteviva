@@ -1,0 +1,589 @@
+================================================================================
+                    PLAN BACKEND - MENTE VIVA DEMO
+                    Python + FastAPI + Poetry + Groq
+================================================================================
+
+OBJETIVO:
+API backend que maneja speech-to-text, LLM conversacional y text-to-speech
+usando Groq (gratis) para STT/LLM y Edge TTS (gratis) para voz.
+
+================================================================================
+1. ESTRUCTURA DE CARPETAS
+================================================================================
+
+menteviva-backend/
+├── pyproject.toml
+├── poetry.lock
+├── .env.example
+├── .gitignore
+├── README.md
+└── app/
+    ├── __init__.py
+    ├── main.py                 # FastAPI app + CORS + WebSocket
+    ├── config.py               # Settings con Pydantic
+    ├── routers/
+    │   ├── __init__.py
+    │   ├── conversation.py     # WebSocket para chat streaming
+    │   └── avatars.py          # GET /avatars - lista de avatares
+    ├── services/
+    │   ├── __init__.py
+    │   ├── groq_whisper.py     # Speech-to-Text con Groq Whisper
+    │   ├── groq_llm.py         # Chat con Llama 3.1 8B streaming
+    │   └── edge_tts.py         # Text-to-Speech gratis
+    ├── models/
+    │   ├── __init__.py
+    │   ├── avatar.py           # Modelo de Avatar
+    │   ├── message.py          # Modelo de Mensaje
+    │   └── session.py          # Estado de sesión/conversación
+    └── prompts/
+        ├── __init__.py
+        └── scenarios.py        # System prompts por avatar/escenario
+
+================================================================================
+2. DEPENDENCIAS (pyproject.toml)
+================================================================================
+
+[tool.poetry]
+name = "menteviva-backend"
+version = "0.1.0"
+description = "Backend para Mente Viva - Entrenamiento de soft skills con IA"
+authors = ["Eric V."]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.32.0"}
+groq = "^0.11.0"
+edge-tts = "^6.1.0"
+python-dotenv = "^1.0.0"
+pydantic-settings = "^2.4.0"
+python-multipart = "^0.0.12"
+websockets = "^13.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-asyncio = "^0.24.0"
+httpx = "^0.27.0"
+
+================================================================================
+3. CONFIGURACIÓN (app/config.py)
+================================================================================
+
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    # Groq
+    groq_api_key: str
+    groq_model_llm: str = "llama-3.1-8b-instant"
+    groq_model_whisper: str = "whisper-large-v3-turbo"
+
+    # Edge TTS
+    tts_voice: str = "es-MX-JorgeNeural"  # Voz mexicana masculina
+
+    # App
+    app_name: str = "Mente Viva API"
+    debug: bool = False
+    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
+
+================================================================================
+4. MAIN APP (app/main.py)
+================================================================================
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.config import settings
+from app.routers import conversation, avatars
+
+app = FastAPI(title=settings.app_name)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(avatars.router, prefix="/api", tags=["avatars"])
+app.include_router(conversation.router, prefix="/api", tags=["conversation"])
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+================================================================================
+5. SERVICIO GROQ WHISPER - STT (app/services/groq_whisper.py)
+================================================================================
+
+import os
+from groq import Groq
+from app.config import settings
+
+client = Groq(api_key=settings.groq_api_key)
+
+async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str:
+    """
+    Transcribe audio usando Groq Whisper.
+
+    Args:
+        audio_bytes: Audio en bytes (webm, mp3, wav, etc.)
+        filename: Nombre del archivo con extensión
+
+    Returns:
+        Texto transcrito
+    """
+    transcription = client.audio.transcriptions.create(
+        file=(filename, audio_bytes),
+        model=settings.groq_model_whisper,
+        language="es",
+        response_format="text"
+    )
+    return transcription
+
+================================================================================
+6. SERVICIO GROQ LLM - CHAT STREAMING (app/services/groq_llm.py)
+================================================================================
+
+from typing import AsyncGenerator
+from groq import Groq
+from app.config import settings
+
+client = Groq(api_key=settings.groq_api_key)
+
+async def chat_stream(
+    messages: list[dict],
+    system_prompt: str
+) -> AsyncGenerator[str, None]:
+    """
+    Genera respuesta del LLM en streaming.
+
+    Args:
+        messages: Historial de conversación [{"role": "user", "content": "..."}]
+        system_prompt: Prompt del sistema con personalidad del avatar
+
+    Yields:
+        Tokens de la respuesta uno por uno
+    """
+    full_messages = [
+        {"role": "system", "content": system_prompt},
+        *messages
+    ]
+
+    stream = client.chat.completions.create(
+        model=settings.groq_model_llm,
+        messages=full_messages,
+        temperature=0.7,
+        max_tokens=500,
+        stream=True
+    )
+
+    for chunk in stream:
+        if chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+================================================================================
+7. SERVICIO EDGE TTS - VOZ (app/services/edge_tts.py)
+================================================================================
+
+import edge_tts
+import asyncio
+from typing import AsyncGenerator
+from app.config import settings
+
+# Voces disponibles en español México:
+# - es-MX-JorgeNeural (masculina)
+# - es-MX-DaliaNeural (femenina)
+# - es-MX-BeatrizNeural (femenina)
+# - es-MX-CandelaNeural (femenina)
+# - es-MX-CecilioNeural (masculina)
+
+AVATAR_VOICES = {
+    "roberto": "es-MX-JorgeNeural",      # Director TI - voz masculina seria
+    "maria": "es-MX-DaliaNeural",         # Gerente ventas - voz femenina
+    "carlos": "es-MX-CecilioNeural",      # Proveedor - voz masculina
+}
+
+async def text_to_speech(
+    text: str,
+    avatar_id: str = "roberto"
+) -> bytes:
+    """
+    Convierte texto a audio usando Edge TTS.
+
+    Args:
+        text: Texto a convertir
+        avatar_id: ID del avatar para seleccionar voz
+
+    Returns:
+        Audio en bytes (MP3)
+    """
+    voice = AVATAR_VOICES.get(avatar_id, settings.tts_voice)
+
+    communicate = edge_tts.Communicate(text, voice)
+    audio_bytes = b""
+
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_bytes += chunk["data"]
+
+    return audio_bytes
+
+
+async def text_to_speech_stream(
+    text: str,
+    avatar_id: str = "roberto"
+) -> AsyncGenerator[bytes, None]:
+    """
+    Stream de audio para respuestas más largas.
+    """
+    voice = AVATAR_VOICES.get(avatar_id, settings.tts_voice)
+    communicate = edge_tts.Communicate(text, voice)
+
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            yield chunk["data"]
+
+================================================================================
+8. PROMPTS DE ESCENARIOS (app/prompts/scenarios.py)
+================================================================================
+
+AVATARS = {
+    "roberto": {
+        "id": "roberto",
+        "name": "Roberto Martínez",
+        "role": "Director de TI",
+        "company": "Grupo Industrial Norte",
+        "personality": "Escéptico pero abierto. Directo, no le gusta perder tiempo.",
+        "voice": "es-MX-JorgeNeural",
+        "lottie_url": "/avatars/roberto.json",
+        "system_prompt": """Eres Roberto Martínez, Director de Tecnología de Grupo Industrial Norte.
+
+PERSONALIDAD:
+- Escéptico pero abierto a escuchar
+- Muy ocupado, valoras tu tiempo
+- Directo y práctico
+- Necesitas ver ROI claro antes de invertir
+- Tienes malas experiencias con vendedores que prometen de más
+
+CONTEXTO:
+- Te contactaron para una reunión de 15 minutos
+- Tu empresa tiene problemas con sistemas legacy
+- Tienes presupuesto pero necesitas justificarlo ante el CFO
+
+COMPORTAMIENTO:
+- Responde de forma breve y directa (máximo 2-3 oraciones)
+- Haz preguntas difíciles sobre precio, implementación, soporte
+- Si el vendedor es genérico, muestra desinterés
+- Si el vendedor hace buenas preguntas, abre más la conversación
+- Menciona objeciones reales: "Ya tenemos un sistema", "Es muy caro", "No tenemos tiempo"
+
+IMPORTANTE: Mantén el roleplay. Nunca rompas el personaje. Nunca digas que eres una IA."""
+    },
+
+    "maria": {
+        "id": "maria",
+        "name": "María González",
+        "role": "Gerente de Compras",
+        "company": "Retail Express",
+        "personality": "Amable pero exigente. Busca el mejor trato.",
+        "voice": "es-MX-DaliaNeural",
+        "lottie_url": "/avatars/maria.json",
+        "system_prompt": """Eres María González, Gerente de Compras de Retail Express.
+
+PERSONALIDAD:
+- Amable y profesional
+- Muy orientada a números y descuentos
+- Negocia fuerte pero justa
+- Le gusta construir relaciones de largo plazo
+- No le gustan las tácticas de presión
+
+CONTEXTO:
+- Buscas renovar contrato con proveedor
+- Tienes 3 cotizaciones de la competencia
+- Tu jefe te presiona por reducir costos 15%
+
+COMPORTAMIENTO:
+- Responde amablemente pero siempre pregunta por precio
+- Menciona a la competencia como palanca
+- Si el vendedor cede muy rápido, pide más
+- Si el vendedor defiende su valor, respeta eso
+- Busca win-win, no destruir al proveedor
+
+IMPORTANTE: Mantén el roleplay. Nunca rompas el personaje."""
+    },
+
+    "carlos": {
+        "id": "carlos",
+        "name": "Carlos Ruiz",
+        "role": "Entrevistador RRHH",
+        "company": "TechCorp México",
+        "personality": "Profesional, analítico, busca cultura fit.",
+        "voice": "es-MX-CecilioNeural",
+        "lottie_url": "/avatars/carlos.json",
+        "system_prompt": """Eres Carlos Ruiz, Gerente de RRHH en TechCorp México.
+
+PERSONALIDAD:
+- Profesional y estructurado
+- Hace preguntas conductuales (método STAR)
+- Busca evidencia concreta, no respuestas genéricas
+- Valora honestidad sobre perfección
+- Atento al lenguaje y comunicación
+
+CONTEXTO:
+- Entrevistas para puesto de Account Executive
+- El candidato pasó el filtro inicial
+- Buscas validar soft skills y cultura fit
+
+COMPORTAMIENTO:
+- Haz una pregunta a la vez
+- Pide ejemplos específicos: "Dame un ejemplo concreto"
+- Si la respuesta es vaga, profundiza: "¿Qué hiciste tú específicamente?"
+- Evalúa: comunicación, pensamiento estructurado, honestidad
+- Al final pregunta: "¿Tienes preguntas para mí?"
+
+IMPORTANTE: Mantén el roleplay. Nunca rompas el personaje."""
+    }
+}
+
+def get_avatar(avatar_id: str) -> dict:
+    return AVATARS.get(avatar_id)
+
+def get_all_avatars() -> list[dict]:
+    return [
+        {k: v for k, v in avatar.items() if k != "system_prompt"}
+        for avatar in AVATARS.values()
+    ]
+
+def get_system_prompt(avatar_id: str) -> str:
+    avatar = AVATARS.get(avatar_id)
+    return avatar["system_prompt"] if avatar else ""
+
+================================================================================
+9. ROUTER AVATARS (app/routers/avatars.py)
+================================================================================
+
+from fastapi import APIRouter
+from app.prompts.scenarios import get_all_avatars, get_avatar
+
+router = APIRouter()
+
+@router.get("/avatars")
+async def list_avatars():
+    """Lista todos los avatares disponibles."""
+    return {"avatars": get_all_avatars()}
+
+@router.get("/avatars/{avatar_id}")
+async def get_avatar_detail(avatar_id: str):
+    """Detalle de un avatar específico."""
+    avatar = get_avatar(avatar_id)
+    if not avatar:
+        return {"error": "Avatar not found"}, 404
+    # No exponer system_prompt
+    return {k: v for k, v in avatar.items() if k != "system_prompt"}
+
+================================================================================
+10. ROUTER CONVERSATION - WEBSOCKET (app/routers/conversation.py)
+================================================================================
+
+import json
+import base64
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from app.services.groq_whisper import transcribe_audio
+from app.services.groq_llm import chat_stream
+from app.services.edge_tts import text_to_speech
+from app.prompts.scenarios import get_system_prompt
+
+router = APIRouter()
+
+@router.websocket("/conversation/{avatar_id}")
+async def conversation_websocket(websocket: WebSocket, avatar_id: str):
+    """
+    WebSocket para conversación en tiempo real.
+
+    Flujo:
+    1. Cliente envía audio (base64)
+    2. Server transcribe con Whisper
+    3. Server genera respuesta con LLM (streaming)
+    4. Server genera audio con TTS
+    5. Server envía texto + audio al cliente
+    """
+    await websocket.accept()
+
+    system_prompt = get_system_prompt(avatar_id)
+    if not system_prompt:
+        await websocket.send_json({"error": "Avatar not found"})
+        await websocket.close()
+        return
+
+    conversation_history = []
+
+    try:
+        while True:
+            # Recibir mensaje del cliente
+            data = await websocket.receive_json()
+
+            if data.get("type") == "audio":
+                # 1. Decodificar audio
+                audio_base64 = data.get("audio")
+                audio_bytes = base64.b64decode(audio_base64)
+
+                # 2. Transcribir con Whisper
+                await websocket.send_json({
+                    "type": "status",
+                    "status": "transcribing"
+                })
+
+                user_text = await transcribe_audio(audio_bytes)
+
+                await websocket.send_json({
+                    "type": "user_message",
+                    "content": user_text
+                })
+
+                # 3. Agregar al historial
+                conversation_history.append({
+                    "role": "user",
+                    "content": user_text
+                })
+
+                # 4. Generar respuesta con LLM (streaming)
+                await websocket.send_json({
+                    "type": "status",
+                    "status": "thinking"
+                })
+
+                full_response = ""
+                async for token in chat_stream(conversation_history, system_prompt):
+                    full_response += token
+                    await websocket.send_json({
+                        "type": "assistant_token",
+                        "content": token
+                    })
+
+                # 5. Agregar respuesta al historial
+                conversation_history.append({
+                    "role": "assistant",
+                    "content": full_response
+                })
+
+                # 6. Generar audio con TTS
+                await websocket.send_json({
+                    "type": "status",
+                    "status": "generating_audio"
+                })
+
+                audio_response = await text_to_speech(full_response, avatar_id)
+                audio_base64_response = base64.b64encode(audio_response).decode()
+
+                await websocket.send_json({
+                    "type": "assistant_audio",
+                    "audio": audio_base64_response,
+                    "content": full_response
+                })
+
+                await websocket.send_json({
+                    "type": "status",
+                    "status": "ready"
+                })
+
+            elif data.get("type") == "end_session":
+                # Calcular métricas básicas
+                total_exchanges = len(conversation_history) // 2
+                await websocket.send_json({
+                    "type": "session_end",
+                    "metrics": {
+                        "total_exchanges": total_exchanges,
+                        "conversation": conversation_history
+                    }
+                })
+                break
+
+    except WebSocketDisconnect:
+        print(f"Cliente desconectado de conversación con {avatar_id}")
+
+================================================================================
+11. ARCHIVO .env.example
+================================================================================
+
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxx
+DEBUG=true
+
+================================================================================
+12. COMANDOS PARA EJECUTAR
+================================================================================
+
+# Instalar dependencias
+poetry install
+
+# Activar entorno virtual
+poetry shell
+
+# Ejecutar servidor de desarrollo
+uvicorn app.main:app --reload --port 8000
+
+# El servidor estará en:
+# - API REST: http://localhost:8000
+# - WebSocket: ws://localhost:8000/api/conversation/{avatar_id}
+# - Docs: http://localhost:8000/docs
+
+================================================================================
+13. ENDPOINTS RESUMEN
+================================================================================
+
+GET  /health                          - Health check
+GET  /api/avatars                     - Lista de avatares
+GET  /api/avatars/{id}                - Detalle de avatar
+WS   /api/conversation/{avatar_id}    - WebSocket conversación
+
+================================================================================
+14. PROTOCOLO WEBSOCKET
+================================================================================
+
+CLIENTE -> SERVIDOR:
+{
+    "type": "audio",
+    "audio": "<base64_encoded_audio>"
+}
+
+{
+    "type": "end_session"
+}
+
+SERVIDOR -> CLIENTE:
+{
+    "type": "status",
+    "status": "transcribing" | "thinking" | "generating_audio" | "ready"
+}
+
+{
+    "type": "user_message",
+    "content": "texto transcrito del usuario"
+}
+
+{
+    "type": "assistant_token",
+    "content": "token"  // streaming, muchos de estos
+}
+
+{
+    "type": "assistant_audio",
+    "audio": "<base64_encoded_mp3>",
+    "content": "texto completo de la respuesta"
+}
+
+{
+    "type": "session_end",
+    "metrics": {
+        "total_exchanges": 5,
+        "conversation": [...]
+    }
+}
+
+================================================================================
+FIN DEL PLAN BACKEND
+================================================================================

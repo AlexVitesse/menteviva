@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-ink text-cream font-sans antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-violet hover:bg-violet-light text-white font-syne font-bold
+           px-6 py-3 rounded-xl transition-all duration-200
+           hover:shadow-lg hover:shadow-violet/25;
+  }
+
+  .btn-secondary {
+    @apply border border-violet text-violet hover:bg-violet/10
+           font-syne font-bold px-6 py-3 rounded-xl transition-all;
+  }
+
+  .card {
+    @apply bg-card border border-white/5 rounded-2xl p-6;
+  }
+
+  .card-hover {
+    @apply card hover:border-violet/30 hover:shadow-lg
+           hover:shadow-violet/10 transition-all cursor-pointer;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.5);
+}
+
+/* Smooth transitions for theme */
+* {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}

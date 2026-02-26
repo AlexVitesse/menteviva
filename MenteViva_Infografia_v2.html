@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mente Viva — Infografía del Producto v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #08071A; --deep: #110F2B; --panel: #181630; --card: #201D3E;
+  --v1: #7C3AED; --v2: #A855F7; --v3: #C084FC;
+  --teal: #06B6D4; --teal2: #0E7490;
+  --lime: #84CC16; --green: #16A34A;
+  --coral: #F97316; --orange: #C2410C;
+  --rose: #F43F5E; --blue: #3B82F6;
+  --cream: #F5F3FF; --soft: rgba(245,243,255,0.6); --muted: rgba(245,243,255,0.35);
+  --border: rgba(255,255,255,0.07);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background: var(--ink); color: var(--cream); font-family: 'Instrument Sans', sans-serif; line-height: 1.6; }
+.syne { font-family: 'Syne', sans-serif; }
+
+/* LAYOUT */
+.page { max-width: 1100px; margin: 0 auto; padding: 0 32px 80px; }
+
+/* HERO */
+.hero {
+  background: linear-gradient(135deg, #0D0B24 0%, #1A0845 40%, #0D1A2E 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 80px 32px 64px;
+  position: relative; overflow: hidden;
+}
+.hero::before {
+  content:''; position:absolute; top:-200px; right:-200px;
+  width:600px; height:600px; border-radius:50%;
+  background: radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 70%);
+}
+.hero::after {
+  content:''; position:absolute; bottom:-100px; left:-100px;
+  width:400px; height:400px; border-radius:50%;
+  background: radial-gradient(circle, rgba(6,182,212,0.12) 0%, transparent 70%);
+}
+.hero-inner { max-width:1100px; margin:0 auto; position:relative; z-index:1; }
+.hero-badge { display:inline-flex; align-items:center; gap:8px; background:rgba(124,58,237,0.2);
+  border:1px solid rgba(124,58,237,0.4); border-radius:100px; padding:6px 14px;
+  font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--v3); margin-bottom:24px; }
+.hero h1 { font-family:'Syne',sans-serif; font-size:clamp(48px,7vw,80px); font-weight:800; line-height:1.05;
+  background:linear-gradient(135deg,#fff 0%,var(--v3) 50%,var(--teal) 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; margin-bottom:16px; }
+.hero-sub { font-size:18px; color:var(--soft); max-width:580px; margin-bottom:40px; }
+.hero-pills { display:flex; flex-wrap:wrap; gap:10px; }
+.pill { background:rgba(255,255,255,0.06); border:1px solid var(--border);
+  border-radius:100px; padding:6px 16px; font-size:13px; color:var(--soft); }
+.pill strong { color:white; }
+
+/* SECTIONS */
+.section { padding: 64px 0 0; }
+.section-label { font-size:11px; letter-spacing:.15em; text-transform:uppercase;
+  color:var(--v2); font-weight:600; margin-bottom:12px; }
+.section-title { font-family:'Syne',sans-serif; font-size:clamp(22px,3vw,32px);
+  font-weight:700; margin-bottom:8px; }
+.section-desc { font-size:15px; color:var(--soft); max-width:680px; margin-bottom:40px; line-height:1.7; }
+
+/* PROBLEMA / SOLUCIÓN */
+.ps-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.ps-card { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:28px; }
+.ps-card.problema { border-color:rgba(249,115,22,0.25); }
+.ps-card.solucion { border-color:rgba(124,58,237,0.25); }
+.ps-icon { font-size:28px; margin-bottom:14px; }
+.ps-card h3 { font-family:'Syne',sans-serif; font-size:16px; font-weight:700; margin-bottom:14px; }
+.ps-card.problema h3 { color:var(--coral); }
+.ps-card.solucion h3 { color:var(--v2); }
+.ps-list { list-style:none; }
+.ps-list li { font-size:14px; color:var(--soft); padding:7px 0; border-bottom:1px solid var(--border); display:flex; gap:10px; }
+.ps-list li:last-child { border-bottom:none; }
+.ps-list li::before { flex-shrink:0; margin-top:2px; }
+.ps-card.problema .ps-list li::before { content:'✗'; color:var(--coral); }
+.ps-card.solucion .ps-list li::before { content:'✓'; color:var(--v2); }
+
+/* FLUJO */
+.flow-steps { display:grid; grid-template-columns:repeat(4,1fr); gap:0; position:relative; margin-bottom:12px; }
+.flow-steps::after { content:''; position:absolute; top:40px; left:12.5%; right:12.5%;
+  height:2px; background:linear-gradient(90deg,var(--v1),var(--teal)); z-index:0; }
+.flow-step { display:flex; flex-direction:column; align-items:center; text-align:center; position:relative; z-index:1; padding:0 10px; }
+.step-num { width:80px; height:80px; border-radius:50%;
+  background:linear-gradient(135deg,var(--v1),var(--v2));
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Syne',sans-serif; font-size:28px; font-weight:800;
+  border:3px solid var(--ink); margin-bottom:16px; box-shadow:0 0 30px rgba(124,58,237,0.4); }
+.step-title { font-family:'Syne',sans-serif; font-size:14px; font-weight:700; margin-bottom:6px; }
+.step-desc { font-size:12px; color:var(--muted); line-height:1.5; }
+
+/* CATÁLOGO */
+.catalog-intro { background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(6,182,212,0.08));
+  border:1px solid rgba(124,58,237,0.25); border-radius:16px; padding:24px 28px; margin-bottom:28px; }
+.catalog-intro p { font-size:15px; color:var(--soft); line-height:1.7; }
+.catalog-intro strong { color:var(--v3); }
+
+.catalog-phases { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:28px; }
+.phase-badge { border-radius:12px; padding:20px; text-align:center; }
+.phase-badge.f1 { background:rgba(124,58,237,0.15); border:1px solid rgba(124,58,237,0.3); }
+.phase-badge.f2 { background:rgba(6,182,212,0.12); border:1px solid rgba(6,182,212,0.25); }
+.phase-badge.f3 { background:rgba(249,115,22,0.12); border:1px solid rgba(249,115,22,0.2); }
+.phase-badge .num { font-family:'Syne',sans-serif; font-size:36px; font-weight:800; }
+.phase-badge.f1 .num { color:var(--v2); }
+.phase-badge.f2 .num { color:var(--teal); }
+.phase-badge.f3 .num { color:var(--coral); }
+.phase-badge p { font-size:12px; color:var(--muted); margin-top:4px; }
+
+.cat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+.cat-card { border-radius:16px; padding:20px 16px; border:1px solid var(--border);
+  background:var(--card); transition:transform .2s, box-shadow .2s; cursor:default; }
+.cat-card.active { border-color:rgba(124,58,237,0.35); }
+.cat-card.active:hover { transform:translateY(-3px); box-shadow:0 12px 30px rgba(124,58,237,0.2); }
+.cat-card.locked { opacity:.45; }
+.cat-icon { font-size:28px; margin-bottom:10px; }
+.cat-name { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; margin-bottom:6px; }
+.cat-count { font-size:11px; color:var(--muted); margin-bottom:8px; }
+.cat-status { display:inline-flex; align-items:center; gap:4px; border-radius:100px;
+  padding:3px 10px; font-size:10px; font-weight:600; }
+.cat-status.live { background:rgba(22,163,74,0.2); color:#4ADE80; border:1px solid rgba(22,163,74,0.3); }
+.cat-status.soon { background:rgba(107,114,128,0.2); color:#9CA3AF; border:1px solid rgba(107,114,128,0.2); }
+.cat-phase { font-size:10px; color:var(--muted); margin-top:6px; }
+
+/* ROADMAP ADAPTATIVO */
+.roadmap-engine { background:var(--deep); border:1px solid var(--border); border-radius:24px; padding:36px; overflow:hidden; position:relative; }
+.roadmap-engine::before { content:''; position:absolute; top:-60px; right:-60px; width:200px; height:200px; border-radius:50%;
+  background:radial-gradient(circle, rgba(6,182,212,0.1) 0%, transparent 70%); }
+
+.sources-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:32px; }
+.source-card { background:var(--card); border-radius:14px; padding:20px; border:1px solid var(--border); }
+.source-icon { font-size:22px; margin-bottom:10px; }
+.source-title { font-family:'Syne',sans-serif; font-size:14px; font-weight:700; margin-bottom:4px; }
+.source-desc { font-size:12px; color:var(--muted); line-height:1.5; }
+.source-card.s1 { border-color:rgba(124,58,237,0.3); }
+.source-card.s2 { border-color:rgba(6,182,212,0.3); }
+.source-card.s3 { border-color:rgba(249,115,22,0.3); }
+.source-card.s1 .source-title { color:var(--v3); }
+.source-card.s2 .source-title { color:var(--teal); }
+.source-card.s3 .source-title { color:var(--coral); }
+
+.engine-arrow { text-align:center; margin-bottom:24px; }
+.engine-arrow span { font-size:28px; opacity:.5; }
+.engine-arrow p { font-family:'Syne',sans-serif; font-size:13px; color:var(--v2); font-weight:700;
+  margin-top:6px; letter-spacing:.05em; text-transform:uppercase; }
+
+.roadmap-decisions { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; }
+.rd-item { background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:10px;
+  padding:14px 16px; display:flex; gap:12px; align-items:flex-start; }
+.rd-icon { font-size:18px; flex-shrink:0; margin-top:1px; }
+.rd-text { font-size:13px; color:var(--soft); line-height:1.5; }
+.rd-text strong { color:white; display:block; margin-bottom:2px; font-size:12px; font-weight:600; }
+
+/* ROADMAP EXAMPLE */
+.roadmap-example { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:28px; margin-top:28px; }
+.re-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
+.re-header h4 { font-family:'Syne',sans-serif; font-size:15px; font-weight:700; }
+.re-badge { background:rgba(124,58,237,0.2); border:1px solid rgba(124,58,237,0.3);
+  border-radius:100px; padding:4px 12px; font-size:11px; color:var(--v3); }
+.re-sessions { display:flex; flex-direction:column; gap:8px; }
+.re-session { display:flex; align-items:center; gap:14px; padding:12px 16px; border-radius:10px; border:1px solid var(--border); }
+.re-session.done { background:rgba(22,163,74,0.06); border-color:rgba(22,163,74,0.2); }
+.re-session.active { background:rgba(124,58,237,0.1); border-color:rgba(124,58,237,0.35); }
+.re-session.locked { opacity:.4; }
+.re-session.ai-insert { background:rgba(249,115,22,0.08); border-color:rgba(249,115,22,0.25); }
+.re-sem { font-family:'Syne',sans-serif; font-size:10px; font-weight:700; color:var(--muted);
+  width:40px; flex-shrink:0; }
+.re-status { font-size:16px; flex-shrink:0; width:24px; }
+.re-info { flex:1; }
+.re-info .name { font-size:13px; font-weight:600; }
+.re-session.done .re-info .name { color:#86EFAC; }
+.re-session.active .re-info .name { color:var(--v3); }
+.re-info .sub { font-size:11px; color:var(--muted); margin-top:1px; }
+.re-score { font-family:'Syne',sans-serif; font-size:14px; font-weight:800; flex-shrink:0; }
+.re-score.good { color:#4ADE80; }
+.re-score.mid { color:#FCD34D; }
+.re-score.low { color:#F87171; }
+.re-score.pending { color:var(--muted); }
+.re-ai-tag { background:rgba(249,115,22,0.2); border:1px solid rgba(249,115,22,0.3);
+  border-radius:100px; padding:2px 8px; font-size:10px; color:var(--coral); flex-shrink:0; }
+
+/* B2B */
+.b2b-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+.b2b-card { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:28px; }
+.b2b-card h3 { font-family:'Syne',sans-serif; font-size:16px; font-weight:700; margin-bottom:6px; }
+.b2b-card .desc { font-size:13px; color:var(--muted); margin-bottom:18px; line-height:1.6; }
+.b2b-list { list-style:none; }
+.b2b-list li { font-size:13px; color:var(--soft); padding:8px 0; border-bottom:1px solid var(--border);
+  display:flex; gap:10px; align-items:flex-start; }
+.b2b-list li:last-child { border-bottom:none; }
+.b2b-list li span.check { flex-shrink:0; }
+
+/* MODELO NEGOCIO */
+.pricing-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+.price-card { background:var(--card); border:1px solid var(--border); border-radius:20px;
+  padding:28px; position:relative; }
+.price-card.featured { border-color:rgba(124,58,237,0.45);
+  background:linear-gradient(135deg,rgba(124,58,237,0.12),rgba(6,182,212,0.06)); }
+.price-tag { font-family:'Syne',sans-serif; font-size:32px; font-weight:800; margin-bottom:4px; }
+.price-tag span { font-size:14px; font-weight:400; color:var(--muted); }
+.price-label { font-size:12px; color:var(--muted); margin-bottom:20px; }
+.price-card h3 { font-family:'Syne',sans-serif; font-size:15px; font-weight:700; margin-bottom:6px; }
+.price-card .target { font-size:12px; color:var(--muted); margin-bottom:18px; }
+.price-features { list-style:none; }
+.price-features li { font-size:13px; color:var(--soft); padding:6px 0;
+  border-bottom:1px solid var(--border); display:flex; gap:8px; }
+.price-features li:last-child { border-bottom:none; }
+.price-features li::before { content:'→'; color:var(--v2); flex-shrink:0; }
+.featured-badge { position:absolute; top:-12px; left:50%; transform:translateX(-50%);
+  background:linear-gradient(135deg,var(--v1),var(--teal));
+  border-radius:100px; padding:4px 16px; font-size:11px; font-weight:600; white-space:nowrap; }
+
+/* EQUIPO */
+.team-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:16px; }
+.team-card { background:var(--card); border:1px solid var(--border); border-radius:16px;
+  padding:20px 16px; text-align:center; }
+.team-avatar { width:56px; height:56px; border-radius:50%; margin:0 auto 12px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Syne',sans-serif; font-size:20px; font-weight:800; }
+.team-name { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; margin-bottom:4px; }
+.team-role { font-size:11px; color:var(--muted); line-height:1.4; }
+
+/* FASES */
+.phases-timeline { display:grid; grid-template-columns:repeat(3,1fr); gap:0; position:relative; }
+.phases-timeline::before { content:''; position:absolute; top:28px; left:16.5%; right:16.5%;
+  height:2px; background:linear-gradient(90deg,var(--v1),var(--teal),var(--coral)); z-index:0; }
+.phase-col { position:relative; z-index:1; }
+.phase-dot { width:58px; height:58px; border-radius:50%; margin:0 auto 20px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Syne',sans-serif; font-size:20px; font-weight:800;
+  border:3px solid var(--ink); }
+.phase-col:nth-child(1) .phase-dot { background:linear-gradient(135deg,var(--v1),var(--v2)); box-shadow:0 0 24px rgba(124,58,237,0.4); }
+.phase-col:nth-child(2) .phase-dot { background:linear-gradient(135deg,var(--teal2),var(--teal)); box-shadow:0 0 24px rgba(6,182,212,0.4); }
+.phase-col:nth-child(3) .phase-dot { background:linear-gradient(135deg,var(--orange),var(--coral)); box-shadow:0 0 24px rgba(249,115,22,0.4); }
+.phase-inner { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; margin:0 10px; }
+.phase-inner h3 { font-family:'Syne',sans-serif; font-size:14px; font-weight:700; margin-bottom:4px; }
+.phase-inner .timing { font-size:11px; color:var(--muted); margin-bottom:14px; }
+.phase-list { list-style:none; }
+.phase-list li { font-size:12px; color:var(--soft); padding:5px 0;
+  border-bottom:1px solid var(--border); display:flex; gap:8px; }
+.phase-list li:last-child { border-bottom:none; }
+.phase-col:nth-child(1) .phase-list li::before { content:'▸'; color:var(--v2); flex-shrink:0; }
+.phase-col:nth-child(2) .phase-list li::before { content:'▸'; color:var(--teal); flex-shrink:0; }
+.phase-col:nth-child(3) .phase-list li::before { content:'▸'; color:var(--coral); flex-shrink:0; }
+
+/* FOOTER */
+.footer { margin-top:80px; padding:48px 32px; border-top:1px solid var(--border); text-align:center; }
+.footer-logo { font-family:'Syne',sans-serif; font-size:32px; font-weight:800;
+  background:linear-gradient(135deg,var(--v2),var(--teal));
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  margin-bottom:12px; }
+.footer-tagline { font-size:16px; color:var(--soft); margin-bottom:8px; }
+.footer-note { font-size:13px; color:var(--muted); }
+
+/* DIVIDER */
+.divider { height:1px; background:var(--border); margin:64px 0 0; }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-inner">
+    <div class="hero-badge">🧠 Plataforma de IA · Soft Skills</div>
+    <h1>Mente Viva</h1>
+    <p class="hero-sub">La plataforma de entrenamiento de habilidades blandas con IA conversacional, catálogo extensible y roadmap adaptativo personalizado.</p>
+    <div class="hero-pills">
+      <div class="pill"><strong>8 categorías</strong> de soft skills</div>
+      <div class="pill"><strong>40+</strong> escenarios planificados</div>
+      <div class="pill"><strong>3 niveles</strong> de dificultad</div>
+      <div class="pill">Roadmap <strong>adaptativo con IA</strong></div>
+      <div class="pill">Escenarios <strong>B2B personalizados</strong></div>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+
+<!-- PROBLEMA / SOLUCIÓN -->
+<section class="section">
+  <div class="section-label">El problema</div>
+  <h2 class="section-title syne">La capacitación tradicional no funciona</h2>
+  <p class="section-desc">El 80% del aprendizaje corporativo se olvida en 72 horas porque es pasivo. Las habilidades blandas se desarrollan practicando, no viendo videos.</p>
+  <div class="ps-grid">
+    <div class="ps-card problema">
+      <div class="ps-icon">📺</div>
+      <h3>Capacitación tradicional</h3>
+      <ul class="ps-list">
+        <li>Videos y cursos que se olvidan en días</li>
+        <li>Sin práctica real ni presión</li>
+        <li>Sin métricas ni KPIs de progreso</li>
+        <li>Costosa y difícil de escalar</li>
+        <li>Sin retroalimentación personalizada</li>
+        <li>Plan genérico para todos igual</li>
+      </ul>
+    </div>
+    <div class="ps-card solucion">
+      <div class="ps-icon">🧠</div>
+      <h3>Mente Viva</h3>
+      <ul class="ps-list">
+        <li>Simulaciones reales con presión real</li>
+        <li>Práctica activa con avatar conversacional</li>
+        <li>10+ KPIs medidos por sesión automáticamente</li>
+        <li>Escala a equipos completos sin costo lineal</li>
+        <li>Feedback específico e inmediato de IA</li>
+        <li>Roadmap adaptativo que aprende de ti</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- FLUJO -->
+<section class="section">
+  <div class="section-label">Cómo funciona</div>
+  <h2 class="section-title syne">De cero a experto en 4 pasos</h2>
+  <p class="section-desc">Un flujo diseñado para que el aprendizaje sea activo, medible y continuo.</p>
+  <div class="flow-steps">
+    <div class="flow-step">
+      <div class="step-num">1</div>
+      <div class="step-title syne">Perfil inteligente</div>
+      <div class="step-desc">La IA te entrevista y genera tu perfil de competencias y primer roadmap personalizado</div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">2</div>
+      <div class="step-title syne">Practica con el avatar</div>
+      <div class="step-desc">Simulación en tiempo real con avatar 2D que mantiene presión real según el escenario</div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">3</div>
+      <div class="step-title syne">Feedback con IA</div>
+      <div class="step-desc">Análisis inmediato post-sesión: score por KPI, momentos clave y recomendaciones específicas</div>
+    </div>
+    <div class="flow-step">
+      <div class="step-num">4</div>
+      <div class="step-title syne">Roadmap se actualiza</div>
+      <div class="step-desc">La IA recalcula tu plan de capacitación automáticamente con los nuevos resultados</div>
+    </div>
+  </div>
+</section>
+
+<!-- CATÁLOGO -->
+<section class="section">
+  <div class="section-label">Catálogo de escenarios</div>
+  <h2 class="section-title syne">8 categorías · 40+ escenarios planificados</h2>
+  <p class="section-desc">El catálogo de Mente Viva no es una lista fija. Es una arquitectura extensible de categorías de soft skills con escenarios en 3 niveles de dificultad y variantes por industria. Crece con el producto y con las necesidades de cada empresa.</p>
+
+  <div class="catalog-intro">
+    <p>Las empresas B2B pueden además solicitar <strong>escenarios personalizados</strong> para su industria, sus productos y sus procesos específicos — convirtiendo a Mente Viva en la plataforma de capacitación más contextualizada del mercado.</p>
+  </div>
+
+  <div class="catalog-phases">
+    <div class="phase-badge f1">
+      <div class="num">3</div>
+      <p>categorías activas<br><strong>Fase 1 — MVP</strong></p>
+    </div>
+    <div class="phase-badge f2">
+      <div class="num">5</div>
+      <p>categorías adicionales<br><strong>Fase 2</strong></p>
+    </div>
+    <div class="phase-badge f3">
+      <div class="num">40+</div>
+      <p>escenarios totales<br><strong>Catálogo completo</strong></p>
+    </div>
+  </div>
+
+  <div class="cat-grid">
+    <!-- ACTIVAS -->
+    <div class="cat-card active">
+      <div class="cat-icon">💼</div>
+      <div class="cat-name syne">Ventas y Cierre</div>
+      <div class="cat-count">6 escenarios · 3 niveles</div>
+      <div class="cat-status live">✅ Fase 1</div>
+    </div>
+    <div class="cat-card active">
+      <div class="cat-icon">🤝</div>
+      <div class="cat-name syne">Negociación</div>
+      <div class="cat-count">5 escenarios · 3 niveles</div>
+      <div class="cat-status live">✅ Fase 1</div>
+    </div>
+    <div class="cat-card active">
+      <div class="cat-icon">👔</div>
+      <div class="cat-name syne">Entrevistas y Selección</div>
+      <div class="cat-count">5 escenarios · 3 niveles</div>
+      <div class="cat-status live">✅ Fase 1</div>
+    </div>
+    <!-- PRÓXIMAMENTE -->
+    <div class="cat-card locked">
+      <div class="cat-icon">🧭</div>
+      <div class="cat-name syne">Liderazgo y Equipos</div>
+      <div class="cat-count">6 escenarios · 3 niveles</div>
+      <div class="cat-status soon">🔒 Fase 2</div>
+    </div>
+    <div class="cat-card locked">
+      <div class="cat-icon">🎤</div>
+      <div class="cat-name syne">Presentaciones Ejecutivas</div>
+      <div class="cat-count">5 escenarios · 3 niveles</div>
+      <div class="cat-status soon">🔒 Fase 2</div>
+    </div>
+    <div class="cat-card locked">
+      <div class="cat-icon">⚡</div>
+      <div class="cat-name syne">Manejo de Conflictos</div>
+      <div class="cat-count">5 escenarios · 3 niveles</div>
+      <div class="cat-status soon">🔒 Fase 2</div>
+    </div>
+    <div class="cat-card locked">
+      <div class="cat-icon">💬</div>
+      <div class="cat-name syne">Comunicación Asertiva</div>
+      <div class="cat-count">5 escenarios · 3 niveles</div>
+      <div class="cat-status soon">🔒 Fase 2</div>
+    </div>
+    <div class="cat-card locked">
+      <div class="cat-icon">🚀</div>
+      <div class="cat-name syne">Gestión de Proyectos</div>
+      <div class="cat-count">5 escenarios · 3 niveles</div>
+      <div class="cat-status soon">🔒 Fase 3</div>
+    </div>
+  </div>
+</section>
+
+<!-- ROADMAP ADAPTATIVO -->
+<section class="section">
+  <div class="section-label">Motor de IA</div>
+  <h2 class="section-title syne">Roadmap adaptativo — el plan que aprende de ti</h2>
+  <p class="section-desc">No es un plan estático de cursos. La IA combina tres fuentes de información para construir y recalcular tu ruta de capacitación después de cada sesión.</p>
+
+  <div class="roadmap-engine">
+    <div class="sources-grid">
+      <div class="source-card s1">
+        <div class="source-icon">🧬</div>
+        <div class="source-title">Tu Perfil</div>
+        <div class="source-desc">Rol, industria, nivel de experiencia, metas personales y tiempo disponible declarados en el onboarding.</div>
+      </div>
+      <div class="source-card s2">
+        <div class="source-icon">📊</div>
+        <div class="source-title">Tus Resultados</div>
+        <div class="source-desc">Score por KPI en cada sesión, patrones de mejora, habilidades estancadas y velocidad de aprendizaje real.</div>
+      </div>
+      <div class="source-card s3">
+        <div class="source-icon">🎯</div>
+        <div class="source-title">Metas de la Empresa</div>
+        <div class="source-desc">Competencias prioritarias, plazos, escenarios obligatorios y nivel mínimo exigido definidos por el manager.</div>
+      </div>
+    </div>
+
+    <div class="engine-arrow">
+      <span>⚙️</span>
+      <p>La IA recalcula el plan después de cada sesión</p>
+    </div>
+
+    <div class="roadmap-decisions">
+      <div class="rd-item">
+        <div class="rd-icon">📍</div>
+        <div class="rd-text"><strong>¿Qué escenario sigue?</strong>Prioriza la habilidad con mayor brecha entre nivel actual y objetivo. Considera urgencia del manager.</div>
+      </div>
+      <div class="rd-item">
+        <div class="rd-icon">⬆️</div>
+        <div class="rd-text"><strong>¿A qué nivel de dificultad?</strong>Score >75 en 2 sesiones → sube nivel. Score &lt;50 → regresa al nivel anterior.</div>
+      </div>
+      <div class="rd-item">
+        <div class="rd-icon">🔁</div>
+        <div class="rd-text"><strong>¿Sesión de refuerzo?</strong>Sin mejora en 3 sesiones consecutivas → inserta refuerzo específico y notifica al manager B2B.</div>
+      </div>
+      <div class="rd-item">
+        <div class="rd-icon">🏭</div>
+        <div class="rd-text"><strong>¿Qué variante del escenario?</strong>Si hay variante de la industria del usuario, la prioriza sobre el escenario genérico.</div>
+      </div>
+    </div>
+
+    <!-- Ejemplo de roadmap real -->
+    <div class="roadmap-example">
+      <div class="re-header">
+        <h4 class="syne">Ejemplo: Roadmap de María — Ejecutiva de Ventas B2B</h4>
+        <div class="re-badge">🔄 Ajustado 2 veces por la IA</div>
+      </div>
+      <div class="re-sessions">
+        <div class="re-session done">
+          <div class="re-sem">Sem 1</div>
+          <div class="re-status">✅</div>
+          <div class="re-info">
+            <div class="name">Ventas y Cierre — Principiante</div>
+            <div class="sub">Completar ciclo completo de venta</div>
+          </div>
+          <div class="re-score mid">68/100</div>
+        </div>
+        <div class="re-session ai-insert">
+          <div class="re-sem">Sem 2</div>
+          <div class="re-status">✅</div>
+          <div class="re-info">
+            <div class="name" style="color:var(--coral)">Ventas — Refuerzo de objeciones</div>
+            <div class="sub">Enfocarse solo en manejo de precio</div>
+          </div>
+          <div class="re-score mid">71/100</div>
+          <div class="re-ai-tag">🔁 Insertado por IA</div>
+        </div>
+        <div class="re-session done">
+          <div class="re-sem">Sem 3</div>
+          <div class="re-status">✅</div>
+          <div class="re-info">
+            <div class="name">Negociación — Principiante</div>
+            <div class="sub">Introducir nueva categoría</div>
+          </div>
+          <div class="re-score good">78/100</div>
+        </div>
+        <div class="re-session active">
+          <div class="re-sem">Sem 4</div>
+          <div class="re-status">▶</div>
+          <div class="re-info">
+            <div class="name">Negociación — Intermedio</div>
+            <div class="sub">Proveedor que no cede en tiempo de entrega</div>
+          </div>
+          <div class="re-score pending">Pendiente</div>
+        </div>
+        <div class="re-session locked">
+          <div class="re-sem">Sem 5</div>
+          <div class="re-status">🔒</div>
+          <div class="re-info">
+            <div class="name">Comunicación Asertiva — Principiante</div>
+            <div class="sub">Planificado · puede cambiar según progreso</div>
+          </div>
+          <div class="re-score pending">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- B2B -->
+<section class="section">
+  <div class="section-label">Modelo empresarial</div>
+  <h2 class="section-title syne">Diseñado para escalar en equipos B2B</h2>
+  <p class="section-desc">El manager define las metas — la IA construye el plan individual de cada empleado y lo actualiza automáticamente.</p>
+  <div class="b2b-grid">
+    <div class="b2b-card">
+      <h3 class="syne" style="color:var(--teal)">🏢 Lo que hace el manager</h3>
+      <p class="desc">El admin empresarial configura el entorno, define las metas de su equipo y monitorea el progreso desde su dashboard.</p>
+      <ul class="b2b-list">
+        <li><span class="check">→</span>Define competencias prioritarias por rol o área</li>
+        <li><span class="check">→</span>Establece plazos y nivel mínimo de score exigido</li>
+        <li><span class="check">→</span>Asigna escenarios obligatorios para el puesto</li>
+        <li><span class="check">→</span>Solicita escenarios personalizados de su industria</li>
+        <li><span class="check">→</span>Ve KPIs individuales y agregados del equipo</li>
+        <li><span class="check">→</span>Recibe alertas de empleados estancados</li>
+        <li><span class="check">→</span>Exporta reportes en PDF/Excel</li>
+      </ul>
+    </div>
+    <div class="b2b-card">
+      <h3 class="syne" style="color:var(--v2)">🤖 Lo que hace la IA</h3>
+      <p class="desc">La IA toma las metas del manager y construye automáticamente el roadmap individual de cada empleado.</p>
+      <ul class="b2b-list">
+        <li><span class="check">→</span>Genera plan individual combinando perfil + resultados + metas</li>
+        <li><span class="check">→</span>Adapta el plan en tiempo real según el progreso de cada empleado</li>
+        <li><span class="check">→</span>Detecta brechas de habilidad a nivel equipo</li>
+        <li><span class="check">→</span>Inserta refuerzos sin necesidad de intervención del manager</li>
+        <li><span class="check">→</span>Recalcula todos los planes cuando el manager actualiza metas</li>
+        <li><span class="check">→</span>Prioriza escenarios de la industria de la empresa</li>
+        <li><span class="check">→</span>Mide ROI: horas de práctica vs. mejora de KPIs</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="section">
+  <div class="section-label">Modelo de negocio</div>
+  <h2 class="section-title syne">Planes para cada etapa</h2>
+  <p class="section-desc">Desde el profesional individual hasta el equipo empresarial completo.</p>
+  <div class="pricing-grid">
+    <div class="price-card">
+      <h3 class="syne">B2C Individual</h3>
+      <p class="target">Profesionales y estudiantes</p>
+      <div class="price-tag">$299<span> MXN/mes</span></div>
+      <p class="price-label">o $2,499 MXN/año (ahorra 30%)</p>
+      <ul class="price-features">
+        <li>Sesiones ilimitadas en todos los escenarios</li>
+        <li>Roadmap adaptativo personalizado</li>
+        <li>Reporte de feedback por sesión</li>
+        <li>Dashboard de progreso</li>
+        <li>Certificación: +$499 MXN adicional</li>
+      </ul>
+    </div>
+    <div class="price-card featured">
+      <div class="featured-badge">⭐ Más solicitado</div>
+      <h3 class="syne">B2B Equipos</h3>
+      <p class="target">Empresas de 10+ empleados</p>
+      <div class="price-tag">$150–250<span> MXN/usuario/mes</span></div>
+      <p class="price-label">según volumen · contrato mínimo 6 meses</p>
+      <ul class="price-features">
+        <li>Todo lo del plan individual</li>
+        <li>Dashboard empresarial y manager</li>
+        <li>Roadmaps gestionados por manager</li>
+        <li>KPIs y reportes del equipo</li>
+        <li>Onboarding empresarial incluido</li>
+        <li>Escenarios personalizados (cotización)</li>
+      </ul>
+    </div>
+    <div class="price-card">
+      <h3 class="syne">Piloto Empresarial</h3>
+      <p class="target">Primeras 3 empresas</p>
+      <div class="price-tag">Gratis<span> 3 meses</span></div>
+      <p class="price-label">A cambio de feedback y caso de éxito</p>
+      <ul class="price-features">
+        <li>Acceso completo a la plataforma</li>
+        <li>Hasta 20 usuarios</li>
+        <li>Acompañamiento directo del equipo</li>
+        <li>1 escenario personalizado incluido</li>
+        <li>Posibilidad de convertir a contrato B2B</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- EQUIPO -->
+<section class="section">
+  <div class="section-label">El equipo</div>
+  <h2 class="section-title syne">5 expertos, una visión</h2>
+  <p class="section-desc">El equipo fundador combina experiencia en ventas, psicología, tecnología, RRHH y marketing.</p>
+  <div class="team-grid">
+    <div class="team-card">
+      <div class="team-avatar" style="background:linear-gradient(135deg,#7C3AED,#A855F7)">BH</div>
+      <div class="team-name syne">Brandon H.</div>
+      <div class="team-role">Director de Producto & Líder</div>
+    </div>
+    <div class="team-card">
+      <div class="team-avatar" style="background:linear-gradient(135deg,#0D9488,#06B6D4)">EV</div>
+      <div class="team-name syne">Eric V.</div>
+      <div class="team-role">Arquitecto Técnico & Dev Principal</div>
+    </div>
+    <div class="team-card">
+      <div class="team-avatar" style="background:linear-gradient(135deg,#1E40AF,#3B82F6)">SM</div>
+      <div class="team-name syne">Sophia M.</div>
+      <div class="team-role">Experta en Contenido Psicológico</div>
+    </div>
+    <div class="team-card">
+      <div class="team-avatar" style="background:linear-gradient(135deg,#C2410C,#F97316)">CT</div>
+      <div class="team-name syne">Cristina T.</div>
+      <div class="team-role">Estrategia RRHH & Validación B2B</div>
+    </div>
+    <div class="team-card">
+      <div class="team-avatar" style="background:linear-gradient(135deg,#166534,#16A34A)">AM</div>
+      <div class="team-name syne">Areli M.</div>
+      <div class="team-role">Comercial & Marketing</div>
+    </div>
+  </div>
+</section>
+
+<!-- FASES -->
+<section class="section">
+  <div class="section-label">Hoja de ruta</div>
+  <h2 class="section-title syne">3 fases de crecimiento</h2>
+  <p class="section-desc">De MVP conversacional a experiencia de realidad virtual en 6 meses.</p>
+  <div class="phases-timeline">
+    <div class="phase-col" style="text-align:center">
+      <div class="phase-dot">1</div>
+      <div class="phase-inner">
+        <h3 class="syne" style="color:var(--v2)">MVP Conversacional</h3>
+        <p class="timing">Semanas 1 — 11</p>
+        <ul class="phase-list">
+          <li>3 categorías activas (16 escenarios)</li>
+          <li>Catálogo completo visible</li>
+          <li>Avatar 2D con voz natural</li>
+          <li>Motor de roadmap adaptativo v1</li>
+          <li>Escenarios B2B personalizados</li>
+          <li>3 pilotos empresariales</li>
+        </ul>
+      </div>
+    </div>
+    <div class="phase-col" style="text-align:center">
+      <div class="phase-dot">2</div>
+      <div class="phase-inner">
+        <h3 class="syne" style="color:var(--teal)">Expansión del Catálogo</h3>
+        <p class="timing">Semanas 12 — 20</p>
+        <ul class="phase-list">
+          <li>5 categorías adicionales activas</li>
+          <li>30+ escenarios disponibles</li>
+          <li>Análisis de emoción en voz</li>
+          <li>Roadmap adaptativo v2</li>
+          <li>Admin empresarial B2B completo</li>
+          <li>Escalamiento comercial</li>
+        </ul>
+      </div>
+    </div>
+    <div class="phase-col" style="text-align:center">
+      <div class="phase-dot">3</div>
+      <div class="phase-inner">
+        <h3 class="syne" style="color:var(--coral)">Realidad Virtual</h3>
+        <p class="timing">Mes 6 en adelante</p>
+        <ul class="phase-list">
+          <li>Catálogo completo 40+ escenarios</li>
+          <li>Entornos 3D inmersivos (VR)</li>
+          <li>Sensores de emoción y cuerpo</li>
+          <li>Certificaciones oficiales</li>
+          <li>Expansión LATAM</li>
+          <li>IA multi-modal</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /page -->
+
+<!-- FOOTER -->
+<div class="divider"></div>
+<div class="footer">
+  <div class="footer-logo">Mente Viva</div>
+  <p class="footer-tagline">Las habilidades blandas no se enseñan — se entrenan.</p>
+  <p class="footer-note">Documento interno — Equipo fundador · Febrero 2026 · v2.0</p>
+</div>
+
+</body>
+</html>
