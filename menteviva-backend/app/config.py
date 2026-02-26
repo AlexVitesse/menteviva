@@ -14,7 +14,12 @@ class Settings(BaseSettings):
     # App
     app_name: str = "Mente Viva API"
     debug: bool = False
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:3000",
+        "https://kbm5qpth-5174.use2.devtunnels.ms",
+    ]
 
     class Config:
         env_file = ".env"
