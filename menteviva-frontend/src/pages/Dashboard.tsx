@@ -62,9 +62,17 @@ export function Dashboard() {
     <div className="min-h-screen bg-ink">
       {/* Header */}
       <header className="border-b border-white/5 px-8 py-6">
-        <h1 className="font-syne text-2xl font-bold bg-gradient-to-r from-violet-light to-teal bg-clip-text text-transparent">
-          Mente Viva
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="font-syne text-2xl font-bold bg-gradient-to-r from-violet-light to-teal bg-clip-text text-transparent">
+            Mente Viva
+          </h1>
+          {/* Demo Badge */}
+          <div className="px-3 py-1 rounded-full bg-gradient-to-r from-violet/20 to-teal/20 border border-violet/30">
+            <span className="text-xs font-semibold text-violet-light tracking-wider">
+              DEMO
+            </span>
+          </div>
+        </div>
       </header>
 
       {/* Main */}

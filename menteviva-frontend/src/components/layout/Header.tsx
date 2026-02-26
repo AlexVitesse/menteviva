@@ -23,16 +23,25 @@ export function Header({ showNav = false, subtitle }: Props) {
           )}
         </div>
 
-        {showNav && (
-          <nav className="flex items-center gap-6">
-            <Link
-              to="/"
-              className="text-muted hover:text-cream transition-colors"
-            >
-              Dashboard
-            </Link>
-          </nav>
-        )}
+        <div className="flex items-center gap-4">
+          {showNav && (
+            <nav className="flex items-center gap-6">
+              <Link
+                to="/"
+                className="text-muted hover:text-cream transition-colors"
+              >
+                Dashboard
+              </Link>
+            </nav>
+          )}
+
+          {/* Demo Badge */}
+          <div className="px-3 py-1 rounded-full bg-gradient-to-r from-violet/20 to-teal/20 border border-violet/30">
+            <span className="text-xs font-semibold text-violet-light tracking-wider">
+              DEMO
+            </span>
+          </div>
+        </div>
       </div>
     </header>
   );
