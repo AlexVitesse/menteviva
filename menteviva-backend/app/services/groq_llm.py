@@ -7,14 +7,10 @@ Modelo: llama-3.1-8b-instant
 
 import logging
 from typing import AsyncGenerator
-from groq import Groq
 from app.config import settings
+from app.services.groq_pool import get_groq_client
 
 logger = logging.getLogger("menteviva")
-
-# Cliente de Groq (singleton)
-client = Groq(api_key=settings.groq_api_key)
-logger.debug(f"[LLM] Cliente Groq inicializado - Modelo: {settings.groq_model_llm}")
 
 
 async def chat_stream(
@@ -36,6 +32,7 @@ async def chat_stream(
         *messages
     ]
 
+    client = get_groq_client()
     stream = client.chat.completions.create(
         model=settings.groq_model_llm,
         messages=full_messages,
@@ -68,6 +65,7 @@ async def chat_complete(
         *messages
     ]
 
+    client = get_groq_client()
     response = client.chat.completions.create(
         model=settings.groq_model_llm,
         messages=full_messages,
@@ -95,6 +93,7 @@ async def get_conversation_starter(system_prompt: str, avatar_name: str) -> str:
 
     messages = [{"role": "user", "content": starter_prompt}]
 
+    client = get_groq_client()
     response = client.chat.completions.create(
         model=settings.groq_model_llm,
         messages=[

@@ -6,14 +6,10 @@ Modelo: whisper-large-v3-turbo
 """
 
 import logging
-from groq import Groq
 from app.config import settings
+from app.services.groq_pool import get_groq_client
 
 logger = logging.getLogger("menteviva")
-
-# Cliente de Groq (singleton)
-client = Groq(api_key=settings.groq_api_key)
-logger.debug(f"[STT] Cliente Groq Whisper inicializado - Modelo: {settings.groq_model_whisper}")
 
 
 async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str:
@@ -30,6 +26,7 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> 
     Raises:
         Exception: Si hay error en la transcripcion
     """
+    client = get_groq_client()
     transcription = client.audio.transcriptions.create(
         file=(filename, audio_bytes),
         model=settings.groq_model_whisper,
@@ -53,6 +50,7 @@ async def transcribe_audio_with_details(
     Returns:
         Dict con texto y metadatos
     """
+    client = get_groq_client()
     transcription = client.audio.transcriptions.create(
         file=(filename, audio_bytes),
         model=settings.groq_model_whisper,

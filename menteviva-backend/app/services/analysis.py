@@ -6,13 +6,11 @@ Evalua habilidades blandas basado en la conversacion y el escenario.
 
 import json
 import logging
-from groq import Groq
 from app.config import settings
 from app.prompts.scenarios import get_avatar
+from app.services.groq_pool import get_groq_client
 
 logger = logging.getLogger("menteviva")
-
-client = Groq(api_key=settings.groq_api_key)
 
 # Definicion de habilidades por escenario
 SKILLS_BY_SCENARIO = {
@@ -189,6 +187,7 @@ async def analyze_conversation(
     try:
         logger.info(f"[Analysis] Llamando a Groq con modelo: {settings.groq_model_analysis}")
 
+        client = get_groq_client()
         response = client.chat.completions.create(
             model=settings.groq_model_analysis,
             messages=[{"role": "user", "content": prompt}],
