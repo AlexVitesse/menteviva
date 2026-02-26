@@ -1,23 +1,28 @@
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff } from "lucide-react";
+import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff, Clock } from "lucide-react";
 import { AnimatedAvatar, AvatarCharacter } from "../components/avatar/AnimatedAvatar";
 import { useSessionStore } from "../stores/sessionStore";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAudioRecorder } from "../hooks/useAudioRecorder";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
+import { useSoundEffects } from "../hooks/useSoundEffects";
 
 export function Simulation() {
   const navigate = useNavigate();
   const { selectedAvatar, messages, status, metrics, serverError, setServerError, setMetrics } = useSessionStore();
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isEnding, setIsEnding] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const endTimeoutRef = useRef<number | null>(null);
   const sessionStartRef = useRef<number>(Date.now());
+  const prevStatusRef = useRef(status);
+  const prevMessagesLenRef = useRef(messages.length);
 
-  // Hook de audio
+  // Hook de audio y sonidos
   const { isPlaying, playAudio } = useAudioPlayer();
+  const { play: playSound } = useSoundEffects();
 
   // Callback para cuando llega audio del servidor
   const handleAudioReceived = useCallback((base64Audio: string) => {
@@ -42,17 +47,58 @@ export function Simulation() {
 
   useEffect(() => {
     if (metrics) {
+      playSound("sessionEnd");
       navigate("/report");
     }
   }, [metrics]);
 
+  // Timer de sesión
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsedTime(Math.floor((Date.now() - sessionStartRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Sonidos según cambios de estado
+  useEffect(() => {
+    // Conectado
+    if (prevStatusRef.current === "connecting" && status === "ready") {
+      playSound("connected");
+    }
+    // Error o desconexión
+    if (status === "disconnected" && prevStatusRef.current !== "disconnected") {
+      playSound("disconnected");
+    }
+    // Respuesta recibida (nuevo mensaje del asistente)
+    if (messages.length > prevMessagesLenRef.current) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg?.role === "assistant") {
+        playSound("responseReceived");
+      }
+    }
+
+    prevStatusRef.current = status;
+    prevMessagesLenRef.current = messages.length;
+  }, [status, messages.length, playSound]);
+
+  // Formatear tiempo mm:ss
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
   async function handleVoiceButton() {
     if (isRecording) {
+      playSound("recordStop");
       const audioBase64 = await stopRecording();
       if (audioBase64) {
+        playSound("messageSent");
         sendAudio(audioBase64);
       }
     } else {
+      playSound("recordStart");
       startRecording();
     }
   }
@@ -108,8 +154,16 @@ export function Simulation() {
             Mente Viva - Simulación en vivo
           </span>
         </div>
-        <div className="text-white/50 text-sm">
-          {messages.length > 0 ? `${Math.ceil(messages.length / 2)} intercambios` : "Esperando..."}
+        <div className="flex items-center gap-4">
+          {/* Timer */}
+          <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full">
+            <Clock className="w-4 h-4 text-white/60" />
+            <span className="text-white font-mono text-sm">{formatTime(elapsedTime)}</span>
+          </div>
+          {/* Contador de intercambios */}
+          <div className="text-white/50 text-sm">
+            {messages.length > 0 ? `${Math.ceil(messages.length / 2)} intercambios` : "Esperando..."}
+          </div>
         </div>
       </header>
 
