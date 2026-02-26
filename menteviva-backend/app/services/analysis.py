@@ -158,10 +158,13 @@ async def analyze_conversation(
         logger.error(f"[Analysis] Configuracion de habilidades no encontrada: {avatar_id}")
         return _empty_analysis("Configuracion no encontrada")
 
-    # Verificar conversacion minima
-    if len(conversation) < 2:
-        logger.warning(f"[Analysis] Conversacion muy corta: {len(conversation)} mensajes")
-        return _empty_analysis("La conversacion es muy corta para un analisis completo")
+    # Verificar conversacion minima - si hay menos de 4-5 intercambios, usar demo
+    min_exchanges = 4
+    actual_exchanges = len(conversation) // 2
+
+    if actual_exchanges < min_exchanges:
+        logger.info(f"[Analysis] Conversacion corta ({actual_exchanges} intercambios), generando analisis demo")
+        return _demo_analysis(avatar_id, skills_config, actual_exchanges, duration_seconds)
 
     # Formatear conversacion para el prompt
     conversation_text = _format_conversation(conversation)
@@ -257,4 +260,88 @@ def _empty_analysis(reason: str) -> dict:
         "key_moments": [],
         "next_steps": ["Completa una sesion mas larga para obtener un analisis detallado"],
         "error": True
+    }
+
+
+def _demo_analysis(avatar_id: str, skills_config: dict, exchanges: int, duration_seconds: int) -> dict:
+    """
+    Genera un analisis demo realista para sesiones cortas.
+    Esto permite mostrar el formato completo del reporte aunque la conversacion sea breve.
+    """
+    import random
+
+    # Generar scores variados pero realistas para demo
+    base_score = random.randint(62, 78)
+
+    skills_analysis = []
+    for skill in skills_config["skills"]:
+        # Variar score alrededor del base para que sea realista
+        skill_score = max(45, min(95, base_score + random.randint(-15, 15)))
+
+        # Feedbacks demo por habilidad
+        demo_feedbacks = {
+            "escucha_activa": "Demostraste interes haciendo preguntas de seguimiento. Considera parafrasear mas las respuestas del cliente para confirmar entendimiento.",
+            "manejo_objeciones": "Manejaste las objeciones iniciales con calma. Podrias profundizar mas en entender la raiz de las preocupaciones antes de responder.",
+            "rapport": "Buen uso del nombre del cliente y tono profesional. Intenta encontrar puntos de conexion personal para fortalecer la relacion.",
+            "claridad": "Tu propuesta fue clara y directa. Recuerda adaptar el nivel de detalle tecnico segun las senales del cliente.",
+            "cierre": "Propusiste un siguiente paso concreto. Considera manejar mejor la urgencia sin parecer presionado.",
+            "defensa_valor": "Defendiste el valor de tu propuesta con argumentos solidos. Evita ceder demasiado rapido ante la primera objecion de precio.",
+            "negociacion_winwin": "Mostraste disposicion a encontrar soluciones. Explora mas opciones creativas antes de hacer concesiones.",
+            "manejo_presion": "Mantuviste la compostura ante la presion. Practica tecnicas de pausa para ganar tiempo cuando necesites pensar.",
+            "creatividad": "Ofreciste algunas alternativas. Prepara un menu de opciones antes de la negociacion para tener mas flexibilidad."
+        }
+
+        feedback = demo_feedbacks.get(
+            skill["id"],
+            f"Tu desempeno en {skill['name'].lower()} fue adecuado. Continua practicando para mejorar la fluidez."
+        )
+
+        skills_analysis.append({
+            "id": skill["id"],
+            "name": skill["name"],
+            "score": skill_score,
+            "feedback": feedback,
+            "moment": None  # En demo no tenemos citas reales
+        })
+
+    # Ordenar por score para identificar fortalezas y areas de mejora
+    sorted_skills = sorted(skills_analysis, key=lambda x: x["score"], reverse=True)
+
+    strengths = [
+        f"Buena base en {sorted_skills[0]['name'].lower()}",
+        f"Actitud profesional y receptiva durante la conversacion",
+    ]
+
+    improvements = [
+        f"Profundizar en {sorted_skills[-1]['name'].lower()}",
+        "Practicar sesiones mas largas para desarrollar ritmo conversacional",
+    ]
+
+    key_moments = [
+        {
+            "quote": "Sesion de practica - modo demo",
+            "analysis": "Esta es una sesion de demostracion. Para un analisis completo con citas reales, completa al menos 4-5 intercambios.",
+            "type": "neutral"
+        }
+    ]
+
+    next_steps = [
+        "Completa una sesion de 5+ intercambios para obtener feedback mas detallado",
+        f"Enfocate en mejorar '{sorted_skills[-1]['name']}' en tu proxima practica",
+        "Revisa las tecnicas de escucha activa antes de tu siguiente sesion"
+    ]
+
+    return {
+        "overall_score": base_score,
+        "overall_summary": f"Sesion de practica breve ({exchanges} intercambios). Mostraste buena disposicion y profesionalismo. Para un analisis mas profundo, te recomendamos sesiones de al menos 4-5 intercambios donde puedas desarrollar mejor cada habilidad.",
+        "skills": skills_analysis,
+        "strengths": strengths,
+        "improvements": improvements,
+        "key_moments": key_moments,
+        "next_steps": next_steps,
+        "avatar_id": avatar_id,
+        "scenario_type": skills_config["scenario_type"],
+        "total_exchanges": exchanges,
+        "duration_seconds": duration_seconds,
+        "is_demo": True  # Flag para indicar que es analisis demo
     }
