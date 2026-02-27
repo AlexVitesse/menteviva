@@ -110,18 +110,20 @@ export function Simulation() {
     // Intentar terminar sesion normalmente
     endSession();
 
-    // Fallback: si no hay respuesta en 2 segundos, forzar navegacion
+    // Fallback: si no hay respuesta en 10 segundos, forzar navegacion
+    // (el análisis toma ~3-5 segundos, damos margen amplio)
     endTimeoutRef.current = window.setTimeout(() => {
       // Crear metricas basicas con los mensajes que tenemos
       const durationSeconds = Math.floor((Date.now() - sessionStartRef.current) / 1000);
       setMetrics({
         total_exchanges: Math.floor(messages.length / 2),
         duration_seconds: durationSeconds,
-        conversation: messages
+        conversation: messages,
+        is_fallback: true // Marcar que es fallback sin análisis real
       });
       disconnect();
       navigate("/report");
-    }, 2000);
+    }, 10000);
   }
 
   // Limpiar timeout si metrics llegan antes
