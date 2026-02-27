@@ -35,8 +35,8 @@ def clean_text_for_tts(text: str) -> str:
     return cleaned.strip()
 
 # Configuracion de reintentos para Edge TTS
-MAX_RETRIES = 2
-RETRY_DELAY = 0.5  # segundos
+MAX_RETRIES = 4  # Mas reintentos antes de fallback
+RETRY_DELAY = 0.3  # segundos
 
 # Voces Edge TTS (espanol Mexico)
 AVATAR_VOICES_EDGE = {
@@ -68,8 +68,8 @@ async def text_to_speech(text: str, avatar_id: str = "roberto") -> bytes:
     if audio:
         return audio
 
-    # Fallback a gTTS
-    logger.info("[TTS] Edge TTS fallo, usando gTTS como fallback")
+    # Fallback a gTTS (ADVERTENCIA: voz generica, puede ser femenina)
+    logger.warning("[TTS] Edge TTS fallo, usando gTTS - VOZ PUEDE NO COINCIDIR CON AVATAR")
     return await _gtts_fallback(clean_text)
 
 
