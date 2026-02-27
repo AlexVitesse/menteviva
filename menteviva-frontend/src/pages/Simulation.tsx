@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff, Clock } from "lucide-react";
+import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff, Clock, Loader2 } from "lucide-react";
 import { AnimatedAvatar, AvatarCharacter } from "../components/avatar/AnimatedAvatar";
 import { useSessionStore } from "../stores/sessionStore";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -382,6 +382,24 @@ export function Simulation() {
           <span className="text-[10px]">{isEnding ? "Saliendo..." : "Terminar"}</span>
         </button>
       </footer>
+
+      {/* Overlay de análisis */}
+      <AnimatePresence>
+        {isEnding && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center"
+          >
+            <div className="text-center">
+              <Loader2 className="w-16 h-16 text-violet animate-spin mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-white mb-2">Analizando tu desempeño</h2>
+              <p className="text-white/60">Esto tomará unos segundos...</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Errores */}
       <AnimatePresence>
