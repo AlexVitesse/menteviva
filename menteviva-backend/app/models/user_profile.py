@@ -12,7 +12,9 @@ from typing import Literal, Optional
 
 ExperienceLevel = Literal["entry", "junior", "mid", "senior", "lead", "executive"]
 VerbalTendency = Literal["alta", "media", "baja"]
-RecommendedScenario = Literal["roberto", "maria", "carlos"]
+# Carlos esta definido en el roadmap pero aun sin system_prompt ni rubrica,
+# asi que no se recomienda. Agregar "carlos" cuando se implemente.
+RecommendedScenario = Literal["roberto", "maria"]
 RecommendedLevel = Literal["facil", "intermedio", "dificil"]
 
 

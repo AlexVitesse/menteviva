@@ -78,7 +78,7 @@ export type ExperienceLevel =
 
 export type VerbalTendency = "alta" | "media" | "baja";
 
-export type RecommendedScenario = "roberto" | "maria" | "carlos";
+export type RecommendedScenario = "roberto" | "maria";
 
 export type RecommendedLevel = "facil" | "intermedio" | "dificil";
 

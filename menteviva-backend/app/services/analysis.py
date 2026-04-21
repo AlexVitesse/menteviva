@@ -471,13 +471,11 @@ estructurado que se le dara al candidato como espejo de lo observado.
 7. COMPETENCIAS_FOCO (3-6 ids del catalogo): las habilidades que este usuario
    debe trabajar prioritariamente en sus siguientes sesiones de practica.
 
-8. RECOMMENDED_NEXT_SCENARIO: elige basado en las brechas observadas.
+8. RECOMMENDED_NEXT_SCENARIO: elige solo entre "roberto" y "maria".
    - "roberto": venta consultiva B2B. Bueno para practicar manejo_objeciones,
      comunicacion, pensamiento_critico, resolucion_problemas.
    - "maria": negociacion de contrato. Bueno para orientacion_resultados,
      gestion_prioridades, adaptabilidad, inteligencia_emocional.
-   - "carlos": demo tecnica a startups (por ahora experimental, preferir
-     roberto o maria salvo caso claro).
 
 9. RECOMMENDED_NEXT_LEVEL: "facil" | "intermedio" | "dificil" segun la madurez
    conductual observada. Si las brechas son grandes o basicas, empezar "facil".
@@ -518,7 +516,7 @@ Responde UNICAMENTE con un JSON valido con esta estructura exacta:
     "we_vs_i_tendency": "alta|media|baja",
     "filler_frequency": "alta|media|baja"
   }},
-  "recommended_next_scenario": "roberto|maria|carlos",
+  "recommended_next_scenario": "roberto|maria",
   "recommended_next_level": "facil|intermedio|dificil"
 }}
 
