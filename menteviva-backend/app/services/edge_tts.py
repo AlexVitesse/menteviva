@@ -19,10 +19,10 @@ RETRY_DELAY = 0.5
 
 # Voces ElevenLabs por avatar
 AVATAR_VOICES = {
-    "roberto": "uPc5TJmLHicJAPs7qpif",        # Voz masculina
-    "maria": "m7yTemJqdIqrcNleANfX",          # Voz femenina
-    "carlos": "uPc5TJmLHicJAPs7qpif",         # Voz masculina (misma que Roberto)
-    "entrevistador": "m7yTemJqdIqrcNleANfX",  # Sofia - voz femenina (misma que Maria por ahora)
+    "roberto": "uPc5TJmLHicJAPs7qpif",        # Masculina
+    "maria": "m7yTemJqdIqrcNleANfX",          # Femenina
+    "carlos": "Rt1JHkPO27QCUX6Nd5bV",         # Masculina (distinta a Roberto)
+    "entrevistador": "1vvbVDm3EpGMyY1WVZ3r",  # Sofia - Femenina (distinta a Maria)
 }
 
 _client: ElevenLabs | None = None
