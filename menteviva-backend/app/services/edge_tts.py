@@ -19,9 +19,9 @@ RETRY_DELAY = 0.5
 
 # Voces ElevenLabs por avatar
 AVATAR_VOICES = {
-    "roberto": "htFfPSZGJwjBv1CL0aMD",       # Voz masculina
+    "roberto": "uPc5TJmLHicJAPs7qpif",        # Voz masculina
     "maria": "m7yTemJqdIqrcNleANfX",          # Voz femenina
-    "carlos": "htFfPSZGJwjBv1CL0aMD",         # Voz masculina (misma que Roberto)
+    "carlos": "uPc5TJmLHicJAPs7qpif",         # Voz masculina (misma que Roberto)
     "entrevistador": "m7yTemJqdIqrcNleANfX",  # Sofia - voz femenina (misma que Maria por ahora)
 }
 
