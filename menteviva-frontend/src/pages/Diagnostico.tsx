@@ -97,15 +97,13 @@ export function Diagnostico() {
     navigate("/diagnostico/perfil");
   }, [metrics, navigate, updateDiagnostico]);
 
-  async function handleVoiceDown() {
-    if (isRecording) return;
-    startRecording();
-  }
-
-  async function handleVoiceUp() {
-    if (!isRecording) return;
-    const base64 = await stopRecording();
-    if (base64) sendAudio(base64);
+  async function handleVoiceToggle() {
+    if (isRecording) {
+      const base64 = await stopRecording();
+      if (base64) sendAudio(base64);
+    } else {
+      startRecording();
+    }
   }
 
   const isDisabled =
@@ -116,8 +114,8 @@ export function Diagnostico() {
     isPlaying;
 
   return (
-    <div className="min-h-screen bg-ink text-cream flex flex-col">
-      <header className="flex items-center justify-between px-6 py-3 border-b border-white/5">
+    <div className="h-screen bg-ink text-cream flex flex-col overflow-hidden">
+      <header className="flex items-center justify-between px-6 py-3 border-b border-white/5 shrink-0">
         <div>
           <p className="font-syne text-lg font-bold">Diagnostico por competencias</p>
           <p className="text-xs text-muted">
@@ -139,7 +137,7 @@ export function Diagnostico() {
         </div>
       </header>
 
-      <main className="flex-1 flex gap-4 p-4 overflow-hidden">
+      <main className="flex-1 flex gap-4 p-4 min-h-0">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -155,19 +153,21 @@ export function Diagnostico() {
           </div>
         </motion.div>
 
-        <aside className="w-[400px] flex flex-col gap-3">
+        <aside className="w-[400px] flex flex-col gap-3 min-h-0">
           <ChatBox messages={messages} className="flex-1 min-h-0" />
-          <div className="flex justify-center pt-2">
+          <div className="flex justify-center pt-2 shrink-0">
             <VoiceButton
               isRecording={isRecording}
               isDisabled={isDisabled}
               isLoading={status === "transcribing" || status === "thinking"}
-              onMouseDown={handleVoiceDown}
-              onMouseUp={handleVoiceUp}
+              onMouseDown={handleVoiceToggle}
+              onMouseUp={() => {}}
             />
           </div>
-          <p className="text-center text-xs text-muted">
-            Manten presionado el microfono para hablar
+          <p className="text-center text-xs text-muted shrink-0">
+            {isRecording
+              ? "Toca el microfono otra vez para enviar"
+              : "Toca el microfono para hablar"}
           </p>
         </aside>
       </main>

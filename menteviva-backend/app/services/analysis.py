@@ -444,6 +444,19 @@ estructurado que se le dara al candidato como espejo de lo observado.
 ## CONVERSACION COMPLETA
 {conversation}
 
+## EVALUACION DE LA CONVERSACION
+
+Antes de analizar, verifica si el candidato realmente entrego material evaluable:
+- ¿Dio al menos 2 historias concretas con contexto, accion y resultado?
+- ¿Respondio con ejemplos especificos o solo con teoria/generalidades?
+- ¿Respondio las repreguntas de profundizacion o evadio?
+
+Si la conversacion fue superficial (respuestas teoricas, sin ejemplos concretos,
+sin profundizacion exitosa), el blind_spot debe reflejar este patron ("el candidato
+se mantuvo en abstracto", "evito dar ejemplos personales", etc.) y los gaps deben
+incluir "claridad narrativa" o "autoconciencia" segun corresponda. No inventes
+fortalezas si no las hay — mejor menos strengths que strengths sin evidencia.
+
 ## REGLAS INVIOLABLES (seccion 11 del prompt maestro)
 
 1. EVIDENCIA TEXTUAL OBLIGATORIA. Cada strength y gap DEBE citar una frase real
@@ -619,7 +632,7 @@ async def generate_user_profile(
             model=settings.groq_model_analysis,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=2000,
+            max_tokens=3000,
             response_format={"type": "json_object"},
         )
         result_text = response.choices[0].message.content

@@ -8,7 +8,10 @@ class Settings(BaseSettings):
     groq_api_key_3: str = ""
     groq_api_key_4: str = ""
     groq_model_llm: str = "llama-3.1-8b-instant"
-    groq_model_analysis: str = "openai/gpt-oss-120b"  # Modelo de razonamiento para analisis
+    # Llama 3.3 70b: soporta JSON mode estrictamente sin tokens de razonamiento
+    # que rompan la validacion (gpt-oss-120b fallaba con json_object por razonar
+    # antes de emitir el JSON y agotar el budget de tokens).
+    groq_model_analysis: str = "llama-3.3-70b-versatile"
     groq_model_whisper: str = "whisper-large-v3-turbo"
 
     @property
