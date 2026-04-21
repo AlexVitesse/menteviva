@@ -1,281 +1,125 @@
-# CLAUDE.md - Contexto del Proyecto Mente Viva
-
-## Resumen Ejecutivo
-
-**Mente Viva** es una plataforma de entrenamiento de habilidades blandas (soft skills) que utiliza IA conversacional y avatares 2D para simular situaciones laborales reales. No es un LMS tradicional con videos - es práctica activa con presión real y feedback inmediato.
-
-**Desarrollador Principal:** Eric V.
-**Director de Producto:** Brandon H.
-
----
-
-## Propuesta de Valor
-
-### Para Profesionales (B2C)
-- Practica sin riesgo real
-- Feedback específico por sesión
-- Roadmap adaptativo personalizado
-- Certificación con evidencia
-
-### Para Empresas (B2B)
-- Capacita equipos escalablemente
-- Define metas - la IA construye el plan
-- KPIs conductuales medibles
-- Escenarios personalizados por industria
-
----
-
-## Catálogo de Escenarios
-
-### 8 Categorías de Soft Skills (40+ escenarios planificados)
-
-| ID | Categoría | Escenarios | Fase |
-|----|-----------|------------|------|
-| CAT-01 | Ventas y Cierre | 6 | Fase 1 |
-| CAT-02 | Negociación | 5 | Fase 1 |
-| CAT-03 | Entrevistas y Selección | 5 | Fase 1 |
-| CAT-04 | Liderazgo y Equipos | 6 | Fase 2 |
-| CAT-05 | Presentaciones Ejecutivas | 5 | Fase 2 |
-| CAT-06 | Manejo de Conflictos | 5 | Fase 2 |
-| CAT-07 | Comunicación Asertiva | 5 | Fase 2 |
-| CAT-08 | Gestión de Proyectos | 5 | Fase 3 |
-
-### Escenarios Fase 1 (Detalle)
-
-#### CAT-01: Ventas y Cierre
-- VEN-01: Venta consultiva B2B (SaaS)
-- VEN-02: Retail de alto valor
-- VEN-03: Venta farmacéutica
-- VEN-04: Upselling y cross-selling
-- VEN-05: Recuperación de cliente perdido
-- VEN-06: Demo de producto técnico
-
-#### CAT-02: Negociación
-- NEG-01: Negociación con proveedor
-- NEG-02: Renegociación de contrato
-- NEG-03: Negociación salarial
-- NEG-04: Resolución de disputa
-- NEG-05: Negociación multicultural
-
-#### CAT-03: Entrevistas y Selección
-- ENT-01: Entrevista de trabajo general
-- ENT-02: Entrevista técnica
-- ENT-03: Entrevista conductual (STAR)
-- ENT-04: Entrevista de ascenso
-- ENT-05: Entrevistador de RRHH
-
-### Niveles de Dificultad
-Cada escenario tiene 3 niveles:
-- **Principiante:** Avatar cooperativo, objeciones suaves
-- **Intermedio:** Avatar neutral, objeciones moderadas
-- **Avanzado:** Avatar desafiante, presión alta
-
----
-
-## Motor de IA - Roadmap Adaptativo
-
-### Fuentes de Datos (3 pilares)
-1. **Perfil del usuario:** rol, industria, metas personales
-2. **Resultados de sesiones:** scores, patrones, brechas detectadas
-3. **Metas de la empresa:** competencias prioritarias, plazos (solo B2B)
-
-### Lógica de Ajuste Automático
-- Score >75 en 2 sesiones consecutivas → Sube de nivel
-- Score <50 → Regresa al nivel anterior
-- Sin mejora en 3 sesiones → Inserta sesión de refuerzo
-- El plan se recalcula después de cada sesión
-
----
-
-## Estructura del Prototipo (14 Pantallas)
-
-### Flujo 1 - Onboarding
-| ID | Pantalla | Ruta |
-|----|----------|------|
-| P-01 | Landing / Bienvenida | / |
-| P-02 | Registro de cuenta | /registro |
-| P-03 | Entrevista de perfil con IA | /onboarding/entrevista |
-| P-04 | Perfil generado - Confirmación | /onboarding/perfil |
-
-### Flujo 2 - Dashboard
-| ID | Pantalla | Ruta |
-|----|----------|------|
-| P-05 | Dashboard del usuario | /dashboard |
-
-### Flujo 3 - Simulación
-| ID | Pantalla | Ruta |
-|----|----------|------|
-| P-06 | Catálogo de escenarios | /escenarios |
-| P-07 | Briefing del escenario | /escenario/[id]/briefing |
-| P-08 | Simulación en vivo | /escenario/[id]/simulacion |
-| P-09 | Sesión en pausa / cierre | /escenario/[id]/pausa |
-
-### Flujo 4 - Feedback
-| ID | Pantalla | Ruta |
-|----|----------|------|
-| P-10 | Reporte post-sesión - Resumen | /reporte/[id] |
-| P-11 | Reporte post-sesión - KPIs | /reporte/[id]/kpis |
-| P-12 | Plan de desarrollo | /mi-plan |
-
-### Flujo B2B - Vista Manager
-| ID | Pantalla | Ruta |
-|----|----------|------|
-| P-13 | Dashboard empresarial | /empresa/dashboard |
-| P-14 | Ficha de empleado | /empresa/empleado/[id] |
-
----
-
-## Guía de Estilos Visuales
-
-### Paleta de Colores
-| Rol | Color | Hex | Uso |
-|-----|-------|-----|-----|
-| Fondo principal | Negro profundo | #08071A | Fondo de todas las pantallas |
-| Fondo panel/sidebar | Azul muy oscuro | #110F2B | Sidebar, cards oscuras |
-| Acento primario | Violeta medio | #7C3AED | Botones CTA, ítems activos |
-| Acento secundario | Teal/Cian | #06B6D4 | Subtítulos, KPIs positivos |
-| Positivo/éxito | Verde | #16A34A | Scores altos, fortalezas |
-| Atención | Naranja | #F97316 | Áreas de mejora, alertas |
-| Negativo | Rojo discreto | #DC2626 | Scores bajos, alertas críticas |
-| Texto principal | Blanco hueso | #F5F3FF | Todo el texto principal |
-| Texto secundario | Gris medio | #9CA3AF | Subtítulos, metadatos |
-
-### Tipografía
-| Fuente | Uso | Tamaños |
-|--------|-----|---------|
-| Syne (Google Fonts) | Títulos, logos, CTAs | H1: 48px, H2: 32px, H3: 24px, CTA: 14px bold |
-| Instrument Sans (Google Fonts) | Cuerpo, párrafos, labels | Body: 14px, Small: 12px, Micro: 10px |
-
-### Componentes Reutilizables
-
-**Botón primario (CTA):**
-- Fondo violeta (#7C3AED), texto blanco
-- border-radius: 10px, padding: 10px 20px
-- Fuente Syne bold 13px
-- Hover con brillo sutil
-
-**Botón secundario:**
-- Borde 1px violeta, fondo transparente, texto violeta
-
-**Tarjeta (card):**
-- Fondo #201D3E
-- Borde 1px rgba(255,255,255,0.07)
-- border-radius: 16px, padding: 24px
-
-**Chip/Tag:**
-- Fondo rgba del color acento al 15%
-- Borde 1px del color acento
-- border-radius: 100px, padding: 4px 12px
-
-**Barra de progreso:**
-- Alto 6px, fondo #2D2B4E
-- Color de relleno según KPI
-- border-radius: 3px, transición 0.8s
-
-**Input de formulario:**
-- Fondo #201D3E
-- Borde 1px rgba(255,255,255,0.1)
-- border-radius: 8px, padding: 12px
-- Focus con borde violeta
-
-**Burbuja de chat (usuario):**
-- Fondo violeta oscuro, alineada derecha
-- border-radius: 16px 16px 4px 16px
-
-**Burbuja de chat (avatar):**
-- Fondo #201D3E, alineada izquierda
-- border-radius: 16px 16px 16px 4px
-
----
-
-## Stack Técnico
-
-### Prototipo (Actual)
-- HTML/CSS/JS puro o React
-- Sin backend real (datos hardcoded)
-- Archivos estáticos compartibles
-
-### Producto Final (Futuro)
-- **IA Conversacional:** Claude API
-- **Avatar con lip-sync:** HeyGen / D-ID
-- **Síntesis de voz:** ElevenLabs
-- **Speech-to-text:** Whisper
-- **Base de datos:** Por definir
-- **Autenticación:** Por definir
-
----
-
-## Modelo de Negocio
-
-| Plan | Precio | Target |
-|------|--------|--------|
-| B2C Individual | $299 MXN/mes | Profesionales independientes |
-| B2B Equipos | $150-250 MXN/usuario/mes | Empresas 10+ empleados |
-| Piloto Empresarial | Gratis 3 meses | Primeras 3 empresas |
-
----
-
-## Roadmap de Fases
-
-| Fase | Alcance | Timeline |
-|------|---------|----------|
-| Fase 1 - MVP | 3 categorías, avatar 2D, roadmap v1 | Semanas 1-11 |
-| Fase 2 - Expansión | 5 categorías más, análisis de voz | Semanas 12-20 |
-| Fase 3 - VR | 40+ escenarios, realidad virtual | Mes 6+ |
-
----
-
-## Equipo
-
-| Nombre | Rol |
-|--------|-----|
-| Brandon H. | Director de Producto |
-| Eric V. | Arquitecto Técnico & Dev Principal |
-| Sophia M. | Contenido Psicológico |
-| Cristina T. | Estrategia RRHH & B2B |
-| Areli M. | Comercial & Marketing |
-
----
-
-## Criterios de Aceptación del Prototipo
-
-### Críticos
-- [ ] Flujo completo navegable (P-01 a P-10)
-- [ ] Avatar visible en simulación (P-08)
-- [ ] Chat de simulación funciona (hardcoded)
-- [ ] Score y KPIs visibles (P-10)
-- [ ] Dashboard con datos (P-05)
-
-### Alta Prioridad
-- [ ] Vista B2B navegable (P-13, P-14)
-- [ ] Plan de desarrollo visible (P-12)
-- [ ] Diseño oscuro coherente
-- [ ] Sidebar funcional
-
-### Media Prioridad
-- [ ] Animaciones básicas (fadeUp, counter, typewriter)
-- [ ] Responsivo básico (1280px mínimo)
-- [ ] Transiciones entre pantallas
-
----
-
-## Notas Importantes para Desarrollo
-
-1. **Todos los datos son estáticos** - El objetivo es que SE VEA y SE SIENTA real, no que funcione con IA real.
-
-2. **Priorizar experiencia sobre lógica** - Animaciones y transiciones son más importantes que validaciones.
-
-3. **Sofia es la asesora IA** - Aparece en onboarding (P-03), dashboard (P-05) y plan (P-12).
-
-4. **Semáforo de scores:**
-   - Verde: >75
-   - Amarillo: 50-75
-   - Rojo: <50
-
-5. **Sidebar diferente para B2B** - El manager tiene opciones distintas al usuario individual.
-
-6. **Tiempo estimado:** 3-5 días de desarrollo con apoyo de IA.
-
----
-
-*"Haz que se vea real. El resto viene después."* — Brandon H.
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Repo layout — two apps, don't confuse them
+
+```
+Mente Viva/
+├── menteviva-backend/       # PRIMARY: FastAPI backend for soft-skills avatars (Roberto, Maria, Carlos)
+├── menteviva-frontend/      # PRIMARY: React+Vite frontend that pairs with menteviva-backend
+├── interview-simulator/     # SEPARATE project: job-interview variant (own backend + frontend)
+│   ├── backend/
+│   └── frontend/
+├── install.bat / start.bat / stop.bat   # Windows launchers for the PRIMARY app
+└── logs/, .docx specs, *.txt plans      # Design docs (Spanish)
+```
+
+`interview-simulator/` is a parallel, self-contained subproject with its own README. Changes in `menteviva-*` do not propagate there and vice versa.
+
+## Common commands
+
+All commands below assume the **primary** app (`menteviva-backend` + `menteviva-frontend`). Shell is bash-on-Windows; use forward slashes.
+
+### First-time setup
+```bash
+./install.bat          # checks Python/Node/Poetry, installs both apps, creates .env from .env.example
+```
+
+### Run dev (both servers)
+```bash
+./start.bat            # launches backend on :8000 and frontend on :5173 in separate terminals
+./stop.bat             # kills uvicorn + the frontend node process
+```
+
+### Backend only
+```bash
+cd menteviva-backend
+poetry install
+poetry run uvicorn app.main:app --reload --port 8000
+# Health:   http://localhost:8000/health
+# OpenAPI:  http://localhost:8000/docs
+```
+
+### Frontend only
+```bash
+cd menteviva-frontend
+npm install
+npm run dev            # vite dev server on :5173 (host:true, reachable on LAN)
+npm run build          # tsc + vite build — use this to type-check, there is no separate lint step
+npm run preview        # serve the production build
+```
+
+### Tests
+Backend has `pytest` + `pytest-asyncio` + `httpx` declared as dev deps, **but no test suite exists yet** (no `tests/` directory). If you add tests, put them under `menteviva-backend/tests/` and run with `poetry run pytest`. Frontend has no test runner configured.
+
+### Required env vars (`menteviva-backend/.env`)
+| Var | Notes |
+|---|---|
+| `GROQ_API_KEY` | Required. Free key from https://console.groq.com |
+| `GROQ_API_KEY_2` .. `GROQ_API_KEY_4` | Optional; enable round-robin rotation for concurrent users |
+| `ELEVENLABS_API_KEY` | Required for TTS |
+| `DEBUG` | `true`/`false`; toggles debug logging |
+
+Frontend reads `VITE_API_URL` (default `http://localhost:8000`) and `VITE_WS_URL` (default `ws://localhost:8000`).
+
+## Architecture
+
+### Realtime voice-chat pipeline
+A single WebSocket at **`/api/conversation/{avatar_id}`** (`app/routers/conversation.py`) orchestrates the whole turn. Per user turn:
+
+1. Client sends `{type: "audio", audio: <base64>}` (webm from MediaRecorder) or `{type: "text", text: ...}`.
+2. **STT** — `services/groq_whisper.py` → Groq `whisper-large-v3-turbo`, Spanish.
+3. **LLM (streaming)** — `services/groq_llm.py` → Groq `llama-3.1-8b-instant`. Tokens stream back as `assistant_token` events.
+4. **TTS** — `services/edge_tts.py` → **ElevenLabs** (see gotcha below). Full audio arrives in one `assistant_audio` event.
+5. When the client sends `{type: "end_session"}`, the server runs **analysis** (`services/analysis.py` → Groq `openai/gpt-oss-120b`) and returns `session_end` with a scored skills report.
+
+Status events (`transcribing | thinking | generating_audio | analyzing | ready`) are sent before each phase so the UI can show the right indicator.
+
+### Key gotcha: `edge_tts.py` uses ElevenLabs
+The file `app/services/edge_tts.py` is named after an earlier Microsoft Edge TTS implementation but now calls the **ElevenLabs** SDK (see `pyproject.toml`: `elevenlabs = "^1.0"`). Voice IDs are hardcoded in `AVATAR_VOICES` inside that file. Branch `feature/elevenlabs-tts` reflects the migration. Do not rename the module casually — routers import `from app.services.edge_tts import text_to_speech`.
+
+### Groq key rotation (`services/groq_pool.py`)
+A module-level `GroqPool` round-robins across all non-empty keys in `settings.groq_api_keys`. Every call to `get_groq_client()` returns the next client — thread-safe via a `Lock`. All Groq services (LLM, Whisper, analysis) go through this pool. Never instantiate `Groq(...)` directly in new code; use `get_groq_client()` so rotation keeps working.
+
+### Avatars & scenarios are config, not classes
+`app/prompts/scenarios.py::AVATARS` is the single source of truth for each persona:
+- Basic info (name, role, company, personality)
+- `voice` (ElevenLabs voice key — but note the actual voice IDs live in `edge_tts.py::AVATAR_VOICES`, keyed by avatar id)
+- `avatar_type` (e.g. `"animated"` — the frontend renders a 2D SVG Lottie character)
+- `system_prompt` (full roleplay instructions; the LLM is told never to break character, one question per reply)
+
+`services/analysis.py::SKILLS_BY_SCENARIO` defines the evaluation rubric per avatar (skill id → description). To add a new avatar:
+1. Add entry to `AVATARS` in `scenarios.py`.
+2. Add matching voice id to `edge_tts.py::AVATAR_VOICES`.
+3. Add skill rubric to `SKILLS_BY_SCENARIO` in `analysis.py` or the post-session analysis will error out.
+
+### Frontend state & WS protocol
+- **Zustand store** — `src/stores/sessionStore.ts` holds `selectedAvatar`, `messages`, `status`, `serverError`, `metrics`.
+- **WebSocket hook** — `src/hooks/useWebSocket.ts`. Intentional behavior: `assistant_token` events accumulate text into a `pendingTextRef` and are **not** rendered until the matching `assistant_audio` arrives, so the assistant message and voice appear together. Don't "fix" this to stream the text live — it will desync the audio/caption.
+- **Routing** — `App.tsx` uses a flat route set: `/` (Dashboard / avatar picker) → `/briefing` → `/simulation` → `/report`. The 14-screen product spec below is aspirational, not implemented.
+- **Audio** — `useAudioRecorder` (MediaRecorder → base64) and `useAudioPlayer` (plays the `assistant_audio` blob); `useSoundEffects` for UI sfx.
+
+### Styling
+Tailwind is the styling system. The design-token palette (ink/deep/card, violet/teal, success/warning/danger, cream/muted/subtle) is encoded in `menteviva-frontend/tailwind.config.js` — prefer those tokens over raw hex. Fonts are Syne (headings/CTAs) and Instrument Sans (body), loaded via Google Fonts.
+
+## Product context (keep for design decisions)
+
+**Mente Viva** is a soft-skills training platform that uses conversational AI + 2D avatars to simulate workplace scenarios (sales, negotiation, interviews). Users speak with an avatar for a few minutes, then receive a scored report.
+
+- **Score semaphore**: green > 75, yellow 50–75, red < 50 (see `Report.tsx`).
+- **Adaptive roadmap logic** (product spec, partially implemented): score > 75 on 2 consecutive sessions → level up; score < 50 → level down; no improvement in 3 → insert remedial session.
+- **Scenario catalog** (planned, 40+ across 8 categories). Phase 1 implemented as 3 avatars:
+  - **Roberto** — CAT-01 Ventas / Consultive B2B SaaS sell
+  - **Maria** — CAT-02 Negociación / Contract renegotiation
+  - **Carlos** — CAT-03 Entrevistas (partial; shares Roberto's voice for now)
+- **Flujos (aspirational)**: Onboarding (P-01..P-04), Dashboard (P-05), Simulation (P-06..P-09), Feedback (P-10..P-12), B2B Manager (P-13, P-14). Only Dashboard / Briefing / Simulation / Report are built.
+- **Team**: Brandon H. (product), Eric V. (tech lead), Sophia M. (psych content), Cristina T. (B2B strategy), Areli M. (marketing).
+
+## Conventions worth following
+
+- Backend code and comments are in Spanish (variable names, log messages, docstrings). Match the surrounding style — don't translate.
+- All routes live under `/api` except `/health` (see `main.py`). Add new routers with `app.include_router(..., prefix="/api", tags=[...])`.
+- Logging uses a single named logger `menteviva` with a rotating file handler (5 MB × 5) at `menteviva-backend/logs/menteviva.log`. Use `logging.getLogger("menteviva")` so output is captured consistently.
+- CORS origins are hardcoded in `config.py::cors_origins`. Add new dev tunnel / frontend hosts there.
+- System prompts enforce **one question per avatar reply** — keep that constraint when tweaking prompts (the UX assumes it, and commit `caf9fbd` reinforces it).

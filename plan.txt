@@ -1,0 +1,503 @@
+# Plan: Personalizacion, Nivel Estricto y Mejora de Avatares
+
+## Contexto
+El sistema actual tiene prompts estaticos por avatar, sin niveles de dificultad ni personalizacion. Los avatares SVG son funcionales pero basicos (2 personajes). Se necesita:
+1. Que el usuario pueda describir su situacion/producto para personalizar el escenario
+2. Un nivel "cliente cerrado" que simule clientes dificiles y resistentes
+3. Mejorar la calidad visual de los avatares
+
+Con la incorporacion del prompt maestro de "Avatar Entrevistador por Competencias"
+(BEI + STAR + Creswell) se agrega un paso 0 previo a las pruebas. Ese paso no solo
+le da al usuario su mapa de brechas; tambien produce el CONTEXTO que hace que los
+pasos 1, 2 y 3 sean realmente personalizados. Por eso el paso 0 va primero.
+
+---
+
+## 0. Fase Diagnostica Previa (PRIORIDAD 1)
+
+### Por que va primero
+Sin diagnostico, los tres puntos de abajo funcionan pero a medias:
+- El "user_context" del paso 1 hoy es un textarea libre. El diagnostico produce un
+  JSON estructurado que describe a la persona (no solo lo que vende).
+- El nivel de dificultad del paso 2 se elige a ciegas. El diagnostico sugiere el
+  nivel de arranque apropiado segun lo observado.
+- Los avatares del paso 3 siguen siendo genericos. Con perfil inyectado, Roberto
+  estresa las brechas especificas de este usuario (ej. "tiende a ceder rapido ante
+  presion" -> Roberto presiona justo ahi).
+
+Dicho de otra forma: paso 0 es el cableado que hace a 1-3 accionables.
+
+### Flujo de producto
+1. Usuario entra a la app sin nada guardado -> /registro (pantalla nueva,
+   corta, ~5 campos de identidad, una sola vez)
+2. Al terminar registro -> /diagnostico/setup (configuracion de esta sesion
+   de diagnostico: idioma, tono, duracion, competencias foco opcionales)
+3. /diagnostico: avatar entrevistador conduce 15-25 min de entrevista por
+   competencias (5 fases: rapport, encuadre, desarrollo, profundizacion, cierre)
+4. Al cerrar, se genera la parte "diagnostico" del user_profile (ver 0.3)
+5. /diagnostico/perfil confirma al usuario lo encontrado -> dashboard
+6. En cualquier Briefing posterior, el user_profile completo (registro +
+   diagnostico) se inyecta en el system_prompt del avatar de prueba
+7. El reporte post-prueba actualiza la parte "diagnostico" (merge, evolucion)
+
+Separacion explicita:
+- /registro = identidad permanente (una vez, re-editable desde /mi-plan)
+- /diagnostico/setup = parametros de esta sesion (cada re-diagnostico)
+- Esto se alinea con P-02 Registro de cuenta del spec original (CLAUDE.md)
+
+### 0.1 Donde vive el prompt maestro
+
+Opcion A (recomendada): nuevo avatar "entrevistador" en scenarios.py con el prompt
+completo como system_prompt. Reutiliza la infra existente (WebSocket, STT, TTS,
+streaming). Un solo lugar que mantener.
+
+Opcion B: modulo aparte (app/diagnostic/) con router y analisis propios. Mas limpio
+a largo plazo pero duplica plumbing (WS, auth, logging).
+
+Decision: arrancar con A. Refactorizar a B solo si crece (ej. analisis de voz,
+metricas de prosodia, estado de fases explicito).
+
+### 0.2 Como entra el perfil en las pruebas (wiring clave)
+
+Extender get_system_prompt() para aceptar user_profile opcional:
+
+  def get_system_prompt(avatar_id, user_context="", difficulty="intermedio", user_profile=None):
+      base = AVATARS[avatar_id]["system_prompt"]
+      if user_profile:
+          base += f"""
+
+  CONTEXTO DEL USUARIO (de diagnostico previo):
+  - Brechas a estresar: {user_profile['competencies_foco']}
+  - Punto ciego: {user_profile['blind_spot']}
+  - Tics verbales a cazar: {user_profile['verbal_patterns']['vague_verbs_detected']}
+  Presiona especialmente esas dimensiones durante esta prueba.
+  """
+      if user_context:
+          base += f"\n\nCONTEXTO DEL ESCENARIO:\n{user_context}"
+      # ... luego aplicar DIFFICULTY_MODIFIERS del paso 2
+      return base
+
+Asi los pasos 1, 2 y 3 se apilan sin pelearse.
+
+### 0.3 Contrato del user_profile (JSON)
+
+El JSON se divide en dos bloques por origen: "registro" (lo teclea el usuario una
+vez) y "diagnostico" (lo genera el LLM a partir de la conversacion). Asi queda claro
+que edita el usuario directamente y que es derivado.
+
+  {
+    "user_id": "uuid-generado-client-side",
+    "created_at": "ISO8601",
+    "updated_at": "ISO8601",
+
+    "registro": {
+      "nombre": "Maria Lopez",
+      "email": "maria@ejemplo.com",     // opcional, para migracion futura a DB
+      "rol_objetivo": "Gerente de Ventas",
+      "industria": "SaaS B2B",
+      "experience_level": "entry|junior|mid|senior|lead|executive"
+    },
+
+    "diagnostico": {
+      "completed_at": "ISO8601",
+      "competencias_foco": ["manejo_objeciones", "defensa_valor"],
+      "strengths": [
+        { "skill": "comunicacion", "evidence": "cita textual",
+          "why_matters": "..." }
+      ],
+      "gaps": [
+        { "skill": "autoconciencia", "evidence": "...", "impact": "...",
+          "micro_practice": "ejercicio accionable para esta semana" }
+      ],
+      "blind_spot": "usa 'nosotros' evasivo cuando se pide responsabilidad individual",
+      "reflection_question": "...",
+      "verbal_patterns": {
+        "vague_verbs_detected": ["gestione", "manejo"],
+        "we_vs_i_tendency": "alta|media|baja",
+        "filler_frequency": "alta|media|baja"
+      },
+      "recommended_next_scenario": "roberto|maria|carlos",
+      "recommended_next_level": "facil|intermedio|dificil"
+    }
+  }
+
+Notas del contrato:
+- "registro" se llena tras /registro y NO se toca despues salvo edicion manual.
+- "diagnostico" se sobrescribe tras cada re-diagnostico. Reportes de pruebas hacen
+  merge solo sobre strengths/gaps/blind_spot, no sobre recommended_next_*.
+- Si "diagnostico" es null en el JSON, el guard de ruta manda a /diagnostico/setup.
+- Variables del prompt maestro ({{nombre}}, {{rol}}, {{industria}}, {{nivel}}) se
+  llenan directamente desde el bloque "registro". {{idioma}}, {{tono}}, {{minutos}},
+  {{competencias}} se llenan desde /diagnostico/setup.
+
+Este JSON es el contrato. Si se mantiene estable, el resto de la app puede evolucionar
+independientemente (frontend puede sumar visualizaciones, backend puede cambiar
+de modelo, analisis puede refinar heuristicas).
+
+### 0.4 Persistencia (sin DB hoy)
+
+Hasta que haya backend de usuarios:
+- Frontend: localStorage key "menteviva:user_profile" con el JSON stringificado
+  (un solo blob con registro + diagnostico, facil de migrar a una tabla)
+- Al guardar /registro: se crea el JSON con "registro" lleno y "diagnostico": null.
+- Al terminar /diagnostico: se rellena el bloque "diagnostico" (ver 0.3) y se
+  actualiza "updated_at".
+- Al conectar al WebSocket de una prueba, el frontend lee localStorage y manda el
+  perfil en el primer mensaje (junto con user_context y difficulty del plan actual).
+- Al terminar una prueba (avatar != entrevistador): merge parcial en "diagnostico"
+  sobre strengths/gaps (acumulan con topN) y blind_spot (se reemplaza si hay evidencia
+  nueva fuerte). recommended_next_* NO se toca en pruebas.
+- Permitir "re-diagnostico" manual desde un boton en /mi-plan. Edicion manual del
+  bloque "registro" tambien desde /mi-plan.
+
+El contrato del 0.3 es identico a lo que ira en DB cuando exista, asi que la
+migracion futura es trivial (1 tabla users con el blob JSON, o normalizado si
+hace falta).
+
+### 0.5 Archivos a crear/modificar
+
+Backend:
+- menteviva-backend/app/prompts/scenarios.py
+  - Nuevo entry "entrevistador" en AVATARS con el prompt maestro como system_prompt
+    (nota: pesa ~14 KB, 230 parrafos, 5 fases)
+  - Nueva helper: render_prompt_variables(template, variables) para sustituir
+    {{nombre}}, {{rol}}, {{industria}}, {{nivel}}, {{idioma}}, {{minutos}},
+    {{competencias}}, {{tono}} antes de mandar al LLM
+  - Modificar get_system_prompt() firma: agregar user_profile=None (ver 0.2)
+- menteviva-backend/app/services/analysis.py
+  - Nueva funcion generate_user_profile(conversation, variables) que corre al final
+    del diagnostico y produce el JSON del 0.3
+  - El prompt de esa funcion refleja las reglas del seccion 11 del documento maestro
+    (evidencia textual obligatoria, conducta no etiqueta, micro-practica semanal,
+    blind spot con cuidado, pregunta para llevarse)
+  - Reutilizar el modelo de razonamiento ya configurado (openai/gpt-oss-120b via Groq)
+- menteviva-backend/app/services/groq_llm.py
+  - El max_tokens=500 de chat_stream() esta ajustado para turnos cortos. El feedback
+    del diagnostico no se streamea (es un JSON final), pero conviene que chat_complete
+    acepte max_tokens param o suba a 2000 cuando se use para analisis largo
+- menteviva-backend/app/routers/conversation.py
+  - Extraer user_profile del primer mensaje WS (ya extraemos user_context y difficulty
+    segun paso 1 y 2; sumar este campo)
+  - Pasarlo a get_system_prompt()
+  - Cuando avatar_id == "entrevistador", al recibir end_session llamar
+    generate_user_profile() en vez de analyze_conversation()
+  - El session_end devuelve user_profile en metrics, no el analysis de prueba
+- menteviva-backend/app/config.py
+  - Agregar variables de diagnostico (duracion_default_min, tono_default) si se
+    quieren configurar sin tocar codigo
+
+Frontend:
+- menteviva-frontend/src/pages/Registro.tsx (nueva)
+  - 5 campos: nombre*, email (opcional), rol_objetivo*, industria*,
+    experience_level* (dropdown con los 6 valores del prompt maestro)
+  - Al submit: crear user_profile con bloque "registro" lleno y "diagnostico": null,
+    persistir en localStorage, navegar a /diagnostico/setup
+  - Se reutiliza desde /mi-plan para editar registro (modo "editar")
+- menteviva-frontend/src/pages/DiagnosticoSetup.tsx (nueva)
+  - Config de sesion: idioma (es-MX default), tono_avatar (dropdown 3 opciones),
+    duracion_objetivo_min (25/40/60), competencias_foco (multi-select opcional de
+    3-6 del catalogo; si vacio, el avatar infiere en rapport)
+  - Boton "Comenzar" -> /diagnostico
+  - NO pide rol/industria/nivel (ya estan en localStorage desde /registro)
+- menteviva-frontend/src/pages/Diagnostico.tsx (nueva)
+  - UI similar a Simulation.tsx pero adaptada: tono entrevista (no simulacion),
+    timer visible con % de fase estimada, sin boton "pausar" agresivo
+  - Al recibir session_end con user_profile, actualizar localStorage (merge del
+    bloque "diagnostico") y navegar a /diagnostico/perfil
+- menteviva-frontend/src/pages/DiagnosticoPerfil.tsx (nueva)
+  - Muestra bloque "diagnostico": fortalezas (max 3), areas de oportunidad (max 3),
+    blind spot, pregunta para llevarse, escenario recomendado
+  - Boton "Continuar al dashboard" -> /dashboard
+- menteviva-frontend/src/App.tsx
+  - Rutas nuevas: /registro, /diagnostico/setup, /diagnostico, /diagnostico/perfil
+  - Guard logic (en un wrapper o en el Dashboard):
+    - sin "registro" en localStorage -> /registro
+    - con "registro" pero sin "diagnostico" -> /diagnostico/setup
+    - con ambos -> entra al Dashboard
+- menteviva-frontend/src/stores/sessionStore.ts
+  - userProfile: UserProfile | null
+  - setUserProfile, loadUserProfileFromStorage, updateRegistro, updateDiagnostico,
+    mergeAnalysisIntoProfile (para pruebas, no diagnostico)
+- menteviva-frontend/src/types/index.ts
+  - Interface UserProfile con sub-interfaces Registro y Diagnostico matching 0.3
+- menteviva-frontend/src/hooks/useWebSocket.ts
+  - Enviar user_profile completo en el mensaje inicial (junto con user_context y
+    difficulty cuando aplique)
+- menteviva-frontend/src/pages/Briefing.tsx
+  - Si hay diagnostico, mostrar banner "En esta prueba vamos a trabajar X, Y"
+    (tomado de competencias_foco) para que el usuario sepa que esta medido
+- menteviva-frontend/src/pages/Dashboard.tsx
+  - Widget pequeno con resumen: fortalezas top 2 + brecha principal + link a
+    /mi-plan (vista completa)
+
+### 0.6 Consideraciones tecnicas
+
+1. El prompt maestro pesa ~14 KB. llama-3.1-8b-instant tiene ~128k context, no satura,
+   pero cada turno suma. Monitorear token count en logs.
+2. Las 5 fases del prompt asumen que el LLM "sabe" en que fase esta. Sin estado
+   explicito lo puede perder. Opciones en orden de complejidad:
+   a) Dejar al LLM manejarlo (el prompt esta bien estructurado, puede funcionar)
+   b) Inyectar "FASE_ACTUAL: N" en cada turno desde el backend
+   c) State machine ligero en conversation.py que detecte transiciones
+   Decision: arrancar con (a), caer a (b) si el LLM pierde el hilo en testing.
+3. La salida del diagnostico es JSON estructurado, no texto libre. Reutilizar la
+   estrategia ya probada en analyze_conversation(): modelo de razonamiento +
+   "Responde UNICAMENTE con JSON valido".
+4. Variables del prompt maestro ({{nombre}}, etc.) se llenan desde DiagnosticoSetup.
+   Si el usuario deja algun campo vacio, el prompt lo infiere durante rapport (lo
+   dice la seccion 1 del documento).
+5. Detalle de idioma: el prompt maestro soporta es-MX / es-ES / en. Hoy groq_whisper
+   fuerza language="es" en transcribe_audio. Habra que parametrizar si queremos
+   soportar en.
+
+### 0.7 Decisiones tomadas
+
+- Registro: obligatorio una sola vez (sin password/auth en v1, solo datos
+  basicos en localStorage). Re-editable desde /mi-plan.
+- Diagnostico: obligatorio la primera vez (bloquea dashboard hasta completarlo).
+  Re-diagnostico opcional desde /mi-plan cuando el usuario quiera.
+- Persistencia: client-only via localStorage. Contrato listo para migrar a DB.
+- Dashboard: muestra resumen del perfil (fortalezas top 2 + brecha principal).
+  Vista completa en /mi-plan.
+- Idioma: fijo es-MX para v1. groq_whisper ya fuerza language="es".
+- Conversacion muy corta (<4 intercambios): reutilizar fallback existente de
+  analyze_conversation ("necesitamos mas interacciones").
+- UI de /registro: 5 campos, sin email obligatorio, sin password (no hay auth).
+
+---
+
+## 1. Personalizacion del Escenario
+
+### Problema
+El prompt del avatar es 100% estatico. Si el usuario vende software de RRHH o vende muebles, Roberto responde igual.
+
+### Solucion
+Agregar un campo de texto en el Briefing donde el usuario describe su situacion (que vende, a quien, contexto). Este texto se inyecta en el system prompt del avatar.
+
+### Archivos a modificar
+
+**Frontend:**
+- menteviva-frontend/src/types/index.ts — Agregar campo userContext: string al store
+- menteviva-frontend/src/stores/sessionStore.ts — Agregar userContext y setUserContext
+- menteviva-frontend/src/pages/Briefing.tsx — Agregar textarea "Describe tu situacion" antes del boton Iniciar
+- menteviva-frontend/src/hooks/useWebSocket.ts — Enviar user_context en el mensaje de conexion inicial
+- menteviva-frontend/src/pages/Simulation.tsx — Pasar userContext al hook de WebSocket
+
+**Backend:**
+- menteviva-backend/app/prompts/scenarios.py — Modificar get_system_prompt(avatar_id, user_context="", difficulty="intermedio") para inyectar el contexto del usuario en el prompt
+- menteviva-backend/app/routers/conversation.py — Extraer user_context del primer mensaje WebSocket y pasarlo a get_system_prompt()
+
+### Ejemplo de inyeccion en prompt
+
+  CONTEXTO DEL USUARIO:
+  El usuario vende: {user_context}
+  Adapta tus preguntas y objeciones a su producto/servicio especifico.
+
+---
+
+## 2. Nivel de Dificultad — Cliente Cerrado
+
+### Problema
+No hay variacion de dificultad. Roberto y Maria siempre se comportan igual.
+
+### Solucion
+Agregar selector de 3 niveles en Briefing que modifica el comportamiento del avatar via prompt.
+
+### Niveles
+| Nivel       | Nombre          | Comportamiento                                                              |
+|-------------|-----------------|-----------------------------------------------------------------------------|
+| facil       | Cooperativo     | Avatar abierto, objeciones suaves, da pistas                               |
+| intermedio  | Neutral         | Comportamiento actual (default)                                             |
+| dificil     | Cliente Cerrado | Resistente, impaciente, objeciones duras, interrumpe, amenaza con irse     |
+
+### Archivos a modificar
+
+**Frontend:**
+- menteviva-frontend/src/types/index.ts — Agregar type DifficultyLevel = "facil" | "intermedio" | "dificil"
+- menteviva-frontend/src/stores/sessionStore.ts — Agregar difficulty y setDifficulty (default: "intermedio")
+- menteviva-frontend/src/pages/Briefing.tsx — Agregar selector de 3 botones de dificultad con iconos y descripcion
+- menteviva-frontend/src/hooks/useWebSocket.ts — Enviar difficulty en mensaje de conexion
+- menteviva-frontend/src/pages/Simulation.tsx — Pasar difficulty al hook
+
+**Backend:**
+- menteviva-backend/app/prompts/scenarios.py — Agregar DIFFICULTY_MODIFIERS dict con instrucciones por nivel:
+
+  DIFFICULTY_MODIFIERS = {
+      "facil": """
+      NIVEL DE DIFICULTAD: COOPERATIVO
+      - Se abierto y receptivo a la propuesta
+      - Haz objeciones suaves que el vendedor pueda resolver facilmente
+      - Da pistas sobre lo que necesitas
+      - Muestra interes genuino
+      """,
+      "intermedio": "",  # Prompt base sin modificacion
+      "dificil": """
+      NIVEL DE DIFICULTAD: CLIENTE CERRADO
+      - Eres muy dificil de convencer, casi imposible
+      - Muestra desinteres activo: "No tengo tiempo", "No me interesa"
+      - Interrumpe con objeciones duras antes de que termine de hablar
+      - Amenaza con terminar la reunion: "Creo que no vamos a llegar a nada"
+      - Solo se abre si el vendedor demuestra valor excepcional
+      - Compara agresivamente con competencia: "Tu competidor me ofrece lo mismo mas barato"
+      - Cuestiona todo: credibilidad, experiencia, resultados
+      - Si el vendedor se pone nervioso o cede, presiona mas
+      """
+  }
+
+- menteviva-backend/app/routers/conversation.py — Extraer difficulty del WebSocket y pasarlo a get_system_prompt()
+
+---
+
+## 3. Mejora de Avatares
+
+### Problema actual
+Los SVGs son funcionales pero basicos: formas simples, pocos detalles, expresiones limitadas.
+
+### Mejoras propuestas
+
+**A. Mas expresividad emocional** (en AnimatedAvatar.tsx)
+- Agregar estado de "ceno fruncido" para nivel dificil (cejas inclinadas hacia abajo)
+- Agregar expresion "sonrisa" para nivel facil (boca curvada hacia arriba)
+- Agregar gesto de "mirar el reloj" cuando el avatar esta impaciente (nivel dificil)
+- Variar la velocidad del parpadeo segun emocion (mas rapido = impaciente)
+
+**B. Mejoras visuales del SVG**
+- Agregar sombras mas suaves (drop-shadow filter en SVG)
+- Mejorar degradados de piel con mas paradas de color
+- Agregar fondos contextuales detras del avatar (oficina para Roberto, sala de juntas para Maria)
+- Mejorar el cuello/hombros para que se vea mas profesional
+
+**C. Tercer avatar: Carlos** (ya definido en backend como "carlos")
+- Agregar configuracion de personaje en CHARACTERS de AnimatedAvatar.tsx
+- Diseno: joven, casual, emprendedor tech
+- Agregar su entry en scenarios.py con system prompt propio
+- Escenario: Demo de producto tecnico (venta SaaS a startup)
+
+### Archivos a modificar
+- menteviva-frontend/src/components/avatar/AnimatedAvatar.tsx — Agregar expresiones emocionales, prop mood: "neutral" | "friendly" | "hostile", mejorar SVG, agregar Carlos
+- menteviva-frontend/src/pages/Simulation.tsx — Pasar mood basado en difficulty level
+- menteviva-backend/app/prompts/scenarios.py — Agregar avatar Carlos con su system prompt
+
+---
+
+## Resumen de cambios por archivo
+
+| Archivo                                         | Cambios                                                                      |
+|-------------------------------------------------|------------------------------------------------------------------------------|
+| backend/prompts/scenarios.py                    | +DIFFICULTY_MODIFIERS, modificar get_system_prompt(), +avatar Carlos         |
+| backend/routers/conversation.py                 | Extraer user_context y difficulty del WebSocket                              |
+| frontend/types/index.ts                         | +DifficultyLevel type                                                        |
+| frontend/stores/sessionStore.ts                 | +userContext, +difficulty con setters                                         |
+| frontend/pages/Briefing.tsx                     | +textarea contexto, +selector dificultad                                     |
+| frontend/hooks/useWebSocket.ts                  | Enviar user_context y difficulty                                             |
+| frontend/pages/Simulation.tsx                   | Pasar nuevos params, pasar mood al avatar                                    |
+| frontend/components/avatar/AnimatedAvatar.tsx   | +mood prop, +expresiones, +Carlos, mejoras SVG                               |
+
+## Orden de implementacion (revisado con paso 0)
+
+PRIORIDAD 1 - Paso 0 (desbloquea el resto). 7 milestones en orden estricto:
+
+  M0. Contrato y tipos (sin codigo ejecutable todavia)
+      - Congelar el schema JSON del 0.3 (registro + diagnostico)
+      - Escribir la interface TypeScript UserProfile en types/index.ts
+      - Escribir el dataclass/dict equivalente en Python (pydantic opcional)
+      - Checklist de salida: los dos lados acuerdan la misma forma
+
+  M1. Backend - avatar entrevistador
+      - scenarios.py: entry "entrevistador" con el prompt maestro (14 KB)
+      - render_prompt_variables(template, vars) para sustituir {{nombre}}, etc.
+      - get_system_prompt() acepta user_profile=None y lo inyecta
+      - Checklist: en logs se ve el prompt final con variables sustituidas y,
+        si hay user_profile, el bloque "CONTEXTO DEL USUARIO" al final
+
+  M2. Backend - generate_user_profile()
+      - analysis.py: nueva funcion que toma conversation + registro + vars y
+        devuelve el bloque "diagnostico" como JSON
+      - Prompt implementa reglas seccion 11 del documento maestro (evidencia
+        textual, conducta no etiqueta, micro-practica, blind spot, pregunta)
+      - Usa el modelo de razonamiento (groq_model_analysis)
+      - chat_complete() admite max_tokens custom (subir a 2000 para esta llamada)
+      - Checklist: corre contra una conversacion mock, valida JSON schema, las
+        citas textuales corresponden a turnos reales
+
+  M3. Backend - routing en conversation.py
+      - Extraer user_profile del primer mensaje WS
+      - Pasarlo a get_system_prompt()
+      - Si avatar_id == "entrevistador", al end_session llamar
+        generate_user_profile() en vez de analyze_conversation()
+      - session_end devuelve { "metrics": {..., "user_profile_update": {...}} }
+      - Checklist: probar ambos paths (entrevistador y roberto) desde un cliente
+        de WS (ej. wscat) y verificar el JSON devuelto
+
+  M4. Frontend - store + persistencia
+      - types/index.ts: interface UserProfile, Registro, Diagnostico
+      - stores/sessionStore.ts: userProfile state, setters, merge helpers,
+        loadFromStorage en init
+      - Utilidad storage.ts: read/write/clear con key "menteviva:user_profile"
+      - Checklist: abrir app, no crash si localStorage vacio; inyectar un
+        profile manualmente en DevTools y verificar que el store lo carga
+
+  M5. Frontend - pantallas nuevas
+      - Registro.tsx (5 campos, submit crea el perfil con diagnostico:null)
+      - DiagnosticoSetup.tsx (config de sesion)
+      - Diagnostico.tsx (copia adaptada de Simulation.tsx)
+      - DiagnosticoPerfil.tsx (muestra el bloque diagnostico)
+      - App.tsx: rutas + guard logic (sin registro -> /registro;
+        sin diagnostico -> /diagnostico/setup; con ambos -> /dashboard)
+      - Checklist: flujo completo end-to-end (limpiar localStorage, navegar
+        desde cero hasta /dashboard, reabrir app y ver que entra directo)
+
+  M6. Wiring: perfil entra en las pruebas
+      - hooks/useWebSocket.ts: enviar user_profile en mensaje inicial
+      - pages/Briefing.tsx: banner "En esta prueba vamos a trabajar X, Y"
+        cuando hay diagnostico
+      - pages/Dashboard.tsx: widget resumen con fortalezas top 2 + brecha
+      - Checklist: iniciar prueba con Roberto, abrir logs backend, confirmar
+        que el system_prompt enviado al LLM incluye "CONTEXTO DEL USUARIO"
+
+PRIORIDAD 2 - Paso 1 (personalizacion manual, complementa paso 0):
+  1. Backend: difficulty + user_context en prompts (scenarios.py, conversation.py)
+     (hoy get_system_prompt ya acepta user_profile; solo sumar los otros dos
+     parametros sin romper la firma)
+
+PRIORIDAD 3 - Pasos 2 y 3 (mejoras de UX y visuales):
+  2. Frontend: store + types (sessionStore, types) para difficulty y user_context
+  3. Frontend: Briefing con selector de dificultad + textarea contexto
+  4. Frontend: WebSocket + Simulation (enviar params)
+  5. Frontend: Mejoras de avatar (expresiones, mood, Carlos)
+
+## Verificacion (revisada)
+
+Paso 0 - Registro + Diagnostico:
+1. Abrir app con localStorage vacio -> debe redirigir a /registro
+2. Llenar los 5 campos (nombre, email opcional, rol, industria, nivel) -> submit
+3. Debe redirigir a /diagnostico/setup (no al dashboard todavia)
+4. Llenar idioma, tono, duracion -> "Comenzar" -> /diagnostico
+5. Completar una entrevista corta de prueba (5-8 intercambios)
+6. Al finalizar, verificar que el JSON bloque "diagnostico" tiene:
+   - Al menos 1 strength con evidence textual (cita real de la conversacion)
+   - Al menos 1 gap con micro_practice accionable
+   - blind_spot poblado con descripcion conductual (no etiqueta de personalidad)
+   - recommended_next_scenario y recommended_next_level coherentes con lo dicho
+7. Verificar que el JSON completo (registro + diagnostico) se guarda en
+   localStorage "menteviva:user_profile"
+8. Volver a cerrar/abrir la app -> debe entrar directo a /dashboard (no pide
+   registro ni diagnostico de nuevo)
+9. En /mi-plan debe existir boton para editar registro y para re-diagnosticar
+10. Iniciar una prueba con Roberto -> abrir logs backend -> confirmar que el
+    system_prompt enviado al LLM incluye el bloque "CONTEXTO DEL USUARIO"
+11. Durante la prueba, Roberto debe presionar las brechas especificas del perfil
+    (ej. si blind_spot es "cede rapido ante precio", Roberto debe atacar precio
+    mas que lo genericamente hace)
+12. Terminar la prueba -> verificar que el bloque "diagnostico" se actualizo
+    con merge de strengths/gaps (no overwrite total)
+
+Paso 1-3 (tras paso 0 verificado):
+9. En Briefing escribir "Vendo software de contabilidad para PyMEs" -> Iniciar
+   en nivel Dificil
+10. Verificar que Roberto mencione objeciones relacionadas a software de
+    contabilidad (no genericas) Y ademas presione las brechas del perfil
+11. Verificar que Roberto sea agresivo y cerrado (nivel dificil)
+12. Verificar que el avatar muestre expresion hostil
+13. Repetir en nivel Facil -> verificar que Roberto sea cooperativo
+14. Probar con Carlos (nuevo avatar)

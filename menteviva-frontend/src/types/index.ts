@@ -48,6 +48,9 @@ export interface SessionMetrics {
   duration_seconds?: number;
   conversation: Message[] | Array<{ role: string; content: string }>;
   analysis?: ConversationAnalysis;
+  user_profile_update?: Diagnostico | null;
+  is_fallback?: boolean;
+  error?: string;
 }
 
 export type ConnectionStatus =
@@ -59,3 +62,69 @@ export type ConnectionStatus =
   | "generating_audio"
   | "analyzing"
   | "ready";
+
+// ============================================================
+// UserProfile — espejo de menteviva-backend/app/models/user_profile.py
+// Cualquier cambio aqui debe reflejarse alla.
+// ============================================================
+
+export type ExperienceLevel =
+  | "entry"
+  | "junior"
+  | "mid"
+  | "senior"
+  | "lead"
+  | "executive";
+
+export type VerbalTendency = "alta" | "media" | "baja";
+
+export type RecommendedScenario = "roberto" | "maria" | "carlos";
+
+export type RecommendedLevel = "facil" | "intermedio" | "dificil";
+
+export interface Registro {
+  nombre: string;
+  email?: string;
+  rol_objetivo: string;
+  industria: string;
+  experience_level: ExperienceLevel;
+}
+
+export interface Strength {
+  skill: string;
+  evidence: string;
+  why_matters: string;
+}
+
+export interface Gap {
+  skill: string;
+  evidence: string;
+  impact: string;
+  micro_practice: string;
+}
+
+export interface VerbalPatterns {
+  vague_verbs_detected: string[];
+  we_vs_i_tendency: VerbalTendency;
+  filler_frequency: VerbalTendency;
+}
+
+export interface Diagnostico {
+  completed_at: string; // ISO8601
+  competencias_foco: string[];
+  strengths: Strength[];
+  gaps: Gap[];
+  blind_spot: string;
+  reflection_question: string;
+  verbal_patterns: VerbalPatterns;
+  recommended_next_scenario: RecommendedScenario;
+  recommended_next_level: RecommendedLevel;
+}
+
+export interface UserProfile {
+  user_id: string;
+  created_at: string; // ISO8601
+  updated_at: string; // ISO8601
+  registro: Registro;
+  diagnostico: Diagnostico | null;
+}

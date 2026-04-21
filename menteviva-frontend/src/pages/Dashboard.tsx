@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Play } from "lucide-react";
+import { Play, CheckCircle2, AlertCircle } from "lucide-react";
 import { AvatarCard } from "../components/avatar/AvatarCard";
 import { useSessionStore } from "../stores/sessionStore";
-import type { Avatar } from "../types";
+import type { Avatar, Gap, Strength } from "../types";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
@@ -12,7 +12,7 @@ export function Dashboard() {
   const navigate = useNavigate();
   const [avatars, setAvatars] = useState<Avatar[]>([]);
   const [loading, setLoading] = useState(true);
-  const { selectedAvatar, setSelectedAvatar, resetSession } = useSessionStore();
+  const { selectedAvatar, setSelectedAvatar, resetSession, userProfile } = useSessionStore();
 
   useEffect(() => {
     resetSession();
@@ -82,6 +82,16 @@ export function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
+          {userProfile?.diagnostico && (
+            <DiagnosticoResumen
+              nombre={userProfile.registro.nombre}
+              strengths={userProfile.diagnostico.strengths}
+              gaps={userProfile.diagnostico.gaps}
+              recommendedScenario={userProfile.diagnostico.recommended_next_scenario}
+              recommendedLevel={userProfile.diagnostico.recommended_next_level}
+            />
+          )}
+
           <h2 className="font-syne text-3xl font-bold mb-2">
             Elige tu escenario
           </h2>
@@ -134,6 +144,67 @@ export function Dashboard() {
           </motion.div>
         </motion.div>
       </main>
+    </div>
+  );
+}
+
+function DiagnosticoResumen({
+  nombre,
+  strengths,
+  gaps,
+  recommendedScenario,
+  recommendedLevel,
+}: {
+  nombre: string;
+  strengths: Strength[];
+  gaps: Gap[];
+  recommendedScenario: string;
+  recommendedLevel: string;
+}) {
+  const topStrengths = strengths.slice(0, 2);
+  const mainGap = gaps[0];
+  const firstName = nombre.split(" ")[0];
+
+  return (
+    <div className="bg-card/50 border border-violet/20 rounded-2xl p-6 mb-10">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-syne text-lg font-bold">Tu perfil, {firstName}</h3>
+        <span className="text-xs text-muted uppercase tracking-wider">
+          Recomendado: <span className="text-violet-lighter capitalize">{recommendedScenario}</span>
+          {" · "}
+          <span className="text-violet-lighter">{recommendedLevel}</span>
+        </span>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        {topStrengths.length > 0 && (
+          <div className="bg-ink/40 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 className="w-4 h-4 text-success" />
+              <span className="text-sm font-bold text-success">Fortalezas</span>
+            </div>
+            <ul className="space-y-1">
+              {topStrengths.map((s, i) => (
+                <li key={i} className="text-sm text-muted capitalize">
+                  {s.skill.replace(/_/g, " ")}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {mainGap && (
+          <div className="bg-ink/40 rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle className="w-4 h-4 text-warning" />
+              <span className="text-sm font-bold text-warning">Foco principal</span>
+            </div>
+            <p className="text-sm text-muted capitalize">
+              {mainGap.skill.replace(/_/g, " ")}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

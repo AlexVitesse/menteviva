@@ -1,22 +1,34 @@
 import { useCallback, useRef, useEffect } from "react";
 import { useSessionStore } from "../stores/sessionStore";
+import type { UserProfile } from "../types";
 
 const WS_BASE_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000";
+
+export interface WsInitPayload {
+  user_profile?: UserProfile;
+  session_vars?: Record<string, string | number | string[]>;
+}
 
 interface UseWebSocketOptions {
   avatarId: string | undefined;
   onAudioReceived?: (base64Audio: string) => void;
+  initPayload?: WsInitPayload;
 }
 
-export function useWebSocket({ avatarId, onAudioReceived }: UseWebSocketOptions) {
+export function useWebSocket({ avatarId, onAudioReceived, initPayload }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const pendingTextRef = useRef<string>("");
+  const initPayloadRef = useRef(initPayload);
   const {
     setStatus,
     addMessage,
     setMetrics,
     setServerError,
   } = useSessionStore();
+
+  useEffect(() => {
+    initPayloadRef.current = initPayload;
+  }, [initPayload]);
 
   const connect = useCallback(() => {
     if (!avatarId) return;
@@ -26,6 +38,10 @@ export function useWebSocket({ avatarId, onAudioReceived }: UseWebSocketOptions)
 
     ws.onopen = () => {
       setStatus("ready");
+      const payload = initPayloadRef.current;
+      if (payload && (payload.user_profile || payload.session_vars)) {
+        ws.send(JSON.stringify({ type: "init", ...payload }));
+      }
     };
 
     ws.onmessage = (event) => {

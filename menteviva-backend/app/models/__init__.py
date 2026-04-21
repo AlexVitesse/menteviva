@@ -14,6 +14,14 @@ from app.models.message import (
     ErrorResponse,
 )
 from app.models.session import ConversationSession, SessionMetrics
+from app.models.user_profile import (
+    UserProfile,
+    Registro,
+    Diagnostico,
+    Strength,
+    Gap,
+    VerbalPatterns,
+)
 
 __all__ = [
     "Avatar",
@@ -29,4 +37,10 @@ __all__ = [
     "ErrorResponse",
     "ConversationSession",
     "SessionMetrics",
+    "UserProfile",
+    "Registro",
+    "Diagnostico",
+    "Strength",
+    "Gap",
+    "VerbalPatterns",
 ]

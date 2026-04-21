@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, useRef } from "react";
+import { useEffect, useCallback, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff, Clock, Loader2 } from "lucide-react";
@@ -11,7 +11,7 @@ import { useSoundEffects } from "../hooks/useSoundEffects";
 
 export function Simulation() {
   const navigate = useNavigate();
-  const { selectedAvatar, messages, status, metrics, serverError, setServerError, setMetrics } = useSessionStore();
+  const { selectedAvatar, messages, status, metrics, serverError, userProfile, setServerError, setMetrics } = useSessionStore();
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isEnding, setIsEnding] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -29,9 +29,15 @@ export function Simulation() {
     playAudio(base64Audio);
   }, [playAudio]);
 
+  const initPayload = useMemo(
+    () => (userProfile ? { user_profile: userProfile } : undefined),
+    [userProfile]
+  );
+
   const { connect, sendAudio, endSession, disconnect } = useWebSocket({
     avatarId: selectedAvatar?.id,
     onAudioReceived: handleAudioReceived,
+    initPayload,
   });
 
   const { isRecording, error: audioError, startRecording, stopRecording } = useAudioRecorder();

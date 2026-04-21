@@ -2,11 +2,21 @@
 Servicio de analisis de conversaciones usando LLM con razonamiento.
 
 Evalua habilidades blandas basado en la conversacion y el escenario.
+
+Dos entry points principales:
+- analyze_conversation(): analisis post-PRUEBA (Roberto/Maria/Carlos),
+  produce scores por habilidad del SKILLS_BY_SCENARIO.
+- generate_user_profile(): analisis post-DIAGNOSTICO (entrevistador),
+  produce el bloque 'diagnostico' del UserProfile (strengths/gaps/blind_spot
+  con evidencia textual, conforme a la seccion 11 del prompt maestro).
 """
 
 import json
 import logging
+from datetime import datetime, timezone
+
 from app.config import settings
+from app.models.user_profile import Diagnostico, Registro, VerbalPatterns
 from app.prompts.scenarios import get_avatar
 from app.services.groq_pool import get_groq_client
 
@@ -344,3 +354,309 @@ def _demo_analysis(avatar_id: str, skills_config: dict, exchanges: int, duration
         "duration_seconds": duration_seconds,
         "is_demo": True  # Flag para indicar que es analisis demo
     }
+
+
+# ============================================================
+# Diagnostico post-entrevistador (M2)
+# Implementa el output final del prompt maestro (secciones 10 y 11).
+# ============================================================
+
+# Catalogo de habilidades blandas del prompt maestro seccion 10.
+# Cada entry tiene evidencia positiva + senal de brecha (comportamiento observable).
+SOFT_SKILLS_CATALOG = [
+    {
+        "id": "comunicacion",
+        "name": "Comunicacion",
+        "positive": "Estructura idea-ejemplo-cierre; adapta vocabulario al interlocutor.",
+        "gap": "Divaga, usa jergas sin contexto, no sintetiza.",
+    },
+    {
+        "id": "autoconciencia",
+        "name": "Autoconciencia",
+        "positive": "Distingue su rol del rol del equipo; reconoce errores sin culpar.",
+        "gap": "Usa 'nosotros' evasivo, externaliza responsabilidad.",
+    },
+    {
+        "id": "inteligencia_emocional",
+        "name": "Inteligencia emocional",
+        "positive": "Nombra emociones propias y ajenas; describe como las gestiono.",
+        "gap": "Minimiza el componente humano; respuesta puramente tecnica.",
+    },
+    {
+        "id": "trabajo_en_equipo",
+        "name": "Trabajo en equipo",
+        "positive": "Describe como sumo al grupo y como recibio aportes de otros.",
+        "gap": "Protagonismo excesivo o invisibilidad total en el equipo.",
+    },
+    {
+        "id": "liderazgo",
+        "name": "Liderazgo / influencia",
+        "positive": "Describe como movio a otros sin imponer.",
+        "gap": "Autoridad por cargo; o ausencia de iniciativa.",
+    },
+    {
+        "id": "resolucion_problemas",
+        "name": "Resolucion de problemas",
+        "positive": "Diagnostico - opciones consideradas - decision - revision.",
+        "gap": "Salta a la solucion sin explicar el analisis.",
+    },
+    {
+        "id": "pensamiento_critico",
+        "name": "Pensamiento critico",
+        "positive": "Cuestiona supuestos, pide datos, cambia de opinion con evidencia.",
+        "gap": "Respuestas dogmaticas; no separa hecho de interpretacion.",
+    },
+    {
+        "id": "adaptabilidad",
+        "name": "Adaptabilidad / aprendizaje",
+        "positive": "Cuenta un cambio real en su comportamiento tras un error o nuevo contexto.",
+        "gap": "Repite patron; aprende la teoria, no el habito.",
+    },
+    {
+        "id": "orientacion_resultados",
+        "name": "Orientacion a resultados",
+        "positive": "Define la meta en terminos medibles; cierra el ciclo con outcome.",
+        "gap": "Procesos sin metrica; no sabe si logro lo que buscaba.",
+    },
+    {
+        "id": "gestion_prioridades",
+        "name": "Gestion de prioridades",
+        "positive": "Criterio explicito para decidir que si y que no.",
+        "gap": "Responde 'todo era urgente' sin filtros.",
+    },
+]
+
+
+USER_PROFILE_PROMPT_TEMPLATE = """Eres un coach experto en diagnostico de habilidades blandas.
+Acabas de conducir una entrevista por competencias (metodologia BEI + STAR) al
+candidato {nombre}. Tu tarea es analizar la conversacion y producir un diagnostico
+estructurado que se le dara al candidato como espejo de lo observado.
+
+## PERFIL DEL CANDIDATO
+- Nombre: {nombre}
+- Rol objetivo: {rol}
+- Industria: {industria}
+- Nivel de experiencia: {nivel}
+
+## CATALOGO DE HABILIDADES (usa estos IDs, no inventes otros)
+{skills_catalog}
+
+## CONVERSACION COMPLETA
+{conversation}
+
+## REGLAS INVIOLABLES (seccion 11 del prompt maestro)
+
+1. EVIDENCIA TEXTUAL OBLIGATORIA. Cada strength y gap DEBE citar una frase real
+   del candidato como 'evidence'. Si no hay cita que respalde una observacion,
+   NO la incluyas. Mejor 2 fortalezas con evidencia que 5 genericas.
+
+2. CONDUCTA, NO ETIQUETA. Describe lo que OBSERVASTE.
+   Malo: "eres desordenado" / "tienes baja autoestima" / "eres tecnico".
+   Bueno: "no mencionaste metricas en ningun ejemplo" / "usaste 'nosotros' al
+   explicar tu rol individual en el proyecto X".
+
+3. MICRO-PRACTICA ACCIONABLE. Cada gap tiene 'micro_practice': un ejercicio
+   concreto para esta semana. Ejemplo: "grabate contando un caso personal y
+   cuenta cuantas veces dices 'nosotros' vs 'yo'; repite hasta lograr 80% 'yo'".
+
+4. BLIND SPOT CON CUIDADO. UNA sola observacion que el candidato probablemente
+   no vio de si mismo. Basada en evidencia. Sin etiquetas de personalidad.
+   Humano, no juez.
+
+5. PREGUNTA PARA LLEVARSE. Una pregunta abierta que invite a reflexionar
+   despues. No una pregunta cerrada de si/no.
+
+6. LIMITES: maximo 3 strengths, maximo 3 gaps. Calidad sobre cantidad.
+
+7. COMPETENCIAS_FOCO (3-6 ids del catalogo): las habilidades que este usuario
+   debe trabajar prioritariamente en sus siguientes sesiones de practica.
+
+8. RECOMMENDED_NEXT_SCENARIO: elige basado en las brechas observadas.
+   - "roberto": venta consultiva B2B. Bueno para practicar manejo_objeciones,
+     comunicacion, pensamiento_critico, resolucion_problemas.
+   - "maria": negociacion de contrato. Bueno para orientacion_resultados,
+     gestion_prioridades, adaptabilidad, inteligencia_emocional.
+   - "carlos": demo tecnica a startups (por ahora experimental, preferir
+     roberto o maria salvo caso claro).
+
+9. RECOMMENDED_NEXT_LEVEL: "facil" | "intermedio" | "dificil" segun la madurez
+   conductual observada. Si las brechas son grandes o basicas, empezar "facil".
+
+10. PATRONES VERBALES observables en la conversacion:
+    - vague_verbs_detected: verbos vagos del candidato (ej. "gestione",
+      "maneje", "coordine") - lista real de los que uso, vacio si no aplica.
+    - we_vs_i_tendency: "alta" si uso "nosotros" evasivo frecuentemente cuando
+      se le pedia responsabilidad individual; "baja" si hablo claramente en yo.
+    - filler_frequency: "alta" | "media" | "baja" segun muletillas observadas.
+
+## OUTPUT
+
+Responde UNICAMENTE con un JSON valido con esta estructura exacta:
+
+{{
+  "completed_at": "<ISO8601 ahora>",
+  "competencias_foco": ["id_catalogo", "..."],
+  "strengths": [
+    {{
+      "skill": "<id_catalogo>",
+      "evidence": "<cita textual del candidato>",
+      "why_matters": "<por que importa en su rol objetivo>"
+    }}
+  ],
+  "gaps": [
+    {{
+      "skill": "<id_catalogo>",
+      "evidence": "<cita textual o patron observado>",
+      "impact": "<consecuencia si no se trabaja>",
+      "micro_practice": "<ejercicio concreto para esta semana>"
+    }}
+  ],
+  "blind_spot": "<observacion conductual con cuidado>",
+  "reflection_question": "<pregunta abierta>",
+  "verbal_patterns": {{
+    "vague_verbs_detected": ["verbo1", "verbo2"],
+    "we_vs_i_tendency": "alta|media|baja",
+    "filler_frequency": "alta|media|baja"
+  }},
+  "recommended_next_scenario": "roberto|maria|carlos",
+  "recommended_next_level": "facil|intermedio|dificil"
+}}
+
+NO agregues texto fuera del JSON. NO agregues comentarios en el JSON.
+NO inventes skill ids; usa solo los del catalogo."""
+
+
+_SKILLS_CATALOG_FORMATTED: str = "\n".join(
+    f"- {s['id']}: {s['name']}\n"
+    f"  Evidencia positiva: {s['positive']}\n"
+    f"  Senal de brecha: {s['gap']}"
+    for s in SOFT_SKILLS_CATALOG
+)
+
+
+def _demo_diagnostico(reason_in_blind_spot: str | None = None) -> dict:
+    """
+    Diagnostico placeholder schema-valid para:
+    - conversaciones con <4 intercambios
+    - errores de parseo o validacion
+    El resultado cumple el schema Diagnostico.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    blind_spot = reason_in_blind_spot or (
+        "Conversacion muy corta para diagnosticar. Completa una entrevista de "
+        "al menos 4-5 intercambios para obtener observaciones basadas en evidencia."
+    )
+    return Diagnostico(
+        completed_at=now_iso,
+        competencias_foco=["comunicacion", "autoconciencia"],
+        strengths=[],
+        gaps=[],
+        blind_spot=blind_spot,
+        reflection_question=(
+            "Cuando tengas unos minutos, intenta una entrevista mas completa. "
+            "Que historia de tu trabajo te gustaria revisar contigo mismo?"
+        ),
+        verbal_patterns=VerbalPatterns(
+            vague_verbs_detected=[],
+            we_vs_i_tendency="media",
+            filler_frequency="media",
+        ),
+        recommended_next_scenario="roberto",
+        recommended_next_level="facil",
+    ).model_dump()
+
+
+async def generate_user_profile(
+    conversation: list[dict],
+    registro: Registro,
+    session_vars: dict | None = None,
+) -> dict:
+    """
+    Genera el bloque 'diagnostico' del UserProfile a partir de la conversacion
+    del entrevistador BEI.
+
+    Args:
+        conversation: historial [{"role": "user"|"assistant", "content": str}, ...].
+        registro: datos del usuario ya validados como Registro. Si el caller
+            tiene un dict crudo (ej. WS payload), debe hacer Registro(**data)
+            antes de llamar.
+        session_vars: reservado para futura personalizacion del analisis
+            (hoy no se usa; competencias preseleccionadas podrian entrar aqui).
+
+    Returns:
+        Dict que cumple el schema Diagnostico (user_profile.py). La llamada
+        tipica es:
+            user_profile["diagnostico"] = await generate_user_profile(...)
+
+    Comportamiento:
+    - Conversacion <4 intercambios: devuelve demo schema-valid.
+    - Error de parseo JSON o de validacion: devuelve demo con nota en blind_spot.
+    - Exito: devuelve el dict del LLM tras validarlo contra Diagnostico.
+    """
+    logger.info(
+        f"[UserProfile] Generando diagnostico - usuario: {registro.nombre}, "
+        f"rol: {registro.rol_objetivo}, intercambios: {len(conversation) // 2}"
+    )
+
+    actual_exchanges = len(conversation) // 2
+    if actual_exchanges < 4:
+        logger.info(f"[UserProfile] Conversacion corta ({actual_exchanges}), devolviendo demo")
+        return _demo_diagnostico()
+
+    conversation_text = _format_conversation(conversation)
+
+    prompt = USER_PROFILE_PROMPT_TEMPLATE.format(
+        nombre=registro.nombre,
+        rol=registro.rol_objetivo,
+        industria=registro.industria,
+        nivel=registro.experience_level,
+        skills_catalog=_SKILLS_CATALOG_FORMATTED,
+        conversation=conversation_text,
+    )
+
+    try:
+        logger.info(f"[UserProfile] Llamando Groq modelo {settings.groq_model_analysis}")
+        client = get_groq_client()
+        response = client.chat.completions.create(
+            model=settings.groq_model_analysis,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=2000,
+            response_format={"type": "json_object"},
+        )
+        result_text = response.choices[0].message.content
+        logger.debug(f"[UserProfile] Raw response: {result_text[:500]}...")
+
+        parsed = json.loads(result_text)
+
+        if not parsed.get("completed_at"):
+            parsed["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+        try:
+            validated = Diagnostico(**parsed)
+        except Exception as e:
+            logger.error(f"[UserProfile] JSON no cumple schema Diagnostico: {e}")
+            return _demo_diagnostico(
+                reason_in_blind_spot=(
+                    "No pudimos estructurar el diagnostico esta vez. "
+                    "Intenta de nuevo o contacta soporte si persiste."
+                )
+            )
+
+        logger.info(
+            f"[UserProfile] Diagnostico generado OK - "
+            f"foco: {validated.competencias_foco}, "
+            f"recommended: {validated.recommended_next_scenario}/{validated.recommended_next_level}"
+        )
+        return validated.model_dump()
+
+    except json.JSONDecodeError as e:
+        logger.error(f"[UserProfile] JSON decode error: {e}")
+        return _demo_diagnostico(
+            reason_in_blind_spot="Error procesando la respuesta. Intenta de nuevo."
+        )
+    except Exception as e:
+        logger.error(f"[UserProfile] Error general: {e}", exc_info=True)
+        return _demo_diagnostico(
+            reason_in_blind_spot="Error temporal generando diagnostico. Intenta de nuevo."
+        )

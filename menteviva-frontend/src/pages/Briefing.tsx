@@ -55,7 +55,7 @@ const SCENARIOS = {
 
 export function Briefing() {
   const navigate = useNavigate();
-  const { selectedAvatar } = useSessionStore();
+  const { selectedAvatar, userProfile } = useSessionStore();
 
   useEffect(() => {
     if (!selectedAvatar) {
@@ -67,6 +67,7 @@ export function Briefing() {
 
   const scenario = SCENARIOS[selectedAvatar.id as keyof typeof SCENARIOS];
   const avatarCharacter: AvatarCharacter = selectedAvatar.id === "roberto" ? "roberto" : "maria";
+  const competencias = userProfile?.diagnostico?.competencias_foco ?? [];
 
   return (
     <div className="min-h-screen bg-ink">
@@ -131,6 +132,24 @@ export function Briefing() {
                 {scenario.duration}
               </span>
             </div>
+
+            {competencias.length > 0 && (
+              <div className="bg-violet/10 border border-violet/30 rounded-xl p-4">
+                <p className="text-xs text-violet-lighter font-bold uppercase mb-2">
+                  Segun tu diagnostico, en esta prueba vamos a trabajar
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {competencias.map((c) => (
+                    <span
+                      key={c}
+                      className="px-3 py-1 bg-violet/20 text-violet-lighter text-sm rounded-full border border-violet/40"
+                    >
+                      {c.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Objective */}
             <div className="bg-surface rounded-xl p-6 border border-white/5">

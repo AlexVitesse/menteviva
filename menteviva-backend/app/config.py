@@ -17,8 +17,9 @@ class Settings(BaseSettings):
         keys = [self.groq_api_key, self.groq_api_key_2, self.groq_api_key_3, self.groq_api_key_4]
         return [k for k in keys if k]  # Solo keys no vacías
 
-    # Edge TTS
-    tts_voice: str = "es-MX-JorgeNeural"  # Voz mexicana masculina
+    # ElevenLabs TTS
+    elevenlabs_api_key: str = ""
+    elevenlabs_model: str = "eleven_multilingual_v2"
 
     # App
     app_name: str = "Mente Viva API"
