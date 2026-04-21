@@ -463,6 +463,11 @@ fortalezas si no las hay — mejor menos strengths que strengths sin evidencia.
    del candidato como 'evidence'. Si no hay cita que respalde una observacion,
    NO la incluyas. Mejor 2 fortalezas con evidencia que 5 genericas.
 
+   PROHIBIDO: "evidence" que describa ausencia ("No se menciono X", "No hubo Y",
+   "El candidato no hizo Z"). Eso no es evidencia, es falta de ella. Si no
+   encuentras una frase real del candidato que respalde el gap, NO incluyas
+   ese gap. Si solo detectas 1 gap con evidencia real, devuelve solo 1 gap.
+
 2. CONDUCTA, NO ETIQUETA. Describe lo que OBSERVASTE.
    Malo: "eres desordenado" / "tienes baja autoestima" / "eres tecnico".
    Bueno: "no mencionaste metricas en ningun ejemplo" / "usaste 'nosotros' al
@@ -493,12 +498,25 @@ fortalezas si no las hay — mejor menos strengths que strengths sin evidencia.
 9. RECOMMENDED_NEXT_LEVEL: "facil" | "intermedio" | "dificil" segun la madurez
    conductual observada. Si las brechas son grandes o basicas, empezar "facil".
 
-10. PATRONES VERBALES observables en la conversacion:
-    - vague_verbs_detected: verbos vagos del candidato (ej. "gestione",
-      "maneje", "coordine") - lista real de los que uso, vacio si no aplica.
-    - we_vs_i_tendency: "alta" si uso "nosotros" evasivo frecuentemente cuando
-      se le pedia responsabilidad individual; "baja" si hablo claramente en yo.
-    - filler_frequency: "alta" | "media" | "baja" segun muletillas observadas.
+10. PATRONES VERBALES observables en la conversacion. Analiza literalmente los
+    mensajes del candidato (rol=user):
+
+    - vague_verbs_detected: revisa CADA mensaje del candidato y lista los
+      verbos genericos que haya usado (gestione, maneje, coordine, hice,
+      logramos, utilice, trabaje, participe, encargue). Si no encuentras
+      ninguno, lista vacia. No inventes.
+
+    - we_vs_i_tendency: cuenta mentalmente ocurrencias de "nosotros / nos /
+      nuestro / nuestra / teniamos / logramos / fuimos / eramos" vs "yo / me /
+      mi / tuve / logre / fui / era" en los mensajes del candidato.
+      - Si hay MUCHO mas "nosotros" que "yo" -> "alta"
+      - Si hay balance -> "media"
+      - Si domina "yo" claramente -> "baja"
+      Antes de responder, haz la cuenta.
+
+    - filler_frequency: muletillas ("este", "osea", "bueno", "como que",
+      "digamos") observadas en los mensajes del candidato. "alta" | "media" |
+      "baja" segun corresponda.
 
 ## OUTPUT
 
@@ -543,6 +561,31 @@ _SKILLS_CATALOG_FORMATTED: str = "\n".join(
     f"  Senal de brecha: {s['gap']}"
     for s in SOFT_SKILLS_CATALOG
 )
+
+
+_ABSENCE_EVIDENCE_PREFIXES = (
+    "no se ", "no hay ", "no hubo ", "no menciono ", "no describe ",
+    "no se menciona", "no se mencionan", "no se observa", "no se observan",
+    "el candidato no ", "la candidata no ",
+)
+
+
+def _drop_absence_gaps(gaps: list[dict]) -> list[dict]:
+    """
+    Elimina gaps cuyo 'evidence' describe ausencia en vez de una observacion.
+    El prompt ya lo prohibe pero el LLM es terco; aqui filtramos por seguridad.
+    """
+    filtered: list[dict] = []
+    for g in gaps:
+        ev = g.get("evidence", "").strip().lower()
+        if any(ev.startswith(p) for p in _ABSENCE_EVIDENCE_PREFIXES):
+            logger.info(
+                f"[UserProfile] Descartado gap '{g.get('skill')}' por evidencia "
+                f"de ausencia: \"{ev[:80]}\""
+            )
+            continue
+        filtered.append(g)
+    return filtered
 
 
 def _demo_diagnostico(reason_in_blind_spot: str | None = None) -> dict:
@@ -640,8 +683,14 @@ async def generate_user_profile(
 
         parsed = json.loads(result_text)
 
-        if not parsed.get("completed_at"):
-            parsed["completed_at"] = datetime.now(timezone.utc).isoformat()
+        # Forzamos completed_at del servidor: el LLM tiende a inventar fechas
+        # pasadas aunque el prompt diga "ahora".
+        parsed["completed_at"] = datetime.now(timezone.utc).isoformat()
+
+        # Filtro de seguridad: descartar gaps con evidencia por ausencia aunque
+        # el prompt lo prohiba.
+        if isinstance(parsed.get("gaps"), list):
+            parsed["gaps"] = _drop_absence_gaps(parsed["gaps"])
 
         try:
             validated = Diagnostico(**parsed)
