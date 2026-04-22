@@ -164,14 +164,26 @@ export function useAudioPlayer() {
    * Idempotente: solo se ejecuta la primera vez.
    */
   const unlockAudioRef = useRef(false);
-  // 44-byte WAV silencioso (1 sample, 8kHz mono 8-bit). Se reproduce en ~0ms.
-  const SILENT_WAV_DATA_URI =
-    "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+  // MP3 silencioso real (~100ms, ~1KB). iOS Safari rechaza WAVs de 0 samples
+  // o data URIs malformados; este MP3 tiene frames validos y se reproduce en
+  // todos los browsers incluido iOS.
+  const SILENT_MP3_DATA_URI =
+    "data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAA1N3aXRjaCBQbHVzIMKpIE5DSCBTb2Z0d2FyZQBUSVQyAAAABgAAAzIyMzUAVFNTRQAAAA8AAANMYXZmNTcuODMuMTAwAAAAAAAAAAAAAAD/80DEAAAAA0gAAAAATEFNRTMuMTAwVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/zQsQbAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/zQMSkAAADSAAAAABVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
+
+  // Promise.race con timeout: si play() o resume() cuelgan en iOS, fallamos
+  // rapido en vez de bloquear el flujo del usuario.
+  const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> =>
+    Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error("unlock timeout")), ms)
+      ),
+    ]);
 
   const unlockAudio = useCallback(async () => {
     if (unlockAudioRef.current || !audioRef.current) return;
 
-    // Paso 1: AudioContext (desbloquea Web Audio en iOS)
+    // Paso 1: AudioContext (desbloquea Web Audio)
     try {
       const AudioCtx =
         window.AudioContext ||
@@ -179,29 +191,32 @@ export function useAudioPlayer() {
           .webkitAudioContext;
       if (AudioCtx) {
         const ctx = new AudioCtx();
-        if (ctx.state === "suspended") await ctx.resume();
+        if (ctx.state === "suspended") {
+          await withTimeout(ctx.resume(), 1500);
+        }
         const buffer = ctx.createBuffer(1, 1, 22050);
         const source = ctx.createBufferSource();
         source.buffer = buffer;
         source.connect(ctx.destination);
         source.start(0);
       }
-    } catch {
-      /* sigue intentando con HTMLMediaElement */
+    } catch (err) {
+      console.warn("[useAudioPlayer] AudioContext unlock fallo:", err);
     }
 
-    // Paso 2: HTMLAudioElement con WAV silencioso real
+    // Paso 2: HTMLAudioElement con MP3 silencioso real
     try {
       const audio = audioRef.current;
-      audio.src = SILENT_WAV_DATA_URI;
+      audio.src = SILENT_MP3_DATA_URI;
       audio.muted = false;
       audio.volume = 1;
-      await audio.play();
+      await withTimeout(audio.play(), 2000);
       audio.pause();
       audio.currentTime = 0;
       unlockAudioRef.current = true;
+      console.log("[useAudioPlayer] unlock OK");
     } catch (err) {
-      console.warn("[useAudioPlayer] unlockAudio fallo:", err);
+      console.warn("[useAudioPlayer] HTMLAudio unlock fallo:", err);
     }
   }, []);
 

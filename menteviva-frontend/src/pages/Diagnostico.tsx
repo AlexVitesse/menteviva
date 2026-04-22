@@ -29,6 +29,7 @@ export function Diagnostico() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [requestingPermission, setRequestingPermission] = useState(false);
+  const [showEscape, setShowEscape] = useState(false);
   const startRef = useRef<number>(Date.now());
 
   // Redirect si no hay contexto minimo
@@ -115,18 +116,27 @@ export function Diagnostico() {
   async function handleStartSession() {
     setRequestingPermission(true);
     setPermissionError(null);
-    try {
-      // Pedir mic permission. El stream se cierra de inmediato; el recorder
-      // pedira de nuevo pero ya estara concedido sin prompt.
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((t) => t.stop());
+    setShowEscape(false);
+    console.log("[Diagnostico] handleStartSession click");
 
-      // Desbloquear audio en el mismo gesto del click
-      await unlockAudio();
+    // FIX iOS: dispara unlock SINCRÓNICAMENTE en el gesto, antes de cualquier
+    // await. iOS Safari "consume" el gesto al hacer await getUserMedia, asi
+    // que el unlock debe iniciarse antes. Fire-and-forget para no bloquear.
+    unlockAudio().catch((e) => console.warn("[Diagnostico] unlock failed:", e));
+
+    // Si tras 5s seguimos en "procesando", mostramos boton de escape
+    const escapeTimer = window.setTimeout(() => setShowEscape(true), 5000);
+
+    try {
+      console.log("[Diagnostico] requesting mic permission");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("[Diagnostico] permission granted");
+      stream.getTracks().forEach((t) => t.stop());
 
       setSessionStarted(true);
     } catch (err) {
       const name = err instanceof Error ? err.name : "Error";
+      console.error("[Diagnostico] getUserMedia failed:", name, err);
       if (name === "NotAllowedError" || name === "PermissionDeniedError") {
         setPermissionError(
           "Necesitamos acceso al microfono para la entrevista. Habilitalo en los ajustes del navegador y vuelve a intentar."
@@ -137,8 +147,18 @@ export function Diagnostico() {
         setPermissionError("No pudimos acceder al microfono. Intenta de nuevo.");
       }
     } finally {
+      window.clearTimeout(escapeTimer);
       setRequestingPermission(false);
     }
+  }
+
+  // Escape: si el usuario lleva 5s en "procesando" (probablemente iOS Safari
+  // colgado en unlock), dejarlo pasar igual. El audio puede no funcionar
+  // perfecto, pero al menos llega a la entrevista.
+  function handleForceStart() {
+    console.log("[Diagnostico] force start (skip wait)");
+    setSessionStarted(true);
+    setRequestingPermission(false);
   }
 
   useEffect(() => {
@@ -303,6 +323,15 @@ export function Diagnostico() {
                   "Iniciar entrevista"
                 )}
               </button>
+
+              {showEscape && requestingPermission && (
+                <button
+                  onClick={handleForceStart}
+                  className="w-full mt-3 font-syne font-bold text-xs py-2 rounded-[10px] border border-white/20 text-muted hover:text-cream hover:border-white/40 transition-colors"
+                >
+                  Continuar de todas formas
+                </button>
+              )}
 
               <p className="text-[11px] text-muted mt-4">
                 En movil: asegurate de NO tener el switch de silencio activado.
