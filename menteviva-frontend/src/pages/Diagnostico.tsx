@@ -43,14 +43,22 @@ export function Diagnostico() {
     setSelectedAvatar(ENTREVISTADOR_AVATAR);
   }, [userProfile, diagnosticoVars, navigate, resetSession, setSelectedAvatar]);
 
-  const { isPlaying, playAudio } = useAudioPlayer();
+  const { isPlaying, startStream, appendChunk, endStream } = useAudioPlayer();
 
-  const handleAudioReceived = useCallback(
-    (base64Audio: string) => {
-      playAudio(base64Audio);
+  const handleAudioStart = useCallback(() => {
+    startStream("audio/mpeg");
+  }, [startStream]);
+
+  const handleAudioChunk = useCallback(
+    (chunk: string) => {
+      appendChunk(chunk);
     },
-    [playAudio]
+    [appendChunk]
   );
+
+  const handleAudioEnd = useCallback(() => {
+    endStream();
+  }, [endStream]);
 
   const initPayload = useMemo(() => {
     if (!userProfile || !diagnosticoVars) return undefined;
@@ -69,7 +77,9 @@ export function Diagnostico() {
 
   const { connect, sendAudio, endSession, disconnect } = useWebSocket({
     avatarId: "entrevistador",
-    onAudioReceived: handleAudioReceived,
+    onAudioStart: handleAudioStart,
+    onAudioChunk: handleAudioChunk,
+    onAudioEnd: handleAudioEnd,
     initPayload,
   });
 

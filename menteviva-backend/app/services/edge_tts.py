@@ -2,11 +2,19 @@
 Servicio de Text-to-Speech con ElevenLabs.
 
 Cada avatar tiene su propia voz asignada por voice ID.
+
+Dos entry points:
+- text_to_speech(text, avatar_id): devuelve bytes MP3 completos (legacy).
+- text_to_speech_stream(text, avatar_id): async generator que produce chunks
+  MP3 conforme los emite ElevenLabs. Reduce first-byte-time perceptible para
+  el usuario — Sofia/Roberto/etc empiezan a sonar antes de que se genere todo
+  el audio.
 """
 
 import logging
 import asyncio
 import re
+from typing import AsyncIterator
 
 from elevenlabs import ElevenLabs
 
@@ -99,3 +107,60 @@ def _generate_sync(text: str, voice_id: str) -> bytes:
     for chunk in response:
         audio_bytes += chunk
     return audio_bytes
+
+
+async def text_to_speech_stream(
+    text: str,
+    avatar_id: str = "roberto",
+) -> AsyncIterator[bytes]:
+    """
+    Streaming TTS con ElevenLabs /stream endpoint.
+
+    Yields chunks MP3 conforme ElevenLabs los genera. El primer chunk llega
+    tipicamente en <1s; el total es similar a convert() pero el usuario oye
+    antes.
+
+    No tiene retries: si el stream falla a medio camino, el cliente ya recibio
+    chunks previos. Si falla antes del primer chunk, el asyncio raise se
+    propaga al caller (conversation.py) para que envie assistant_audio_end
+    limpio.
+    """
+    clean_text = clean_text_for_tts(text)
+    if not clean_text:
+        logger.warning("[TTS-Stream] Texto vacio despues de limpieza, usando original")
+        clean_text = text
+
+    voice_id = AVATAR_VOICES.get(avatar_id, AVATAR_VOICES["roberto"])
+
+    loop = asyncio.get_event_loop()
+    client = _get_client()
+
+    def _open_stream():
+        return client.text_to_speech.stream(
+            text=clean_text,
+            voice_id=voice_id,
+            model_id=settings.elevenlabs_model,
+            output_format="mp3_44100_128",
+        )
+
+    stream_iter = await loop.run_in_executor(None, _open_stream)
+
+    def _next_chunk(iterator) -> bytes | None:
+        try:
+            return next(iterator)
+        except StopIteration:
+            return None
+
+    chunk_count = 0
+    total_bytes = 0
+    while True:
+        chunk = await loop.run_in_executor(None, _next_chunk, stream_iter)
+        if chunk is None:
+            break
+        if not chunk:  # skip empty bytes
+            continue
+        chunk_count += 1
+        total_bytes += len(chunk)
+        yield chunk
+
+    logger.info(f"[TTS-Stream] Completo: {chunk_count} chunks, {total_bytes} bytes")

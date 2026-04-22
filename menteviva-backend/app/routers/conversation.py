@@ -24,12 +24,46 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.models import UserProfile
 from app.services.groq_whisper import transcribe_audio
 from app.services.groq_llm import chat_stream
-from app.services.edge_tts import text_to_speech
+from app.services.edge_tts import text_to_speech, text_to_speech_stream
 from app.services.analysis import analyze_conversation, generate_user_profile
 from app.prompts.scenarios import get_avatar, get_system_prompt
 
 logger = logging.getLogger("menteviva")
 router = APIRouter()
+
+
+async def _stream_tts_over_ws(
+    websocket: WebSocket,
+    text: str,
+    avatar_id: str,
+) -> None:
+    """
+    Streamea audio TTS al cliente con el protocolo assistant_audio_*.
+
+    Protocolo:
+    - assistant_audio_start: content = texto completo (caption puede mostrarse ya)
+    - assistant_audio_chunk: audio = base64 de un chunk MP3
+    - assistant_audio_end: fin del stream, cliente finaliza playback
+
+    Si ocurre un error a medio streaming, loggeamos y siempre enviamos
+    assistant_audio_end para que el cliente no quede colgado.
+    """
+    await websocket.send_json({"type": "assistant_audio_start", "content": text})
+    total_bytes = 0
+    chunk_count = 0
+    try:
+        async for chunk in text_to_speech_stream(text, avatar_id):
+            total_bytes += len(chunk)
+            chunk_count += 1
+            await websocket.send_json({
+                "type": "assistant_audio_chunk",
+                "audio": base64.b64encode(chunk).decode(),
+            })
+    except Exception as e:
+        logger.error(f"[TTS-Stream] Error a medio streaming: {e}", exc_info=True)
+    finally:
+        await websocket.send_json({"type": "assistant_audio_end"})
+    logger.info(f"[TTS] Stream enviado: {chunk_count} chunks, {total_bytes} bytes")
 
 
 @router.websocket("/conversation/{avatar_id}")
@@ -162,16 +196,8 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                 })
 
                 t_start = time.time()
-                audio_response = await text_to_speech(full_response, avatar_id)
+                await _stream_tts_over_ws(websocket, full_response, avatar_id)
                 t_tts = time.time() - t_start
-                logger.info(f"[TTS] Audio generado ({t_tts:.2f}s): {len(audio_response)} bytes")
-                audio_base64_response = base64.b64encode(audio_response).decode()
-
-                await websocket.send_json({
-                    "type": "assistant_audio",
-                    "audio": audio_base64_response,
-                    "content": full_response
-                })
 
                 logger.info(f"[WS] Intercambio #{exchange_count} completado - Total: STT={t_whisper:.2f}s + LLM={t_llm:.2f}s + TTS={t_tts:.2f}s = {t_whisper+t_llm+t_tts:.2f}s")
 
@@ -226,16 +252,8 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                 })
 
                 t_start = time.time()
-                audio_response = await text_to_speech(full_response, avatar_id)
+                await _stream_tts_over_ws(websocket, full_response, avatar_id)
                 t_tts = time.time() - t_start
-                logger.info(f"[TTS] Audio generado ({t_tts:.2f}s): {len(audio_response)} bytes")
-                audio_base64_response = base64.b64encode(audio_response).decode()
-
-                await websocket.send_json({
-                    "type": "assistant_audio",
-                    "audio": audio_base64_response,
-                    "content": full_response
-                })
 
                 logger.info(f"[WS] Intercambio #{exchange_count} completado - Total: LLM={t_llm:.2f}s + TTS={t_tts:.2f}s = {t_llm+t_tts:.2f}s")
 

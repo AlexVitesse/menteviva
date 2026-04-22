@@ -11,14 +11,24 @@ export interface WsInitPayload {
 
 interface UseWebSocketOptions {
   avatarId: string | undefined;
-  onAudioReceived?: (base64Audio: string) => void;
   initPayload?: WsInitPayload;
+  // Nuevos callbacks para streaming TTS
+  onAudioStart?: () => void;
+  onAudioChunk?: (base64Chunk: string) => void;
+  onAudioEnd?: () => void;
 }
 
-export function useWebSocket({ avatarId, onAudioReceived, initPayload }: UseWebSocketOptions) {
+export function useWebSocket({
+  avatarId,
+  initPayload,
+  onAudioStart,
+  onAudioChunk,
+  onAudioEnd,
+}: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const pendingTextRef = useRef<string>("");
   const initPayloadRef = useRef(initPayload);
+  const audioCallbacksRef = useRef({ onAudioStart, onAudioChunk, onAudioEnd });
   const {
     setStatus,
     addMessage,
@@ -29,6 +39,10 @@ export function useWebSocket({ avatarId, onAudioReceived, initPayload }: UseWebS
   useEffect(() => {
     initPayloadRef.current = initPayload;
   }, [initPayload]);
+
+  useEffect(() => {
+    audioCallbacksRef.current = { onAudioStart, onAudioChunk, onAudioEnd };
+  }, [onAudioStart, onAudioChunk, onAudioEnd]);
 
   const connect = useCallback(() => {
     if (!avatarId) return;
@@ -66,12 +80,15 @@ export function useWebSocket({ avatarId, onAudioReceived, initPayload }: UseWebS
           break;
 
         case "assistant_token":
-          // Acumular tokens pero NO mostrar aun (esperar audio)
+          // Acumular tokens pero NO mostrar aun (esperar a assistant_audio_start)
           pendingTextRef.current += data.content;
           break;
 
-        case "assistant_audio":
-          // Mostrar texto Y reproducir audio AL MISMO TIEMPO
+        case "assistant_audio_start":
+          // El caption se muestra cuando empieza a llegar el audio: mas abajo
+          // del MSE esperamos el primer chunk para reproducir. Mostramos el
+          // texto aqui para que usuario vea el caption apenas Sofia empiece a
+          // hablar.
           addMessage({
             id: crypto.randomUUID(),
             role: "assistant",
@@ -79,12 +96,15 @@ export function useWebSocket({ avatarId, onAudioReceived, initPayload }: UseWebS
             timestamp: new Date(),
           });
           pendingTextRef.current = "";
-          // Usar callback externo si existe, sino fallback interno
-          if (onAudioReceived) {
-            onAudioReceived(data.audio);
-          } else {
-            playAudioFallback(data.audio);
-          }
+          audioCallbacksRef.current.onAudioStart?.();
+          break;
+
+        case "assistant_audio_chunk":
+          audioCallbacksRef.current.onAudioChunk?.(data.audio);
+          break;
+
+        case "assistant_audio_end":
+          audioCallbacksRef.current.onAudioEnd?.();
           break;
 
         case "session_end":
@@ -123,7 +143,6 @@ export function useWebSocket({ avatarId, onAudioReceived, initPayload }: UseWebS
     addMessage,
     setMetrics,
     setServerError,
-    onAudioReceived,
   ]);
 
   const sendAudio = useCallback((audioBase64: string) => {
@@ -151,10 +170,4 @@ export function useWebSocket({ avatarId, onAudioReceived, initPayload }: UseWebS
   }, [disconnect]);
 
   return { connect, sendAudio, endSession, disconnect };
-}
-
-// Fallback interno para reproducir audio
-function playAudioFallback(base64: string) {
-  const audio = new Audio(`data:audio/mp3;base64,${base64}`);
-  audio.play();
 }

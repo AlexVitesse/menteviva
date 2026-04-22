@@ -21,13 +21,23 @@ export function Simulation() {
   const prevMessagesLenRef = useRef(messages.length);
 
   // Hook de audio y sonidos
-  const { isPlaying, playAudio } = useAudioPlayer();
+  const { isPlaying, startStream, appendChunk, endStream } = useAudioPlayer();
   const { play: playSound } = useSoundEffects();
 
-  // Callback para cuando llega audio del servidor
-  const handleAudioReceived = useCallback((base64Audio: string) => {
-    playAudio(base64Audio);
-  }, [playAudio]);
+  const handleAudioStart = useCallback(() => {
+    startStream("audio/mpeg");
+  }, [startStream]);
+
+  const handleAudioChunk = useCallback(
+    (chunk: string) => {
+      appendChunk(chunk);
+    },
+    [appendChunk]
+  );
+
+  const handleAudioEnd = useCallback(() => {
+    endStream();
+  }, [endStream]);
 
   const initPayload = useMemo(
     () => (userProfile ? { user_profile: userProfile } : undefined),
@@ -36,7 +46,9 @@ export function Simulation() {
 
   const { connect, sendAudio, endSession, disconnect } = useWebSocket({
     avatarId: selectedAvatar?.id,
-    onAudioReceived: handleAudioReceived,
+    onAudioStart: handleAudioStart,
+    onAudioChunk: handleAudioChunk,
+    onAudioEnd: handleAudioEnd,
     initPayload,
   });
 
