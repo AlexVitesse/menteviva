@@ -9,6 +9,17 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // Vite >=5.x bloquea hosts no whitelisted como medida de seguridad.
+    // Aqui aceptamos los providers de tunnel comunes para demos remotas.
+    // Cada entry con punto al inicio es wildcard de subdominio.
+    allowedHosts: [
+      'localhost',
+      '.ngrok-free.dev',
+      '.ngrok-free.app',
+      '.ngrok.io',
+      '.devtunnels.ms',
+      '.trycloudflare.com',
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
