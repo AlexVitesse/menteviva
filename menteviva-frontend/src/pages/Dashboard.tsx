@@ -6,7 +6,7 @@ import { AvatarCard } from "../components/avatar/AvatarCard";
 import { useSessionStore } from "../stores/sessionStore";
 import type { Avatar, Gap, Strength } from "../types";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 export function Dashboard() {
   const navigate = useNavigate();

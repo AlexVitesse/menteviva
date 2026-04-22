@@ -2,7 +2,16 @@ import { useCallback, useRef, useEffect } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import type { UserProfile } from "../types";
 
-const WS_BASE_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000";
+// Si VITE_WS_URL no esta seteado, derivamos del location actual. Asi:
+// - localhost:5173 -> ws://localhost:5173 (vite proxea a backend)
+// - tunnel.devtunnels.ms -> wss://tunnel.devtunnels.ms (mismo tunnel)
+function getWsBaseUrl(): string {
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}`;
+}
+
+const WS_BASE_URL = getWsBaseUrl();
 
 export interface WsInitPayload {
   user_profile?: UserProfile;

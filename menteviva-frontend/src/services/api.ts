@@ -1,6 +1,9 @@
 import type { Avatar } from "../types";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+// VITE_API_URL vacio (default) -> URLs relativas. Vite proxea /api al backend
+// y, al acceder via tunnel, todo viaja por la misma URL. Override solo si
+// se quiere apuntar a un backend remoto especifico.
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 export interface ApiResponse<T> {
   data: T | null;
