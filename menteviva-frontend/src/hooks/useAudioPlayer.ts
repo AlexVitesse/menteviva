@@ -13,11 +13,13 @@ export function useAudioPlayer() {
   const [isPlaying, setIsPlaying] = useState(false);
   const currentBlobUrl = useRef<string | null>(null);
 
-  // Estado del streaming MSE
-  const mediaSourceRef = useRef<MediaSource | null>(null);
-  const sourceBufferRef = useRef<SourceBuffer | null>(null);
-  const pendingChunksRef = useRef<ArrayBuffer[]>([]);
-  const streamEndedRef = useRef<boolean>(false);
+  // Buffer de chunks para streaming. Acumulamos hasta endStream() y reproducimos
+  // como un solo blob. Antes intentabamos MediaSource API para playback
+  // progresivo pero rompe en Safari/iOS (no soporta MP3 via MSE) y a veces
+  // falla en Chrome por timing del play() vs sourceopen. El TTFB del lado
+  // servidor sigue siendo bajo (ElevenLabs .stream()), solo el cliente espera
+  // al final para reproducir — vale la confiabilidad universal.
+  const streamChunksRef = useRef<Uint8Array[]>([]);
 
   // Crear elemento de audio persistente
   useEffect(() => {
@@ -49,10 +51,7 @@ export function useAudioPlayer() {
       URL.revokeObjectURL(currentBlobUrl.current);
       currentBlobUrl.current = null;
     }
-    mediaSourceRef.current = null;
-    sourceBufferRef.current = null;
-    pendingChunksRef.current = [];
-    streamEndedRef.current = false;
+    streamChunksRef.current = [];
   }, []);
 
   // Legacy: reproducir un blob completo
@@ -98,81 +97,38 @@ export function useAudioPlayer() {
     });
   }, [cleanupPreviousSource]);
 
-  // Streaming via MediaSource
-  const tryDrainQueue = useCallback(() => {
-    const sb = sourceBufferRef.current;
-    const ms = mediaSourceRef.current;
-    if (!sb || sb.updating) return;
+  // Streaming "ligero": acumula chunks, reproduce al cerrar como blob unico.
+  const startStream = useCallback(
+    (_mimeType = "audio/mpeg") => {
+      cleanupPreviousSource();
+    },
+    [cleanupPreviousSource]
+  );
 
-    const chunk = pendingChunksRef.current.shift();
-    if (chunk) {
-      try {
-        sb.appendBuffer(chunk);
-      } catch (err) {
-        console.error("[useAudioPlayer] appendBuffer error:", err);
-      }
-      return;
-    }
-
-    if (streamEndedRef.current && ms && ms.readyState === "open") {
-      try {
-        ms.endOfStream();
-      } catch (err) {
-        console.warn("[useAudioPlayer] endOfStream error:", err);
-      }
-    }
+  const appendChunk = useCallback((base64: string) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    streamChunksRef.current.push(bytes);
   }, []);
 
-  const startStream = useCallback(
-    (mimeType = "audio/mpeg") => {
-      if (!audioRef.current) return;
-
-      cleanupPreviousSource();
-
-      const ms = new MediaSource();
-      mediaSourceRef.current = ms;
-
-      const url = URL.createObjectURL(ms);
-      currentBlobUrl.current = url;
-
-      ms.addEventListener(
-        "sourceopen",
-        () => {
-          try {
-            const sb = ms.addSourceBuffer(mimeType);
-            sb.addEventListener("updateend", tryDrainQueue);
-            sourceBufferRef.current = sb;
-            tryDrainQueue();
-          } catch (err) {
-            console.error("[useAudioPlayer] addSourceBuffer error:", err);
-          }
-        },
-        { once: true }
-      );
-
-      audioRef.current.src = url;
-      audioRef.current.play().catch((err) => {
-        console.warn("[useAudioPlayer] play() rejected:", err);
-      });
-    },
-    [cleanupPreviousSource, tryDrainQueue]
-  );
-
-  const appendChunk = useCallback(
-    (base64: string) => {
-      const binary = atob(base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      pendingChunksRef.current.push(bytes.buffer);
-      tryDrainQueue();
-    },
-    [tryDrainQueue]
-  );
-
   const endStream = useCallback(() => {
-    streamEndedRef.current = true;
-    tryDrainQueue();
-  }, [tryDrainQueue]);
+    if (!audioRef.current || streamChunksRef.current.length === 0) return;
+
+    const blob = new Blob(streamChunksRef.current as BlobPart[], { type: "audio/mpeg" });
+    streamChunksRef.current = [];
+
+    if (currentBlobUrl.current) {
+      URL.revokeObjectURL(currentBlobUrl.current);
+    }
+    const url = URL.createObjectURL(blob);
+    currentBlobUrl.current = url;
+
+    audioRef.current.src = url;
+    audioRef.current.play().catch((err) => {
+      console.warn("[useAudioPlayer] play() rejected:", err);
+    });
+  }, []);
 
   const stopAudio = useCallback(() => {
     if (audioRef.current) {
