@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Clock, PhoneOff } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Clock, Mic, MicOff, PhoneOff, Loader2, AlertCircle } from "lucide-react";
 
 import { AnimatedAvatar } from "../components/avatar/AnimatedAvatar";
 import { ChatBox } from "../components/chat/ChatBox";
-import { VoiceButton } from "../components/voice/VoiceButton";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { useAudioRecorder } from "../hooks/useAudioRecorder";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -27,6 +26,9 @@ export function Diagnostico() {
   } = useSessionStore();
 
   const [elapsed, setElapsed] = useState(0);
+  const [sessionStarted, setSessionStarted] = useState(false);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [requestingPermission, setRequestingPermission] = useState(false);
   const startRef = useRef<number>(Date.now());
 
   // Redirect si no hay contexto minimo
@@ -85,19 +87,59 @@ export function Diagnostico() {
 
   const { isRecording, startRecording, stopRecording } = useAudioRecorder();
 
+  // Conexion WS y timer arrancan SOLO despues del overlay (sessionStarted)
   useEffect(() => {
+    if (!sessionStarted) return;
     if (!userProfile?.registro || !diagnosticoVars) return;
+    startRef.current = Date.now();
     connect();
     return () => disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionStarted]);
 
   useEffect(() => {
+    if (!sessionStarted) return;
     const interval = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [sessionStarted]);
+
+  /**
+   * El click en "Iniciar entrevista" hace TRES cosas en el mismo gesto:
+   * 1. Pide permiso de microfono (proactivo, antes de que el usuario lo
+   *    necesite para hablar).
+   * 2. Desbloquea el audio element (iOS Safari requiere gesto reciente).
+   * 3. Conecta el WebSocket y empieza el timer.
+   */
+  async function handleStartSession() {
+    setRequestingPermission(true);
+    setPermissionError(null);
+    try {
+      // Pedir mic permission. El stream se cierra de inmediato; el recorder
+      // pedira de nuevo pero ya estara concedido sin prompt.
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+
+      // Desbloquear audio en el mismo gesto del click
+      await unlockAudio();
+
+      setSessionStarted(true);
+    } catch (err) {
+      const name = err instanceof Error ? err.name : "Error";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setPermissionError(
+          "Necesitamos acceso al microfono para la entrevista. Habilitalo en los ajustes del navegador y vuelve a intentar."
+        );
+      } else if (name === "NotFoundError") {
+        setPermissionError("No detectamos ningun microfono conectado.");
+      } else {
+        setPermissionError("No pudimos acceder al microfono. Intenta de nuevo.");
+      }
+    } finally {
+      setRequestingPermission(false);
+    }
+  }
 
   useEffect(() => {
     if (!metrics) return;
@@ -107,9 +149,14 @@ export function Diagnostico() {
     navigate("/diagnostico/perfil");
   }, [metrics, navigate, updateDiagnostico]);
 
+  // Debounce para evitar doble-trigger en mobile (touch + click sintetico)
+  const lastToggleRef = useRef(0);
+
   async function handleVoiceToggle() {
-    // Primer toque del usuario en la pagina: desbloquea audio en iOS Safari
-    await unlockAudio();
+    const now = Date.now();
+    if (now - lastToggleRef.current < 250) return;
+    lastToggleRef.current = now;
+
     if (isRecording) {
       const base64 = await stopRecording();
       if (base64) sendAudio(base64);
@@ -168,13 +215,34 @@ export function Diagnostico() {
         <aside className="flex-1 md:flex-none md:w-[400px] flex flex-col gap-3 min-h-0">
           <ChatBox messages={messages} className="flex-1 min-h-0" />
           <div className="flex justify-center pt-1 sm:pt-2 shrink-0">
-            <VoiceButton
-              isRecording={isRecording}
-              isDisabled={isDisabled}
-              isLoading={status === "transcribing" || status === "thinking"}
-              onMouseDown={handleVoiceToggle}
-              onMouseUp={() => {}}
-            />
+            <button
+              type="button"
+              onClick={handleVoiceToggle}
+              disabled={isDisabled}
+              className={`
+                relative w-20 h-20 rounded-full flex items-center justify-center
+                transition-all duration-200 shadow-lg
+                ${isRecording ? "bg-danger shadow-danger/30" : "bg-violet shadow-violet/30"}
+                ${isDisabled && "opacity-50 cursor-not-allowed"}
+                active:scale-95
+              `}
+            >
+              {isRecording && (
+                <motion.div
+                  initial={{ scale: 1, opacity: 0.5 }}
+                  animate={{ scale: 1.5, opacity: 0 }}
+                  transition={{ repeat: Infinity, duration: 1 }}
+                  className="absolute inset-0 rounded-full bg-danger"
+                />
+              )}
+              {status === "transcribing" || status === "thinking" ? (
+                <Loader2 className="w-8 h-8 text-white animate-spin" />
+              ) : isRecording ? (
+                <MicOff className="w-8 h-8 text-white" />
+              ) : (
+                <Mic className="w-8 h-8 text-white" />
+              )}
+            </button>
           </div>
           <p className="text-center text-xs text-muted shrink-0 pb-1">
             {isRecording
@@ -183,6 +251,60 @@ export function Diagnostico() {
           </p>
         </aside>
       </main>
+
+      <AnimatePresence>
+        {!sessionStarted && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-ink/95 backdrop-blur-sm z-50 flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 16 }}
+              animate={{ scale: 1, y: 0 }}
+              className="w-full max-w-md bg-card rounded-2xl border border-white/5 p-8 text-center"
+            >
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet/20 flex items-center justify-center">
+                <Mic className="w-8 h-8 text-violet-light" />
+              </div>
+              <h2 className="font-syne text-2xl font-bold mb-2">
+                Listo para empezar
+              </h2>
+              <p className="text-muted text-sm mb-6">
+                Vamos a pedirte permiso de microfono para que Sofia pueda
+                escucharte. La entrevista dura unos {diagnosticoVars?.minutos ?? 25} minutos.
+              </p>
+
+              {permissionError && (
+                <div className="flex items-start gap-2 bg-warning/10 border border-warning/30 rounded-lg p-3 mb-4 text-left">
+                  <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                  <p className="text-xs text-cream">{permissionError}</p>
+                </div>
+              )}
+
+              <button
+                onClick={handleStartSession}
+                disabled={requestingPermission}
+                className="w-full font-syne font-bold text-sm py-3 rounded-[10px] bg-violet text-white hover:bg-violet-light transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {requestingPermission ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Pidiendo permiso...
+                  </>
+                ) : (
+                  "Iniciar entrevista"
+                )}
+              </button>
+
+              <p className="text-[11px] text-muted mt-4">
+                En movil: asegurate de NO tener el switch de silencio activado.
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

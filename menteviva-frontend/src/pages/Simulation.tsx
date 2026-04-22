@@ -107,7 +107,14 @@ export function Simulation() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
+  // Debounce para evitar doble-trigger en mobile (touch + click sintetico)
+  const lastButtonRef = useRef(0);
+
   async function handleVoiceButton() {
+    const now = Date.now();
+    if (now - lastButtonRef.current < 250) return;
+    lastButtonRef.current = now;
+
     // Desbloquea audio en iOS Safari en el primer toque
     await unlockAudio();
     if (isRecording) {

@@ -131,24 +131,58 @@ export function useAudioPlayer() {
   }, []);
 
   /**
-   * iOS Safari (y a veces Chrome con autoplay policy) requiere un gesto del
-   * usuario antes de permitir audio.play() programatico. Esta funcion se debe
-   * llamar desde un onClick/onTouchStart del usuario para "desbloquear" el
-   * elemento. Despues, plays subsecuentes desde event handlers funcionan.
-   * Idempotente: solo desbloquea la primera vez.
+   * iOS Safari (y Chrome con autoplay policy) requieren un gesto del usuario
+   * antes de permitir audio.play() programatico. Se debe llamar esta funcion
+   * desde un onClick/onTouchStart real del usuario.
+   *
+   * Estrategia (combina lo que funciona en cada navegador):
+   * 1. Crear/resumir AudioContext y reproducir un buffer silencioso de 1
+   *    sample. Esto desbloquea Web Audio Y, en iOS, tambien HTMLMediaElement
+   *    cuando se hace dentro del mismo gesto.
+   * 2. Reproducir el HTMLAudioElement con un data URI WAV silencioso real
+   *    (no vacio) para asegurar el unlock especifico del elemento.
+   *
+   * Idempotente: solo se ejecuta la primera vez.
    */
   const unlockAudioRef = useRef(false);
+  // 44-byte WAV silencioso (1 sample, 8kHz mono 8-bit). Se reproduce en ~0ms.
+  const SILENT_WAV_DATA_URI =
+    "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
   const unlockAudio = useCallback(async () => {
     if (unlockAudioRef.current || !audioRef.current) return;
+
+    // Paso 1: AudioContext (desbloquea Web Audio en iOS)
     try {
-      audioRef.current.muted = true;
-      await audioRef.current.play();
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      audioRef.current.muted = false;
-      unlockAudioRef.current = true;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        if (ctx.state === "suspended") await ctx.resume();
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+      }
     } catch {
-      // Si el navegador no permite ni el play silenciado, ya no hay mucho que hacer
+      /* sigue intentando con HTMLMediaElement */
+    }
+
+    // Paso 2: HTMLAudioElement con WAV silencioso real
+    try {
+      const audio = audioRef.current;
+      audio.src = SILENT_WAV_DATA_URI;
+      audio.muted = false;
+      audio.volume = 1;
+      await audio.play();
+      audio.pause();
+      audio.currentTime = 0;
+      unlockAudioRef.current = true;
+    } catch (err) {
+      console.warn("[useAudioPlayer] unlockAudio fallo:", err);
     }
   }, []);
 
