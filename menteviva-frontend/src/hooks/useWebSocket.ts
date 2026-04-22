@@ -56,13 +56,17 @@ export function useWebSocket({
   const connect = useCallback(() => {
     if (!avatarId) return;
 
-    const ws = new WebSocket(`${WS_BASE_URL}/api/conversation/${avatarId}`);
+    const wsUrl = `${WS_BASE_URL}/api/conversation/${avatarId}`;
+    console.log("[WS] Connecting to:", wsUrl);
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      console.log("[WS] Connected");
       setStatus("ready");
       const payload = initPayloadRef.current;
       if (payload && (payload.user_profile || payload.session_vars)) {
+        console.log("[WS] Sending init payload");
         ws.send(JSON.stringify({ type: "init", ...payload }));
       }
     };
@@ -137,12 +141,14 @@ export function useWebSocket({
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      console.log("[WS] Closed:", event.code, event.reason || "(no reason)");
       setStatus("disconnected");
       pendingTextRef.current = "";
     };
 
-    ws.onerror = () => {
+    ws.onerror = (event) => {
+      console.error("[WS] Error event:", event);
       setStatus("disconnected");
       pendingTextRef.current = "";
     };
