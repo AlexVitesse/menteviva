@@ -36,6 +36,10 @@ export function useWebSocket({
 }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const pendingTextRef = useRef<string>("");
+  // Texto del asistente que llega en assistant_audio_start. No se muestra
+  // hasta assistant_audio_end (que es cuando el audio empieza a reproducirse)
+  // para que caption y voz aparezcan juntas.
+  const pendingAssistantTextRef = useRef<string>("");
   const initPayloadRef = useRef(initPayload);
   const audioCallbacksRef = useRef({ onAudioStart, onAudioChunk, onAudioEnd });
   const {
@@ -99,12 +103,9 @@ export function useWebSocket({
 
         case "assistant_audio_start":
           console.log("[WS] assistant_audio_start, contenido:", data.content?.slice(0, 40));
-          addMessage({
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: data.content || pendingTextRef.current,
-            timestamp: new Date(),
-          });
+          // Guardamos el texto pero NO lo mostramos todavia. Aparecera en
+          // assistant_audio_end junto con el play() del audio.
+          pendingAssistantTextRef.current = data.content || pendingTextRef.current;
           pendingTextRef.current = "";
           audioCallbacksRef.current.onAudioStart?.();
           break;
@@ -115,6 +116,15 @@ export function useWebSocket({
 
         case "assistant_audio_end":
           console.log("[WS] assistant_audio_end recibido");
+          if (pendingAssistantTextRef.current) {
+            addMessage({
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: pendingAssistantTextRef.current,
+              timestamp: new Date(),
+            });
+            pendingAssistantTextRef.current = "";
+          }
           audioCallbacksRef.current.onAudioEnd?.();
           break;
 
