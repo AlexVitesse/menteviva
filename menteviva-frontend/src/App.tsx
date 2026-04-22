@@ -3,6 +3,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Briefing } from "./pages/Briefing";
 import { Simulation } from "./pages/Simulation";
 import { Report } from "./pages/Report";
+import { Login } from "./pages/Login";
 import { Registro } from "./pages/Registro";
 import { DiagnosticoSetup } from "./pages/DiagnosticoSetup";
 import { Diagnostico } from "./pages/Diagnostico";
@@ -11,19 +12,19 @@ import { useSessionStore } from "./stores/sessionStore";
 
 /**
  * Guard de onboarding:
- * - Sin registro -> /registro
+ * - Sin perfil en localStorage -> /login (elige crear cuenta o iniciar sesion)
  * - Con registro pero sin diagnostico -> /diagnostico/setup
  * - Con ambos -> renderiza la ruta original
  *
  * Se aplica a rutas "protegidas" (dashboard y flujo de practica).
- * /registro y las rutas del diagnostico se auto-resuelven (no aplican guard).
+ * /login, /registro y rutas del diagnostico se auto-resuelven (no aplican guard).
  */
 function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const userProfile = useSessionStore((s) => s.userProfile);
   const location = useLocation();
 
   if (!userProfile?.registro) {
-    return <Navigate to="/registro" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
   if (!userProfile.diagnostico) {
     return <Navigate to="/diagnostico/setup" replace state={{ from: location.pathname }} />;
@@ -35,6 +36,7 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route path="/login" element={<Login />} />
         <Route path="/registro" element={<Registro />} />
         <Route path="/diagnostico/setup" element={<DiagnosticoSetup />} />
         <Route path="/diagnostico" element={<Diagnostico />} />
