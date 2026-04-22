@@ -418,25 +418,23 @@ export function AnimatedAvatar({
             <ellipse cx="75" cy="86" rx="16" ry="4" fill={config.skinShadow} opacity="0.4" />
 
             {/* Blanco del ojo */}
-            <motion.ellipse
+            <ellipse
               cx="75"
               cy="90"
               rx="15"
               ry={eyeWhiteRy}
               fill="white"
-              animate={{ ry: eyeWhiteRy }}
-              transition={{ duration: 0.08 }}
+              style={{ transition: "ry 80ms" }}
             />
 
             {/* Iris con gradiente */}
-            <motion.ellipse
+            <ellipse
               cx="75"
               cy={isBlinking ? 90 : 91}
               rx="8"
               ry={eyeIrisRy}
               fill={`url(#eyeGrad-${character})`}
-              animate={{ ry: eyeIrisRy }}
-              transition={{ duration: 0.08 }}
+              style={{ transition: "ry 80ms" }}
             />
 
             {/* Pupila */}
@@ -467,14 +465,13 @@ export function AnimatedAvatar({
               transition={{ duration: 0.08 }}
             />
 
-            <motion.ellipse
+            <ellipse
               cx="125"
               cy={isBlinking ? 90 : 91}
               rx="8"
               ry={eyeIrisRy}
               fill={`url(#eyeGrad-${character})`}
-              animate={{ ry: eyeIrisRy }}
-              transition={{ duration: 0.08 }}
+              style={{ transition: "ry 80ms" }}
             />
 
             {!isBlinking && (

@@ -100,6 +100,7 @@ export function useAudioPlayer() {
   // Streaming "ligero": acumula chunks, reproduce al cerrar como blob unico.
   const startStream = useCallback(
     (_mimeType = "audio/mpeg") => {
+      console.log("[Audio] startStream");
       cleanupPreviousSource();
     },
     [cleanupPreviousSource]
@@ -110,10 +111,24 @@ export function useAudioPlayer() {
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     streamChunksRef.current.push(bytes);
+    console.log(
+      `[Audio] chunk #${streamChunksRef.current.length} (${bytes.length} bytes)`
+    );
   }, []);
 
   const endStream = useCallback(() => {
-    if (!audioRef.current || streamChunksRef.current.length === 0) return;
+    const totalChunks = streamChunksRef.current.length;
+    const totalBytes = streamChunksRef.current.reduce((s, c) => s + c.length, 0);
+    console.log(`[Audio] endStream: ${totalChunks} chunks, ${totalBytes} bytes`);
+
+    if (!audioRef.current) {
+      console.warn("[Audio] endStream: audioRef.current es null");
+      return;
+    }
+    if (totalChunks === 0) {
+      console.warn("[Audio] endStream: 0 chunks recibidos");
+      return;
+    }
 
     const blob = new Blob(streamChunksRef.current as BlobPart[], { type: "audio/mpeg" });
     streamChunksRef.current = [];
@@ -123,11 +138,15 @@ export function useAudioPlayer() {
     }
     const url = URL.createObjectURL(blob);
     currentBlobUrl.current = url;
+    console.log(`[Audio] blob creado: ${blob.size} bytes, url: ${url}`);
 
     audioRef.current.src = url;
-    audioRef.current.play().catch((err) => {
-      console.warn("[useAudioPlayer] play() rejected:", err);
-    });
+    audioRef.current
+      .play()
+      .then(() => console.log("[Audio] play() OK"))
+      .catch((err) => {
+        console.warn("[Audio] play() rejected:", err);
+      });
   }, []);
 
   /**

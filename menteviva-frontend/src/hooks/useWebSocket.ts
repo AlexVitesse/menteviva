@@ -98,10 +98,7 @@ export function useWebSocket({
           break;
 
         case "assistant_audio_start":
-          // El caption se muestra cuando empieza a llegar el audio: mas abajo
-          // del MSE esperamos el primer chunk para reproducir. Mostramos el
-          // texto aqui para que usuario vea el caption apenas Sofia empiece a
-          // hablar.
+          console.log("[WS] assistant_audio_start, contenido:", data.content?.slice(0, 40));
           addMessage({
             id: crypto.randomUUID(),
             role: "assistant",
@@ -117,6 +114,7 @@ export function useWebSocket({
           break;
 
         case "assistant_audio_end":
+          console.log("[WS] assistant_audio_end recibido");
           audioCallbacksRef.current.onAudioEnd?.();
           break;
 
