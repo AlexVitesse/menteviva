@@ -21,7 +21,7 @@ export function Simulation() {
   const prevMessagesLenRef = useRef(messages.length);
 
   // Hook de audio y sonidos
-  const { isPlaying, startStream, appendChunk, endStream } = useAudioPlayer();
+  const { isPlaying, startStream, appendChunk, endStream, unlockAudio } = useAudioPlayer();
   const { play: playSound } = useSoundEffects();
 
   const handleAudioStart = useCallback(() => {
@@ -108,6 +108,8 @@ export function Simulation() {
   };
 
   async function handleVoiceButton() {
+    // Desbloquea audio en iOS Safari en el primer toque
+    await unlockAudio();
     if (isRecording) {
       playSound("recordStop");
       const audioBase64 = await stopRecording();
@@ -167,37 +169,35 @@ export function Simulation() {
   return (
     <div className="h-screen bg-[#1a1a1a] flex flex-col overflow-hidden">
       {/* Header estilo Zoom */}
-      <header className="bg-[#232323] px-4 py-2 flex items-center justify-between border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-          <span className="text-white/80 text-sm font-medium">
-            Mente Viva - Simulación en vivo
+      <header className="bg-[#232323] px-3 sm:px-4 py-2 flex items-center justify-between border-b border-white/10 gap-2">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shrink-0" />
+          <span className="text-white/80 text-xs sm:text-sm font-medium truncate">
+            <span className="hidden sm:inline">Mente Viva - </span>Simulación
           </span>
         </div>
-        <div className="flex items-center gap-4">
-          {/* Timer */}
-          <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-full">
-            <Clock className="w-4 h-4 text-white/60" />
-            <span className="text-white font-mono text-sm">{formatTime(elapsedTime)}</span>
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 bg-white/5 rounded-full">
+            <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-white/60" />
+            <span className="text-white font-mono text-xs sm:text-sm">{formatTime(elapsedTime)}</span>
           </div>
-          {/* Contador de intercambios */}
-          <div className="text-white/50 text-sm">
+          <div className="text-white/50 text-xs sm:text-sm hidden sm:block">
             {messages.length > 0 ? `${Math.ceil(messages.length / 2)} intercambios` : "Esperando..."}
           </div>
         </div>
       </header>
 
-      {/* Main - Video Grid estilo Zoom */}
-      <main className="flex-1 flex gap-2 p-2 overflow-hidden">
+      {/* Main - Stack en movil, side-by-side en desktop */}
+      <main className="flex-1 flex flex-col md:flex-row gap-2 p-2 overflow-hidden min-h-0">
         {/* Video del Avatar (Principal) */}
-        <div className="flex-1 relative rounded-xl overflow-hidden bg-gradient-to-br from-[#2a2a3a] to-[#1a1a2e]">
+        <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[#2a2a3a] to-[#1a1a2e] h-[40vh] md:h-auto md:flex-1">
           {/* Avatar centrado */}
           <div className="absolute inset-0 flex items-center justify-center">
             <AnimatedAvatar
               character={avatarCharacter}
               isSpeaking={isSpeaking}
               isActive={isAvatarActive}
-              size={Math.min(400, window.innerWidth * 0.35)}
+              size={typeof window !== "undefined" ? Math.min(280, window.innerWidth * 0.6) : 280}
             />
           </div>
 
@@ -271,10 +271,10 @@ export function Simulation() {
           </AnimatePresence>
         </div>
 
-        {/* Video del Usuario (Pequeño, esquina) */}
-        <div className="w-64 flex flex-col gap-2">
-          {/* Tu video */}
-          <div className="relative h-48 rounded-xl overflow-hidden bg-gradient-to-br from-[#3a3a4a] to-[#2a2a3a] border border-white/10">
+        {/* Sidebar: video tuyo + chat. Stack en movil debajo del avatar */}
+        <div className="md:w-64 flex flex-col gap-2 min-h-0 flex-1 md:flex-none">
+          {/* Tu video — oculto en movil para dar espacio al chat */}
+          <div className="relative h-32 md:h-48 rounded-xl overflow-hidden bg-gradient-to-br from-[#3a3a4a] to-[#2a2a3a] border border-white/10 hidden sm:block">
             {isCameraOn ? (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="w-20 h-20 rounded-full bg-violet/20 flex items-center justify-center">

@@ -130,6 +130,28 @@ export function useAudioPlayer() {
     });
   }, []);
 
+  /**
+   * iOS Safari (y a veces Chrome con autoplay policy) requiere un gesto del
+   * usuario antes de permitir audio.play() programatico. Esta funcion se debe
+   * llamar desde un onClick/onTouchStart del usuario para "desbloquear" el
+   * elemento. Despues, plays subsecuentes desde event handlers funcionan.
+   * Idempotente: solo desbloquea la primera vez.
+   */
+  const unlockAudioRef = useRef(false);
+  const unlockAudio = useCallback(async () => {
+    if (unlockAudioRef.current || !audioRef.current) return;
+    try {
+      audioRef.current.muted = true;
+      await audioRef.current.play();
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current.muted = false;
+      unlockAudioRef.current = true;
+    } catch {
+      // Si el navegador no permite ni el play silenciado, ya no hay mucho que hacer
+    }
+  }, []);
+
   const stopAudio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -153,6 +175,7 @@ export function useAudioPlayer() {
     startStream,
     appendChunk,
     endStream,
+    unlockAudio,
     stopAudio,
     pauseAudio,
     resumeAudio,
