@@ -35,10 +35,12 @@ async def chat_stream(
     client = get_groq_client()
     stream = client.chat.completions.create(
         model=settings.groq_model_llm,
-        messages=full_messages,
-        temperature=0.7,
+        # 0.4: respuestas mas consistentes y concisas. En 0.7 Sofia tendia a
+        # parafrasear empaticamente y encadenar multiples preguntas "creativas".
+        temperature=0.4,
         max_tokens=500,
-        stream=True
+        stream=True,
+        messages=full_messages,
     )
 
     for chunk in stream:

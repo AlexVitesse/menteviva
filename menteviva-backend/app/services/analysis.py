@@ -468,6 +468,13 @@ fortalezas si no las hay — mejor menos strengths que strengths sin evidencia.
    encuentras una frase real del candidato que respalde el gap, NO incluyas
    ese gap. Si solo detectas 1 gap con evidencia real, devuelve solo 1 gap.
 
+   STRENGTHS REQUIEREN EJEMPLO CONCRETO (no solo afirmacion). Una habilidad se
+   marca como strength SOLO si el candidato dio un momento especifico con
+   situacion + accion + resultado. Si solo afirmo la habilidad en abstracto
+   ("desarrolle comunicacion", "soy bueno negociando") sin historia respaldando,
+   NO la incluyas en strengths. En su lugar, agrega "claridad narrativa" o la
+   habilidad afirmada a gaps con micro_practice de contar un caso real con STAR.
+
 2. CONDUCTA, NO ETIQUETA. Describe lo que OBSERVASTE.
    Malo: "eres desordenado" / "tienes baja autoestima" / "eres tecnico".
    Bueno: "no mencionaste metricas en ningun ejemplo" / "usaste 'nosotros' al
