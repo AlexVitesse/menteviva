@@ -136,7 +136,10 @@ async def text_to_speech_stream(
     client = _get_client()
 
     def _open_stream():
-        return client.text_to_speech.stream(
+        # ElevenLabs SDK v1.x: convert_as_stream usa el endpoint /stream con
+        # menor TTFB. (El metodo que se llama solo .stream() no existe en
+        # esta version del SDK, era convert_as_stream desde el inicio.)
+        return client.text_to_speech.convert_as_stream(
             text=clean_text,
             voice_id=voice_id,
             model_id=settings.elevenlabs_model,
