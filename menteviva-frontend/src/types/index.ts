@@ -119,6 +119,7 @@ export interface Diagnostico {
   verbal_patterns: VerbalPatterns;
   recommended_next_scenario: RecommendedScenario;
   recommended_next_level: RecommendedLevel;
+  is_demo?: boolean;
 }
 
 export interface UserProfile {

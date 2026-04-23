@@ -624,6 +624,7 @@ def _demo_diagnostico(reason_in_blind_spot: str | None = None) -> dict:
         ),
         recommended_next_scenario="roberto",
         recommended_next_level="facil",
+        is_demo=True,
     ).model_dump()
 
 

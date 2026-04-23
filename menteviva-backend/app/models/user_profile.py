@@ -60,6 +60,9 @@ class Diagnostico(BaseModel):
     verbal_patterns: VerbalPatterns
     recommended_next_scenario: RecommendedScenario
     recommended_next_level: RecommendedLevel
+    # True cuando la sesion fue muy corta (<4 intercambios) y el diagnostico
+    # es un placeholder, no un analisis real. El frontend muestra un aviso.
+    is_demo: bool = False
 
 
 class UserProfile(BaseModel):

@@ -8,6 +8,7 @@ import { Registro } from "./pages/Registro";
 import { DiagnosticoSetup } from "./pages/DiagnosticoSetup";
 import { Diagnostico } from "./pages/Diagnostico";
 import { DiagnosticoPerfil } from "./pages/DiagnosticoPerfil";
+import { DiagnosticoRecomendacion } from "./pages/DiagnosticoRecomendacion";
 import { useSessionStore } from "./stores/sessionStore";
 
 /**
@@ -41,6 +42,7 @@ function App() {
         <Route path="/diagnostico/setup" element={<DiagnosticoSetup />} />
         <Route path="/diagnostico" element={<Diagnostico />} />
         <Route path="/diagnostico/perfil" element={<DiagnosticoPerfil />} />
+        <Route path="/diagnostico/recomendacion" element={<DiagnosticoRecomendacion />} />
 
         <Route path="/" element={<OnboardingGuard><Dashboard /></OnboardingGuard>} />
         <Route path="/briefing" element={<OnboardingGuard><Briefing /></OnboardingGuard>} />
