@@ -7,7 +7,8 @@ from logging.handlers import RotatingFileHandler
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import conversation, avatars
+from app.db import init_db
+from app.routers import conversation, avatars, profiles
 
 # ============ CONFIGURAR LOGGING ============
 
@@ -65,6 +66,12 @@ app.add_middleware(
 
 app.include_router(avatars.router, prefix="/api", tags=["avatars"])
 app.include_router(conversation.router, prefix="/api", tags=["conversation"])
+app.include_router(profiles.router, prefix="/api", tags=["profiles"])
+
+
+@app.on_event("startup")
+async def startup_db():
+    await init_db()
 
 
 @app.get("/health")

@@ -27,6 +27,7 @@ from app.services.groq_whisper import transcribe_audio
 from app.services.groq_llm import chat_stream
 from app.services.edge_tts import text_to_speech, text_to_speech_stream
 from app.services.analysis import analyze_conversation, generate_user_profile
+from app.services.user_repo import save_diagnostic, upsert_user
 from app.prompts.scenarios import get_avatar, get_system_prompt
 from app.prompts.entrevistador import pick_greeting
 
@@ -188,6 +189,11 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                             f"[WS] Init - usuario: {user_profile.registro.nombre}, "
                             f"diagnostico: {'si' if user_profile.diagnostico else 'no'}"
                         )
+                        # Persistir registro en SQLite (no bloquea si falla)
+                        try:
+                            await upsert_user(user_profile)
+                        except Exception as e:
+                            logger.error(f"[WS] upsert_user fallo: {e}")
                     except Exception as e:
                         logger.warning(f"[WS] user_profile invalido en init: {e}")
                         user_profile = None
@@ -386,6 +392,15 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                         f"{diagnostico.get('recommended_next_scenario')}/"
                         f"{diagnostico.get('recommended_next_level')}"
                     )
+                    # Persistir en SQLite (mejor esfuerzo — no bloquea flujo)
+                    try:
+                        await save_diagnostic(
+                            user_id=user_profile.user_id,
+                            diagnostico=diagnostico,
+                            conversation=conversation_history,
+                        )
+                    except Exception as e:
+                        logger.error(f"[WS] save_diagnostic fallo: {e}")
                     await websocket.send_json({
                         "type": "session_end",
                         "metrics": {**base_metrics, "user_profile_update": diagnostico},

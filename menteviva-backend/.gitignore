@@ -58,3 +58,4 @@ Thumbs.db
 # Excepcion: saludos pre-grabados de Sofia se versionan para que cualquier
 # deploy los tenga sin necesidad de correr el script ni gastar ElevenLabs.
 !app/static/greetings/*.mp3
+data/
