@@ -1,16 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Mic, MicOff, PhoneOff, Loader2, AlertCircle } from "lucide-react";
+import {
+  Clock,
+  Mic,
+  PhoneOff,
+  Loader2,
+  AlertCircle,
+  Volume2,
+  Brain,
+  PauseCircle,
+} from "lucide-react";
+import { useMicVAD, utils as vadUtils } from "@ricky0123/vad-react";
 
 import { AnimatedAvatar } from "../components/avatar/AnimatedAvatar";
 import { ChatBox } from "../components/chat/ChatBox";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
-import { useAudioRecorder } from "../hooks/useAudioRecorder";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useSessionStore } from "../stores/sessionStore";
 import { ENTREVISTADOR_AVATAR } from "../utils/entrevistador";
 import { formatDuration } from "../utils/audio";
+
+type IndicatorState =
+  | "loading"
+  | "listening"
+  | "userSpeaking"
+  | "processing"
+  | "sofiaSpeaking"
+  | "paused";
 
 export function Diagnostico() {
   const navigate = useNavigate();
@@ -34,6 +51,9 @@ export function Diagnostico() {
   const startRef = useRef<number>(Date.now());
   const closingTimerRef = useRef<number | null>(null);
 
+  const targetSeconds = (diagnosticoVars?.minutos ?? 25) * 60;
+  const progressPct = Math.min(100, (elapsed / targetSeconds) * 100);
+
   // Redirect si no hay contexto minimo
   useEffect(() => {
     if (!userProfile?.registro) {
@@ -50,25 +70,10 @@ export function Diagnostico() {
 
   const { isPlaying, startStream, appendChunk, endStream, unlockAudio } = useAudioPlayer();
 
-  const handleAudioStart = useCallback(() => {
-    startStream("audio/mpeg");
-  }, [startStream]);
-
-  const handleAudioChunk = useCallback(
-    (chunk: string) => {
-      appendChunk(chunk);
-    },
-    [appendChunk]
-  );
-
-  const handleAudioEnd = useCallback(() => {
-    endStream();
-  }, [endStream]);
-
-  // Sofia emitio [CIERRE] -> arrancar countdown de 5s antes de auto-end
-  const handleClosingIntent = useCallback(() => {
-    setClosingCountdown(5);
-  }, []);
+  const handleAudioStart = useCallback(() => startStream("audio/mpeg"), [startStream]);
+  const handleAudioChunk = useCallback((chunk: string) => appendChunk(chunk), [appendChunk]);
+  const handleAudioEnd = useCallback(() => endStream(), [endStream]);
+  const handleClosingIntent = useCallback(() => setClosingCountdown(5), []);
 
   const initPayload = useMemo(() => {
     if (!userProfile || !diagnosticoVars) return undefined;
@@ -94,9 +99,39 @@ export function Diagnostico() {
     initPayload,
   });
 
-  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
+  // VAD: detecta voz, auto-encodea WAV y manda al WS. Sin botones.
+  const vad = useMicVAD({
+    startOnLoad: false,
+    onSpeechEnd: (audio: Float32Array) => {
+      console.log(`[VAD] speech end, ${audio.length} samples`);
+      const wavBytes = vadUtils.encodeWAV(audio);
+      const base64 = vadUtils.arrayBufferToBase64(wavBytes);
+      sendAudio(base64, "audio.wav");
+    },
+    onVADMisfire: () => {
+      console.log("[VAD] misfire (too short)");
+    },
+    positiveSpeechThreshold: 0.5,
+    negativeSpeechThreshold: 0.35,
+    minSpeechMs: 200,        // descartar audios <200ms (toses, ruidos)
+    redemptionMs: 600,       // esperar 600ms de silencio antes de cerrar segment
+    preSpeechPadMs: 200,     // incluir 200ms previos al inicio del speech
+  });
 
-  // Conexion WS y timer arrancan SOLO despues del overlay (sessionStarted)
+  // Pausar VAD cuando Sofia habla o estamos procesando — evita feedback loop
+  // y descartamos el audio del propio TTS volviendo por el mic.
+  useEffect(() => {
+    if (!sessionStarted) return;
+    if (vad.loading || vad.errored) return;
+    const shouldListen = status === "ready" && !isPlaying;
+    if (shouldListen && !vad.listening) {
+      vad.start();
+    } else if (!shouldListen && vad.listening) {
+      vad.pause();
+    }
+  }, [sessionStarted, status, isPlaying, vad]);
+
+  // WS connect tras overlay
   useEffect(() => {
     if (!sessionStarted) return;
     if (!userProfile?.registro || !diagnosticoVars) return;
@@ -114,40 +149,24 @@ export function Diagnostico() {
     return () => clearInterval(interval);
   }, [sessionStarted]);
 
-  /**
-   * El click en "Iniciar entrevista" hace TRES cosas en el mismo gesto:
-   * 1. Pide permiso de microfono (proactivo, antes de que el usuario lo
-   *    necesite para hablar).
-   * 2. Desbloquea el audio element (iOS Safari requiere gesto reciente).
-   * 3. Conecta el WebSocket y empieza el timer.
-   */
   async function handleStartSession() {
     setRequestingPermission(true);
     setPermissionError(null);
     setShowEscape(false);
-    console.log("[Diagnostico] handleStartSession click");
 
-    // FIX iOS: dispara unlock SINCRÓNICAMENTE en el gesto, antes de cualquier
-    // await. iOS Safari "consume" el gesto al hacer await getUserMedia, asi
-    // que el unlock debe iniciarse antes. Fire-and-forget para no bloquear.
     unlockAudio().catch((e) => console.warn("[Diagnostico] unlock failed:", e));
-
-    // Si tras 5s seguimos en "procesando", mostramos boton de escape
     const escapeTimer = window.setTimeout(() => setShowEscape(true), 5000);
 
     try {
-      console.log("[Diagnostico] requesting mic permission");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log("[Diagnostico] permission granted");
       stream.getTracks().forEach((t) => t.stop());
-
       setSessionStarted(true);
     } catch (err) {
       const name = err instanceof Error ? err.name : "Error";
       console.error("[Diagnostico] getUserMedia failed:", name, err);
       if (name === "NotAllowedError" || name === "PermissionDeniedError") {
         setPermissionError(
-          "Necesitamos acceso al microfono para la entrevista. Habilitalo en los ajustes del navegador y vuelve a intentar."
+          "Necesitamos acceso al microfono. Habilitalo en los ajustes del navegador y vuelve a intentar."
         );
       } else if (name === "NotFoundError") {
         setPermissionError("No detectamos ningun microfono conectado.");
@@ -160,11 +179,7 @@ export function Diagnostico() {
     }
   }
 
-  // Escape: si el usuario lleva 5s en "procesando" (probablemente iOS Safari
-  // colgado en unlock), dejarlo pasar igual. El audio puede no funcionar
-  // perfecto, pero al menos llega a la entrevista.
   function handleForceStart() {
-    console.log("[Diagnostico] force start (skip wait)");
     setSessionStarted(true);
     setRequestingPermission(false);
   }
@@ -177,7 +192,7 @@ export function Diagnostico() {
     navigate("/diagnostico/perfil");
   }, [metrics, navigate, updateDiagnostico]);
 
-  // Tick del countdown. Cuando llega a 0, dispara endSession.
+  // Countdown del cierre auto
   useEffect(() => {
     if (closingCountdown === null) return;
     if (closingCountdown <= 0) {
@@ -202,56 +217,67 @@ export function Diagnostico() {
     setClosingCountdown(null);
   }
 
-  // Debounce para evitar doble-trigger en mobile (touch + click sintetico)
-  const lastToggleRef = useRef(0);
-
-  async function handleVoiceToggle() {
-    const now = Date.now();
-    if (now - lastToggleRef.current < 250) return;
-    lastToggleRef.current = now;
-
-    if (isRecording) {
-      const base64 = await stopRecording();
-      if (base64) sendAudio(base64);
-    } else {
-      startRecording();
-    }
-  }
-
-  const isDisabled =
-    status === "thinking" ||
-    status === "generating_audio" ||
-    status === "transcribing" ||
-    status === "analyzing" ||
-    isPlaying;
+  const indicatorState: IndicatorState = useMemo(() => {
+    if (!sessionStarted) return "paused";
+    if (vad.loading) return "loading";
+    if (isPlaying) return "sofiaSpeaking";
+    if (
+      status === "transcribing" ||
+      status === "thinking" ||
+      status === "generating_audio" ||
+      status === "analyzing"
+    )
+      return "processing";
+    if (vad.userSpeaking) return "userSpeaking";
+    if (vad.listening && status === "ready") return "listening";
+    return "paused";
+  }, [sessionStarted, vad.loading, vad.userSpeaking, vad.listening, isPlaying, status]);
 
   return (
     <div className="h-screen bg-ink text-cream flex flex-col overflow-hidden">
-      <header className="flex items-center justify-between px-3 sm:px-6 py-2 sm:py-3 border-b border-white/5 shrink-0 gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="font-syne text-sm sm:text-lg font-bold truncate">Diagnostico</p>
-          <p className="text-[10px] sm:text-xs text-muted truncate">
-            {userProfile?.registro.nombre} · {userProfile?.registro.rol_objetivo}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-4 text-sm text-muted shrink-0">
-          <div className="flex items-center gap-1 sm:gap-2">
-            <Clock className="w-4 h-4" />
-            <span className="font-mono text-xs sm:text-sm">{formatDuration(elapsed)}</span>
+      <header className="px-3 sm:px-6 py-2 sm:py-3 border-b border-white/5 shrink-0">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="min-w-0 flex-1">
+            <p className="font-syne text-sm sm:text-lg font-bold truncate">Diagnostico</p>
+            <p className="text-[10px] sm:text-xs text-muted truncate">
+              {userProfile?.registro.nombre} · {userProfile?.registro.rol_objetivo}
+            </p>
           </div>
-          <button
-            onClick={endSession}
-            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full border border-danger/50 text-danger hover:bg-danger/10 text-xs sm:text-sm"
-          >
-            <PhoneOff className="w-4 h-4" />
-            <span className="hidden sm:inline">Terminar</span>
-          </button>
+          <div className="flex items-center gap-2 sm:gap-4 text-sm text-muted shrink-0">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <Clock className="w-4 h-4" />
+              <span className="font-mono text-xs sm:text-sm">
+                {formatDuration(elapsed)} / {formatDuration(targetSeconds)}
+              </span>
+            </div>
+            <button
+              onClick={endSession}
+              className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full border border-danger/50 text-danger hover:bg-danger/10 text-xs sm:text-sm"
+            >
+              <PhoneOff className="w-4 h-4" />
+              <span className="hidden sm:inline">Terminar</span>
+            </button>
+          </div>
+        </div>
+        {/* Progress bar */}
+        <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+          <motion.div
+            className="h-full bg-gradient-to-r from-violet to-teal"
+            animate={{ width: `${progressPct}%` }}
+            transition={{ duration: 0.5 }}
+          />
         </div>
       </header>
 
       {sessionStarted && status === "disconnected" && (
         <div className="bg-danger/20 border-b border-danger/40 px-4 py-2 text-center text-xs sm:text-sm text-danger shrink-0">
           Sin conexion al servidor. Verifica tu internet y recarga la pagina.
+        </div>
+      )}
+
+      {vad.errored && (
+        <div className="bg-warning/20 border-b border-warning/40 px-4 py-2 text-center text-xs sm:text-sm text-warning shrink-0">
+          No pudimos iniciar el detector de voz. Recarga la pagina o usa otro navegador.
         </div>
       )}
 
@@ -273,41 +299,7 @@ export function Diagnostico() {
 
         <aside className="flex-1 md:flex-none md:w-[400px] flex flex-col gap-3 min-h-0">
           <ChatBox messages={messages} className="flex-1 min-h-0" />
-          <div className="flex justify-center pt-1 sm:pt-2 shrink-0">
-            <button
-              type="button"
-              onClick={handleVoiceToggle}
-              disabled={isDisabled}
-              className={`
-                relative w-20 h-20 rounded-full flex items-center justify-center
-                transition-all duration-200 shadow-lg
-                ${isRecording ? "bg-danger shadow-danger/30" : "bg-violet shadow-violet/30"}
-                ${isDisabled && "opacity-50 cursor-not-allowed"}
-                active:scale-95
-              `}
-            >
-              {isRecording && (
-                <motion.div
-                  initial={{ scale: 1, opacity: 0.5 }}
-                  animate={{ scale: 1.5, opacity: 0 }}
-                  transition={{ repeat: Infinity, duration: 1 }}
-                  className="absolute inset-0 rounded-full bg-danger"
-                />
-              )}
-              {status === "transcribing" || status === "thinking" ? (
-                <Loader2 className="w-8 h-8 text-white animate-spin" />
-              ) : isRecording ? (
-                <MicOff className="w-8 h-8 text-white" />
-              ) : (
-                <Mic className="w-8 h-8 text-white" />
-              )}
-            </button>
-          </div>
-          <p className="text-center text-xs text-muted shrink-0 pb-1">
-            {isRecording
-              ? "Toca el microfono otra vez para enviar"
-              : "Toca el microfono para hablar"}
-          </p>
+          <ConversationIndicator state={indicatorState} />
         </aside>
       </main>
 
@@ -358,12 +350,11 @@ export function Diagnostico() {
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet/20 flex items-center justify-center">
                 <Mic className="w-8 h-8 text-violet-light" />
               </div>
-              <h2 className="font-syne text-2xl font-bold mb-2">
-                Listo para empezar
-              </h2>
+              <h2 className="font-syne text-2xl font-bold mb-2">Listo para empezar</h2>
               <p className="text-muted text-sm mb-6">
                 Vamos a pedirte permiso de microfono para que Sofia pueda
                 escucharte. La entrevista dura unos {diagnosticoVars?.minutos ?? 25} minutos.
+                No necesitas presionar nada — solo habla naturalmente cuando quieras.
               </p>
 
               {permissionError && (
@@ -404,6 +395,81 @@ export function Diagnostico() {
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+const INDICATOR_CONFIG: Record<
+  IndicatorState,
+  { label: string; sublabel: string; icon: typeof Mic; color: string; pulse: boolean }
+> = {
+  loading: {
+    label: "Iniciando microfono",
+    sublabel: "Cargando detector de voz...",
+    icon: Loader2,
+    color: "text-muted bg-white/5 border-white/10",
+    pulse: false,
+  },
+  listening: {
+    label: "Te escucho",
+    sublabel: "Habla cuando quieras, sin presionar nada",
+    icon: Mic,
+    color: "text-success bg-success/10 border-success/30",
+    pulse: true,
+  },
+  userSpeaking: {
+    label: "Estas hablando",
+    sublabel: "Te enviare cuando hagas una pausa",
+    icon: Mic,
+    color: "text-success bg-success/20 border-success/50",
+    pulse: true,
+  },
+  processing: {
+    label: "Procesando",
+    sublabel: "Sofia esta pensando tu respuesta...",
+    icon: Brain,
+    color: "text-violet-light bg-violet/10 border-violet/30",
+    pulse: false,
+  },
+  sofiaSpeaking: {
+    label: "Sofia esta hablando",
+    sublabel: "Espera a que termine para responder",
+    icon: Volume2,
+    color: "text-teal bg-teal/10 border-teal/30",
+    pulse: true,
+  },
+  paused: {
+    label: "En pausa",
+    sublabel: "El microfono esta inactivo",
+    icon: PauseCircle,
+    color: "text-muted bg-white/5 border-white/10",
+    pulse: false,
+  },
+};
+
+function ConversationIndicator({ state }: { state: IndicatorState }) {
+  const cfg = INDICATOR_CONFIG[state];
+  const Icon = cfg.icon;
+  const isLoading = state === "loading";
+  return (
+    <div className={`shrink-0 rounded-2xl border p-4 flex items-center gap-3 ${cfg.color} transition-colors`}>
+      <div className="relative shrink-0">
+        {cfg.pulse && (
+          <motion.div
+            initial={{ scale: 1, opacity: 0.4 }}
+            animate={{ scale: 1.6, opacity: 0 }}
+            transition={{ repeat: Infinity, duration: 1.4 }}
+            className="absolute inset-0 rounded-full bg-current"
+          />
+        )}
+        <div className="relative w-10 h-10 rounded-full bg-current/20 flex items-center justify-center">
+          <Icon className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`} />
+        </div>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="font-syne font-bold text-sm">{cfg.label}</p>
+        <p className="text-xs opacity-70 truncate">{cfg.sublabel}</p>
+      </div>
     </div>
   );
 }

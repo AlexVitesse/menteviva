@@ -182,11 +182,12 @@ export function useWebSocket({
     setServerError,
   ]);
 
-  const sendAudio = useCallback((audioBase64: string) => {
+  const sendAudio = useCallback((audioBase64: string, format = "audio.webm") => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: "audio",
         audio: audioBase64,
+        format,
       }));
     }
   }, []);

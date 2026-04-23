@@ -211,8 +211,9 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
 
                 # 1. Decodificar audio
                 audio_base64 = data.get("audio")
+                audio_format = data.get("format", "audio.webm")  # webm (MediaRecorder) o wav (VAD)
                 audio_bytes = base64.b64decode(audio_base64)
-                logger.debug(f"[WS] Audio recibido: {len(audio_bytes)} bytes")
+                logger.debug(f"[WS] Audio recibido: {len(audio_bytes)} bytes ({audio_format})")
 
                 # 2. Transcribir con Whisper
                 await websocket.send_json({
@@ -221,7 +222,7 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                 })
 
                 t_start = time.time()
-                user_text = await transcribe_audio(audio_bytes)
+                user_text = await transcribe_audio(audio_bytes, filename=audio_format)
                 t_whisper = time.time() - t_start
                 logger.info(f"[STT] Transcripcion ({t_whisper:.2f}s): \"{user_text[:100]}...\"" if len(user_text) > 100 else f"[STT] Transcripcion ({t_whisper:.2f}s): \"{user_text}\"")
 
