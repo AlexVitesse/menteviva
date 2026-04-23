@@ -485,8 +485,18 @@ fortalezas si no las hay — mejor menos strengths que strengths sin evidencia.
    cuenta cuantas veces dices 'nosotros' vs 'yo'; repite hasta lograr 80% 'yo'".
 
 4. BLIND SPOT CON CUIDADO. UNA sola observacion que el candidato probablemente
-   no vio de si mismo. Basada en evidencia. Sin etiquetas de personalidad.
-   Humano, no juez.
+   no vio de si mismo. Basada en evidencia especifica del transcript (una
+   frase o patron citable). Sin etiquetas de personalidad. Humano, no juez.
+
+   SI NO HAY EVIDENCIA ESPECIFICA suficiente para un blind spot util (ej.
+   conversacion corta, respuestas evasivas, sin historias concretas), usa
+   literalmente este texto: "No fue posible identificar un punto ciego
+   especifico con la informacion compartida en esta sesion."
+
+   PROHIBIDO blind spots genericos tipo "dificultad para reflexionar sobre
+   si mismo", "podria mejorar su autoconciencia", "le cuesta expresar
+   emociones" cuando no hay evidencia directa. Mejor el sentinel que un
+   blind spot inventado.
 
 5. PREGUNTA PARA LLEVARSE. Una pregunta abierta que invite a reflexionar
    despues. No una pregunta cerrada de si/no.
@@ -568,6 +578,46 @@ _SKILLS_CATALOG_FORMATTED: str = "\n".join(
     f"  Senal de brecha: {s['gap']}"
     for s in SOFT_SKILLS_CATALOG
 )
+
+
+_EVASIVE_MARKERS = (
+    "no sé", "no se", "no recuerdo", "es lo mismo", "ya te dije",
+    "no tengo", "no he tenido", "paso", "pasa", "para qué", "para que",
+    "no quiero", "me obligaron", "no me interesa", "otra vez",
+    "sigue", "no se me ocurre", "nada en particular",
+)
+
+
+def _is_inconclusive_session(conversation: list[dict]) -> tuple[bool, str]:
+    """
+    Detecta sesiones con suficientes intercambios (>=4) pero material pobre
+    (respuestas cortas + evasivas). Devuelve (es_inconclusiva, razon).
+
+    Heuristica:
+    - Respuestas del usuario con longitud promedio < 30 chars
+    - O >=3 respuestas con markers evasivos
+    - Y ninguna respuesta sustantiva (>=100 chars)
+    """
+    user_msgs = [m["content"] for m in conversation if m.get("role") == "user"]
+    if len(user_msgs) < 4:
+        return False, ""  # otro path maneja conversaciones cortas
+
+    avg_len = sum(len(m) for m in user_msgs) / len(user_msgs)
+    evasive_count = sum(
+        1
+        for m in user_msgs
+        if any(marker in m.lower() for marker in _EVASIVE_MARKERS)
+    )
+    has_substantial = any(len(m) >= 100 for m in user_msgs)
+
+    if has_substantial:
+        return False, ""  # hay al menos una historia real
+
+    if avg_len < 30:
+        return True, f"respuestas cortas (avg {avg_len:.0f} chars)"
+    if evasive_count >= 3:
+        return True, f"{evasive_count} respuestas evasivas"
+    return False, ""
 
 
 _ABSENCE_EVIDENCE_PREFIXES = (
@@ -699,6 +749,15 @@ async def generate_user_profile(
         # el prompt lo prohiba.
         if isinstance(parsed.get("gaps"), list):
             parsed["gaps"] = _drop_absence_gaps(parsed["gaps"])
+
+        # Detector de sesion no concluyente: intercambios >=4 pero respuestas
+        # cortas / evasivas. Marca is_demo=True para que el frontend muestre
+        # el banner de "sesion no concluyente" y el usuario no tome el
+        # diagnostico como conclusivo.
+        inconclusive, reason = _is_inconclusive_session(conversation)
+        if inconclusive:
+            logger.info(f"[UserProfile] Sesion no concluyente: {reason}")
+            parsed["is_demo"] = True
 
         try:
             validated = Diagnostico(**parsed)

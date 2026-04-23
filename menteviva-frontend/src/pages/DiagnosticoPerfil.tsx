@@ -29,6 +29,9 @@ export function DiagnosticoPerfil() {
   const d = userProfile.diagnostico;
   const nombre = userProfile.registro.nombre.split(" ")[0];
   const isDemo = d.is_demo === true;
+  const blindSpotGeneric = d.blind_spot
+    ?.toLowerCase()
+    .startsWith("no fue posible identificar");
 
   function handleDownload() {
     if (!userProfile) return;
@@ -75,12 +78,12 @@ export function DiagnosticoPerfil() {
             <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
             <div className="flex-1">
               <p className="font-syne font-bold text-warning mb-1">
-                Esta sesion fue muy corta
+                Esta sesion no fue concluyente
               </p>
               <p className="text-sm text-cream mb-3">
-                Para un diagnostico real necesitamos al menos 4 a 5
-                intercambios donde puedas contar historias concretas. Lo de
-                abajo es un punto de partida, no un analisis profundo.
+                Para un diagnostico real necesitamos que compartas historias
+                especificas con contexto, accion y resultado. Una proxima
+                entrevista mas abierta te dara un mapa mucho mas util.
               </p>
               <button
                 onClick={() => navigate("/diagnostico/setup")}
@@ -127,9 +130,16 @@ export function DiagnosticoPerfil() {
           </Section>
         )}
 
-        {d.blind_spot && (
+        {d.blind_spot && !blindSpotGeneric && (
           <Section icon={<Target className="w-5 h-5 text-violet-light" />} title="Punto ciego">
             <p className="text-sm leading-relaxed bg-card/50 rounded-xl p-4 border border-white/5">
+              {d.blind_spot}
+            </p>
+          </Section>
+        )}
+        {blindSpotGeneric && (
+          <Section icon={<Target className="w-5 h-5 text-muted" />} title="Punto ciego">
+            <p className="text-sm leading-relaxed text-muted bg-card/30 rounded-xl p-4 border border-white/5 italic">
               {d.blind_spot}
             </p>
           </Section>
