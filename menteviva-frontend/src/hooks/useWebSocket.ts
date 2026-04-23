@@ -21,10 +21,13 @@ export interface WsInitPayload {
 interface UseWebSocketOptions {
   avatarId: string | undefined;
   initPayload?: WsInitPayload;
-  // Nuevos callbacks para streaming TTS
+  // Callbacks para streaming TTS
   onAudioStart?: () => void;
   onAudioChunk?: (base64Chunk: string) => void;
   onAudioEnd?: () => void;
+  // Sofia emitio [CIERRE] -> backend manda closing_intent.
+  // El consumer decide que hacer (countdown + endSession, etc).
+  onClosingIntent?: () => void;
 }
 
 export function useWebSocket({
@@ -33,6 +36,7 @@ export function useWebSocket({
   onAudioStart,
   onAudioChunk,
   onAudioEnd,
+  onClosingIntent,
 }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const pendingTextRef = useRef<string>("");
@@ -42,6 +46,7 @@ export function useWebSocket({
   const pendingAssistantTextRef = useRef<string>("");
   const initPayloadRef = useRef(initPayload);
   const audioCallbacksRef = useRef({ onAudioStart, onAudioChunk, onAudioEnd });
+  const onClosingIntentRef = useRef(onClosingIntent);
   const {
     setStatus,
     addMessage,
@@ -56,6 +61,10 @@ export function useWebSocket({
   useEffect(() => {
     audioCallbacksRef.current = { onAudioStart, onAudioChunk, onAudioEnd };
   }, [onAudioStart, onAudioChunk, onAudioEnd]);
+
+  useEffect(() => {
+    onClosingIntentRef.current = onClosingIntent;
+  }, [onClosingIntent]);
 
   const connect = useCallback(() => {
     if (!avatarId) return;
@@ -126,6 +135,11 @@ export function useWebSocket({
             pendingAssistantTextRef.current = "";
           }
           audioCallbacksRef.current.onAudioEnd?.();
+          break;
+
+        case "closing_intent":
+          console.log("[WS] closing_intent recibido");
+          onClosingIntentRef.current?.();
           break;
 
         case "session_end":

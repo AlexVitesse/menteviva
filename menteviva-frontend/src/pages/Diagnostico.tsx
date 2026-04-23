@@ -30,7 +30,9 @@ export function Diagnostico() {
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [requestingPermission, setRequestingPermission] = useState(false);
   const [showEscape, setShowEscape] = useState(false);
+  const [closingCountdown, setClosingCountdown] = useState<number | null>(null);
   const startRef = useRef<number>(Date.now());
+  const closingTimerRef = useRef<number | null>(null);
 
   // Redirect si no hay contexto minimo
   useEffect(() => {
@@ -63,6 +65,11 @@ export function Diagnostico() {
     endStream();
   }, [endStream]);
 
+  // Sofia emitio [CIERRE] -> arrancar countdown de 5s antes de auto-end
+  const handleClosingIntent = useCallback(() => {
+    setClosingCountdown(5);
+  }, []);
+
   const initPayload = useMemo(() => {
     if (!userProfile || !diagnosticoVars) return undefined;
     return {
@@ -83,6 +90,7 @@ export function Diagnostico() {
     onAudioStart: handleAudioStart,
     onAudioChunk: handleAudioChunk,
     onAudioEnd: handleAudioEnd,
+    onClosingIntent: handleClosingIntent,
     initPayload,
   });
 
@@ -168,6 +176,31 @@ export function Diagnostico() {
     }
     navigate("/diagnostico/perfil");
   }, [metrics, navigate, updateDiagnostico]);
+
+  // Tick del countdown. Cuando llega a 0, dispara endSession.
+  useEffect(() => {
+    if (closingCountdown === null) return;
+    if (closingCountdown <= 0) {
+      endSession();
+      setClosingCountdown(null);
+      return;
+    }
+    closingTimerRef.current = window.setTimeout(() => {
+      setClosingCountdown((c) => (c === null ? null : c - 1));
+    }, 1000);
+    return () => {
+      if (closingTimerRef.current !== null) {
+        window.clearTimeout(closingTimerRef.current);
+      }
+    };
+  }, [closingCountdown, endSession]);
+
+  function cancelClosing() {
+    if (closingTimerRef.current !== null) {
+      window.clearTimeout(closingTimerRef.current);
+    }
+    setClosingCountdown(null);
+  }
 
   // Debounce para evitar doble-trigger en mobile (touch + click sintetico)
   const lastToggleRef = useRef(0);
@@ -279,6 +312,37 @@ export function Diagnostico() {
       </main>
 
       <AnimatePresence>
+        {closingCountdown !== null && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-ink/90 backdrop-blur-sm z-50 flex items-center justify-center p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              className="w-full max-w-sm bg-card rounded-2xl border border-violet/30 p-8 text-center"
+            >
+              <p className="text-xs uppercase tracking-wider text-violet-lighter font-bold mb-2">
+                Sofia cerro la entrevista
+              </p>
+              <h2 className="font-syne text-3xl font-bold mb-1">
+                Cerrando en {closingCountdown}...
+              </h2>
+              <p className="text-sm text-muted mb-6">
+                Vamos a procesar tu diagnostico.
+              </p>
+              <button
+                onClick={cancelClosing}
+                className="w-full font-syne font-bold text-sm py-3 rounded-[10px] border border-white/20 text-cream hover:bg-white/5 transition-colors"
+              >
+                Cancelar y seguir hablando
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+
         {!sessionStarted && (
           <motion.div
             initial={{ opacity: 0 }}

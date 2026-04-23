@@ -32,6 +32,18 @@ from app.prompts.entrevistador import pick_greeting
 
 GREETINGS_DIR = Path(__file__).parent.parent / "static" / "greetings"
 
+# Marca que el LLM (Sofia) emite al final de su mensaje cuando considera
+# terminada la entrevista. La plataforma la detecta, la strip-ea del texto
+# y audio, y dispara una cuenta regresiva de cierre en el frontend.
+CLOSING_MARKER = "[CIERRE]"
+
+
+def _detect_closing(text: str) -> tuple[str, bool]:
+    """Devuelve (texto sin marca, should_close)."""
+    if CLOSING_MARKER in text:
+        return text.replace(CLOSING_MARKER, "").strip(), True
+    return text, False
+
 logger = logging.getLogger("menteviva")
 router = APIRouter()
 
@@ -243,7 +255,10 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                 t_llm = time.time() - t_start
                 logger.info(f"[LLM] Respuesta generada ({t_llm:.2f}s, {token_count} tokens): \"{full_response[:100]}...\"" if len(full_response) > 100 else f"[LLM] Respuesta generada ({t_llm:.2f}s, {token_count} tokens): \"{full_response}\"")
 
-                # 5. Agregar respuesta al historial
+                # Detectar [CIERRE] y limpiar texto antes de TTS/historial
+                full_response, should_close = _detect_closing(full_response)
+
+                # 5. Agregar respuesta al historial (sin la marca)
                 conversation_history.append({
                     "role": "assistant",
                     "content": full_response
@@ -258,6 +273,10 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                 t_start = time.time()
                 await _stream_tts_over_ws(websocket, full_response, avatar_id)
                 t_tts = time.time() - t_start
+
+                if should_close:
+                    logger.info("[WS] Sofia emitio [CIERRE], enviando closing_intent")
+                    await websocket.send_json({"type": "closing_intent"})
 
                 logger.info(f"[WS] Intercambio #{exchange_count} completado - Total: STT={t_whisper:.2f}s + LLM={t_llm:.2f}s + TTS={t_tts:.2f}s = {t_whisper+t_llm+t_tts:.2f}s")
 
@@ -301,6 +320,9 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                 t_llm = time.time() - t_start
                 logger.info(f"[LLM] Respuesta generada ({t_llm:.2f}s, {token_count} tokens): \"{full_response[:100]}...\"" if len(full_response) > 100 else f"[LLM] Respuesta generada ({t_llm:.2f}s, {token_count} tokens): \"{full_response}\"")
 
+                # Detectar [CIERRE] y limpiar texto antes de TTS/historial
+                full_response, should_close = _detect_closing(full_response)
+
                 conversation_history.append({
                     "role": "assistant",
                     "content": full_response
@@ -314,6 +336,10 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                 t_start = time.time()
                 await _stream_tts_over_ws(websocket, full_response, avatar_id)
                 t_tts = time.time() - t_start
+
+                if should_close:
+                    logger.info("[WS] Sofia emitio [CIERRE], enviando closing_intent")
+                    await websocket.send_json({"type": "closing_intent"})
 
                 logger.info(f"[WS] Intercambio #{exchange_count} completado - Total: LLM={t_llm:.2f}s + TTS={t_tts:.2f}s = {t_llm+t_tts:.2f}s")
 
