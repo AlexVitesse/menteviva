@@ -20,6 +20,7 @@ import json
 import base64
 import logging
 import time
+from pathlib import Path
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.models import UserProfile
 from app.services.groq_whisper import transcribe_audio
@@ -27,9 +28,62 @@ from app.services.groq_llm import chat_stream
 from app.services.edge_tts import text_to_speech, text_to_speech_stream
 from app.services.analysis import analyze_conversation, generate_user_profile
 from app.prompts.scenarios import get_avatar, get_system_prompt
+from app.prompts.entrevistador import pick_greeting
+
+GREETINGS_DIR = Path(__file__).parent.parent / "static" / "greetings"
 
 logger = logging.getLogger("menteviva")
 router = APIRouter()
+
+
+async def _send_sofia_greeting(
+    websocket: WebSocket,
+    user_profile: UserProfile | None,
+) -> str:
+    """
+    Sofia inicia la conversacion con uno de 3 saludos pre-grabados.
+    Devuelve el texto del saludo elegido para que el caller lo agregue
+    al conversation_history.
+
+    Streamea desde el MP3 cacheado en disk (cero costo de ElevenLabs por
+    sesion). Si por alguna razon el archivo no existe (ej. nuevo deploy
+    sin generar greetings), cae a generar live con el TTS normal.
+    """
+    seed = user_profile.user_id if user_profile else None
+    idx, text = pick_greeting(seed)
+    cached = GREETINGS_DIR / f"sofia_greet_{idx}.mp3"
+
+    await websocket.send_json({"type": "assistant_audio_start", "content": text})
+
+    if cached.exists():
+        logger.info(f"[Greeting] Sirviendo cacheado: {cached.name}")
+        with open(cached, "rb") as f:
+            chunks = 0
+            total = 0
+            while True:
+                chunk = f.read(8192)
+                if not chunk:
+                    break
+                chunks += 1
+                total += len(chunk)
+                await websocket.send_json({
+                    "type": "assistant_audio_chunk",
+                    "audio": base64.b64encode(chunk).decode(),
+                })
+        logger.info(f"[Greeting] Stream cacheado enviado: {chunks} chunks, {total} bytes")
+    else:
+        logger.warning(f"[Greeting] No existe {cached.name}, generando live")
+        try:
+            async for chunk in text_to_speech_stream(text, "entrevistador"):
+                await websocket.send_json({
+                    "type": "assistant_audio_chunk",
+                    "audio": base64.b64encode(chunk).decode(),
+                })
+        except Exception as e:
+            logger.error(f"[Greeting] Error en TTS live: {e}", exc_info=True)
+
+    await websocket.send_json({"type": "assistant_audio_end"})
+    return text
 
 
 async def _stream_tts_over_ws(
@@ -131,6 +185,12 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                     session_vars=session_vars,
                 )
                 await websocket.send_json({"type": "status", "status": "ready"})
+
+                # Si es el entrevistador, Sofia arranca con un saludo cacheado
+                # (evita esperar al usuario y hace la apertura mas natural).
+                if avatar.get("kind") == "diagnostico":
+                    greeting_text = await _send_sofia_greeting(websocket, user_profile)
+                    conversation_history.append({"role": "assistant", "content": greeting_text})
                 continue
 
             elif msg_type == "audio":

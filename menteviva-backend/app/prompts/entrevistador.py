@@ -20,6 +20,33 @@ _PROMPT_PATH = Path(__file__).parent / "entrevistador_prompt.md"
 ENTREVISTADOR_PROMPT_TEMPLATE: str = _PROMPT_PATH.read_text(encoding="utf-8")
 
 
+# Saludos pre-grabados para que Sofia inicie la conversacion.
+# Si agregas/modificas variantes: correr scripts/generate_greetings.py
+# para regenerar los MP3 cacheados.
+GREETING_TEMPLATES: list[str] = [
+    "Hola, gracias por estar aquí. Soy Sofia, tu coach de habilidades blandas en Mente Viva. Antes de empezar, cuéntame: ¿cómo llegaste hoy a esta conversación? ¿Fue un día tranquilo o movido?",
+    "Bienvenido. Mi nombre es Sofia y voy a acompañarte en una conversación corta para conocerte mejor. Para arrancar, dime: ¿qué estabas haciendo justo antes de entrar a esta sesión?",
+    "Hola, soy Sofia, tu coach de Mente Viva. Antes de entrar en materia, una pregunta sencilla para romper el hielo: ¿hay algo en tu entorno ahora mismo que te ayude a concentrarte, o que te distraiga?",
+]
+
+
+def pick_greeting(seed: str | None = None) -> tuple[int, str]:
+    """
+    Devuelve (index, texto) de un saludo. Si se pasa seed (ej. user_id),
+    el resultado es deterministico para esa misma persona; sin seed es
+    aleatorio. Indeterminismo por seed permite que la misma persona oiga
+    saludos distintos en re-diagnosticos.
+    """
+    import random
+
+    n = len(GREETING_TEMPLATES)
+    if seed:
+        idx = hash(seed) % n
+    else:
+        idx = random.randint(0, n - 1)
+    return idx, GREETING_TEMPLATES[idx]
+
+
 # Valores por defecto para variables del prompt maestro.
 # Si alguna llega vacia, la seccion 1 del prompt indica que el avatar la infiere
 # durante rapport, pero damos defaults razonables para no dejar huecos visibles.
