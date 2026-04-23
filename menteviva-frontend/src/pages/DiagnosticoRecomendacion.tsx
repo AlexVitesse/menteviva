@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Compass, LayoutDashboard, Play } from "lucide-react";
+import { ArrowLeft, Compass, LayoutDashboard, Play, RotateCcw } from "lucide-react";
 
 import { useSessionStore } from "../stores/sessionStore";
 
@@ -29,7 +29,13 @@ const LEVEL_LABEL: Record<string, string> = {
 
 export function DiagnosticoRecomendacion() {
   const navigate = useNavigate();
-  const { userProfile, setSelectedAvatar } = useSessionStore();
+  const { userProfile, setSelectedAvatar, clearDiagnostico } = useSessionStore();
+
+  function handleRedo() {
+    if (!confirm("Esto borra tu diagnostico actual y empiezas una nueva entrevista. ¿Continuar?")) return;
+    clearDiagnostico();
+    navigate("/diagnostico/setup");
+  }
 
   if (!userProfile?.diagnostico) {
     navigate("/diagnostico/setup", { replace: true });
@@ -118,6 +124,14 @@ export function DiagnosticoRecomendacion() {
             Ir al dashboard
           </button>
         </div>
+
+        <button
+          onClick={handleRedo}
+          className="w-full flex items-center justify-center gap-2 text-xs font-syne text-muted hover:text-cream transition-colors pt-2"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          Rehacer el diagnostico
+        </button>
 
         <p className="text-center text-xs text-muted pt-2">
           Tu perfil se actualizara con cada practica que hagas.

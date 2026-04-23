@@ -55,6 +55,7 @@ interface SessionState {
   initRegistro: (registro: Registro) => UserProfile;
   updateRegistro: (registro: Registro) => void;
   updateDiagnostico: (diagnostico: Diagnostico) => void;
+  clearDiagnostico: () => void;
   clearUserProfile: () => void;
 
   // Reset completo (no toca el userProfile)
@@ -111,6 +112,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return;
     }
     const updated = withUpdatedDiagnostico(current, diagnostico);
+    saveUserProfile(updated);
+    set({ userProfile: updated });
+  },
+
+  clearDiagnostico: () => {
+    const current = get().userProfile;
+    if (!current) return;
+    const updated = {
+      ...current,
+      diagnostico: null,
+      updated_at: new Date().toISOString(),
+    };
     saveUserProfile(updated);
     set({ userProfile: updated });
   },

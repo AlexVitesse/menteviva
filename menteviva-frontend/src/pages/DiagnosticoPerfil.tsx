@@ -1,20 +1,25 @@
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  Download,
   Lightbulb,
   RotateCcw,
+  Share2,
   Target,
 } from "lucide-react";
 
 import { useSessionStore } from "../stores/sessionStore";
+import { downloadMarkdown, shareDiagnostico } from "../utils/exportDiagnostico";
 
 export function DiagnosticoPerfil() {
   const navigate = useNavigate();
-  const { userProfile } = useSessionStore();
+  const { userProfile, clearDiagnostico } = useSessionStore();
+  const [shareToast, setShareToast] = useState<string | null>(null);
 
   if (!userProfile?.diagnostico) {
     navigate("/diagnostico/setup", { replace: true });
@@ -24,6 +29,26 @@ export function DiagnosticoPerfil() {
   const d = userProfile.diagnostico;
   const nombre = userProfile.registro.nombre.split(" ")[0];
   const isDemo = d.is_demo === true;
+
+  function handleDownload() {
+    if (!userProfile) return;
+    downloadMarkdown(userProfile);
+  }
+
+  async function handleShare() {
+    if (!userProfile) return;
+    const result = await shareDiagnostico(userProfile, window.location.origin);
+    if (result === "shared") setShareToast("Compartido");
+    else if (result === "copied") setShareToast("Copiado al portapapeles");
+    else setShareToast("No se pudo compartir");
+    setTimeout(() => setShareToast(null), 2500);
+  }
+
+  function handleRedo() {
+    if (!confirm("Esto borra tu diagnostico actual y empiezas una nueva entrevista. ¿Continuar?")) return;
+    clearDiagnostico();
+    navigate("/diagnostico/setup");
+  }
 
   return (
     <div className="min-h-screen bg-ink text-cream py-10 px-6">
@@ -118,7 +143,7 @@ export function DiagnosticoPerfil() {
           </Section>
         )}
 
-        <div className="pt-4">
+        <div className="pt-4 space-y-3">
           <button
             onClick={() => navigate("/diagnostico/recomendacion")}
             className="w-full flex items-center justify-center gap-3 font-syne font-bold text-sm py-3 rounded-[10px] bg-violet text-white hover:bg-violet-light transition-colors"
@@ -126,6 +151,32 @@ export function DiagnosticoPerfil() {
             Siguiente
             <ArrowRight className="w-4 h-4" />
           </button>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={handleDownload}
+              className="flex flex-col items-center gap-1 py-3 rounded-lg border border-white/10 text-muted hover:text-cream hover:border-white/30 transition-colors text-xs"
+            >
+              <Download className="w-4 h-4" />
+              Descargar
+            </button>
+            <button
+              onClick={handleShare}
+              className="flex flex-col items-center gap-1 py-3 rounded-lg border border-white/10 text-muted hover:text-cream hover:border-white/30 transition-colors text-xs"
+            >
+              <Share2 className="w-4 h-4" />
+              Compartir
+            </button>
+            <button
+              onClick={handleRedo}
+              className="flex flex-col items-center gap-1 py-3 rounded-lg border border-white/10 text-muted hover:text-cream hover:border-white/30 transition-colors text-xs"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Rehacer
+            </button>
+          </div>
+          {shareToast && (
+            <p className="text-center text-xs text-teal animate-pulse">{shareToast}</p>
+          )}
         </div>
       </motion.div>
     </div>
