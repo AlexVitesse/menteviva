@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -14,17 +14,31 @@ import {
 } from "lucide-react";
 
 import { useSessionStore } from "../stores/sessionStore";
-import { downloadMarkdown, shareDiagnostico } from "../utils/exportDiagnostico";
+import { downloadMarkdown } from "../utils/exportDiagnostico";
+import { buildMockDiagnostico } from "../utils/mockDiagnostico";
+import { ShareDiagnosticoModal } from "../components/diagnostico/ShareDiagnosticoModal";
 
 export function DiagnosticoPerfil() {
   const navigate = useNavigate();
-  const { userProfile, clearDiagnostico } = useSessionStore();
-  const [shareToast, setShareToast] = useState<string | null>(null);
+  const { userProfile, updateDiagnostico, clearDiagnostico } = useSessionStore();
+  const [showShareModal, setShowShareModal] = useState(false);
 
-  if (!userProfile?.diagnostico) {
-    navigate("/diagnostico/setup", { replace: true });
-    return null;
-  }
+  // Defensa profunda: si alguien llega a esta pagina sin diagnostico (ej.
+  // deep-link directo, sesion sin metrics), inyectamos un mock para que SIEMPRE
+  // vea un resultado. Solo si tampoco hay registro, redirigimos al setup.
+  useEffect(() => {
+    if (!userProfile) return;
+    if (!userProfile.diagnostico) {
+      if (!userProfile.registro) {
+        navigate("/diagnostico/setup", { replace: true });
+      } else {
+        console.warn("[DiagnosticoPerfil] sin diagnostico, aplicando mock");
+        updateDiagnostico(buildMockDiagnostico(userProfile));
+      }
+    }
+  }, [userProfile, navigate, updateDiagnostico]);
+
+  if (!userProfile?.diagnostico) return null;
 
   const d = userProfile.diagnostico;
   const nombre = userProfile.registro.nombre.split(" ")[0];
@@ -38,13 +52,9 @@ export function DiagnosticoPerfil() {
     downloadMarkdown(userProfile);
   }
 
-  async function handleShare() {
+  function handleShare() {
     if (!userProfile) return;
-    const result = await shareDiagnostico(userProfile, window.location.origin);
-    if (result === "shared") setShareToast("Compartido");
-    else if (result === "copied") setShareToast("Copiado al portapapeles");
-    else setShareToast("No se pudo compartir");
-    setTimeout(() => setShareToast(null), 2500);
+    setShowShareModal(true);
   }
 
   function handleRedo() {
@@ -184,11 +194,17 @@ export function DiagnosticoPerfil() {
               Rehacer
             </button>
           </div>
-          {shareToast && (
-            <p className="text-center text-xs text-teal animate-pulse">{shareToast}</p>
-          )}
         </div>
       </motion.div>
+
+      {userProfile && (
+        <ShareDiagnosticoModal
+          open={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          profile={userProfile}
+          siteUrl={window.location.origin}
+        />
+      )}
     </div>
   );
 }

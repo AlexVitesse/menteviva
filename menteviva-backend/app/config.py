@@ -7,7 +7,12 @@ class Settings(BaseSettings):
     groq_api_key_2: str = ""
     groq_api_key_3: str = ""
     groq_api_key_4: str = ""
-    groq_model_llm: str = "llama-3.1-8b-instant"
+    # GPT-OSS 20B (Groq, preview): mismo throughput que llama-3.1-8b-instant
+    # (~0.66s/turno) pero con reasoning -> cumple reglas estrictas del prompt
+    # de roleplay (max 3 oraciones 95% de las veces, max 1 pregunta 100%, banco
+    # de objeciones en orden). Reemplaza llama-3.1-8b-instant tras test largo
+    # comparativo (scripts/test_roberto_long_session.py 2026-04-27).
+    groq_model_llm: str = "openai/gpt-oss-20b"
     # Llama 3.3 70b: soporta JSON mode estrictamente sin tokens de razonamiento
     # que rompan la validacion (gpt-oss-120b fallaba con json_object por razonar
     # antes de emitir el JSON y agotar el budget de tokens).

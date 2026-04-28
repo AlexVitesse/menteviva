@@ -22,107 +22,227 @@ from app.services.groq_pool import get_groq_client
 
 logger = logging.getLogger("menteviva")
 
-# Definicion de habilidades por escenario
-SKILLS_BY_SCENARIO = {
+# ============================================================
+# Modelo de evaluacion v2 — 6 KPIs ponderados con indicadores
+# ============================================================
+# Cada escenario define 6 KPIs (peso suma 100). Cada KPI tiene:
+#   - id: identificador estable
+#   - name: nombre legible
+#   - weight: peso porcentual (los 6 deben sumar 100)
+#   - indicators: lista de comportamientos verificables en la transcripcion
+#   - methodology_refs: marco metodologico al que pertenece (referencia)
+#
+# El LLM analizador puntea cada KPI 0-100 evaluando cuantos indicadores se
+# observan. El overall_score se calcula ponderando: sum(score * weight) / 100.
+#
+# Roberto = escenario Condor (manufactura, PRAINCODERECI + Lean Six Sigma).
+# Maria = negociacion (PRAINCODERECI + 8 tecnicas + Harvard).
+# Ambos siguen el mismo formato para que sea facil agregar mas escenarios.
+KPIS_BY_SCENARIO = {
     "roberto": {
-        "scenario_type": "Venta Consultiva B2B",
-        "skills": [
+        "scenario_type": "Venta Consultiva Industrial — Ingenieria Condor",
+        "methodology": "PRAINCODERECI · Lean Six Sigma · 5 Porques Toyota · BPMN · KPIs Industriales (OEE/MTBF/COPQ)",
+        "kpis": [
             {
-                "id": "escucha_activa",
-                "name": "Escucha Activa",
-                "description": "Demuestra atencion genuina, hace preguntas de seguimiento, parafrasea"
+                "id": "diagnostico_tecnico",
+                "name": "Diagnostico tecnico",
+                "weight": 25,
+                "indicators": [
+                    "Hizo preguntas de recorrido de planta (cuello de botella, paros, tiempos de ciclo)",
+                    "Identifico al menos 2 desperdicios Lean (TIMWOODS: transport, inventory, motion, waiting, overproduction, over-processing, defects, skills)",
+                    "Aplico los 5 Porques (preguntas '¿por que?' encadenadas) para llegar a causa raiz",
+                    "Calculo el COPQ (Cost of Poor Quality) usando datos del propio cliente, no benchmarks genericos",
+                ],
+                "methodology_refs": ["Lean Manufacturing", "5 Porques Toyota", "Six Sigma — COPQ", "SPIN tipo I y N"],
             },
             {
-                "id": "manejo_objeciones",
-                "name": "Manejo de Objeciones",
-                "description": "Responde a objeciones sin ponerse defensivo, usa tecnicas de reencuadre"
+                "id": "idioma_cliente",
+                "name": "Habla el idioma del cliente",
+                "weight": 20,
+                "indicators": [
+                    "Uso vocabulario industrial correcto: OEE, MTBF, MTTR, downtime, WIP, cuello de botella, scrap, retrabajo",
+                    "NO hablo de features de software/demos antes del minuto 8",
+                    "Adapto el argumento al perfil de operaciones (no al de TI)",
+                ],
+                "methodology_refs": ["Lean Six Sigma", "PRAINCODERECI etapas IN y CO"],
             },
             {
-                "id": "rapport",
-                "name": "Construccion de Rapport",
-                "description": "Genera conexion personal, usa el nombre del cliente, muestra empatia"
+                "id": "estructura_praincodereci",
+                "name": "Estructura PRAINCODERECI",
+                "weight": 15,
+                "indicators": [
+                    "Respeto el orden: Presentacion -> Atencion -> Interes -> Conviccion -> Deseo -> Resolucion -> Cierre",
+                    "NO presento la solucion antes de Conviccion (CO)",
+                    "Cierre explicito con siguiente paso especifico (CI)",
+                ],
+                "methodology_refs": ["PRAINCODERECI completo", "AIDA — estados del cliente"],
             },
             {
-                "id": "claridad",
-                "name": "Claridad de Propuesta",
-                "description": "Explica beneficios claramente, adapta el mensaje al cliente, es conciso"
+                "id": "control_presion",
+                "name": "Control bajo presion tecnica",
+                "weight": 15,
+                "indicators": [
+                    "No prometio cosas tecnicas que no podia sostener",
+                    "No contradijo al cliente sobre su sistema actual (Oracle EBS u otro)",
+                    "Manejo el fracaso del proyecto previo de Roberto sin defensividad si aparecio",
+                    "Uso silencio activo (T-08) tras pregunta de cierre",
+                ],
+                "methodology_refs": ["PNL: espejeo y anclas", "T-02 Aikido verbal", "T-08 Silencio activo"],
             },
             {
-                "id": "cierre",
-                "name": "Cierre Efectivo",
-                "description": "Propone siguiente paso concreto, maneja la urgencia sin presionar"
-            }
-        ]
+                "id": "roi_calculado",
+                "name": "ROI calculado y defendible",
+                "weight": 15,
+                "indicators": [
+                    "ROI calculado con numeros propios del cliente (no benchmarks genericos)",
+                    "Expreso el retorno en semanas o meses, no en porcentajes vagos",
+                    "Negocio por fases o con contraprestacion en lugar de descuento directo",
+                ],
+                "methodology_refs": ["T-04 Comparacion del costo del problema", "Harvard — Negociacion por intereses", "COPQ Six Sigma"],
+            },
+            {
+                "id": "habilitacion_campeon",
+                "name": "Habilitacion del campeon interno",
+                "weight": 10,
+                "indicators": [
+                    "Convirtio a Roberto en vendedor interno ante DG y CFO",
+                    "Preparo o propuso un one-pager / business case que Roberto puede usar internamente",
+                    "Anticipo objeciones del DG y CFO con Roberto",
+                ],
+                "methodology_refs": ["PRAINCODERECI etapa PV", "PNL: lenguaje de presuposicion", "SPIN: preguntas de Necesidad"],
+            },
+        ],
     },
     "maria": {
         "scenario_type": "Negociacion de Contrato",
-        "skills": [
+        "methodology": "PRAINCODERECI · 8 Tecnicas de Objeciones (T-01 a T-08) · SPIN · Negociacion Harvard",
+        "kpis": [
             {
-                "id": "defensa_valor",
-                "name": "Defensa de Valor",
-                "description": "Defiende el valor del producto sin ceder facilmente, justifica el precio"
+                "id": "manejo_objeciones",
+                "name": "Manejo de objeciones",
+                "weight": 25,
+                "indicators": [
+                    "Aplico tecnicas con nombre identificable (T-01 Boomerang, T-02 Aikido, T-03 Si-Y, T-04 Comparacion, T-05 Clarificadora, T-06 Testimonio, T-07 Posponer, T-08 Silencio)",
+                    "Ejecuto los 3 pasos previos: Validar -> Aislar -> Diagnosticar",
+                    "No ofrecio descuento antes de construir valor",
+                    "Convirtio objeciones en argumentos (Boomerang) cuando aplicaba",
+                ],
+                "methodology_refs": ["T-01 a T-08", "PNL: Reencuadre"],
             },
             {
-                "id": "negociacion_winwin",
-                "name": "Negociacion Win-Win",
-                "description": "Busca acuerdos mutuamente beneficiosos, ofrece concesiones inteligentes"
+                "id": "escucha_activa",
+                "name": "Escucha activa y SPIN",
+                "weight": 20,
+                "indicators": [
+                    "Hizo preguntas SPIN distinguibles por tipo (Situacion, Problema, Implicacion, Necesidad)",
+                    "Ratio de preguntas Implicacion+Necesidad mayor que Situacion+Problema",
+                    "Uso informacion concreta de Maria para personalizar argumentos (no genericos)",
+                    "No interrumpio — dejo terminar las oraciones",
+                ],
+                "methodology_refs": ["SPIN Selling — Rackham", "PRAINCODERECI etapas A e IN"],
             },
             {
-                "id": "manejo_presion",
-                "name": "Manejo de Presion",
-                "description": "Mantiene la calma ante tacticas de presion, no cede por panico"
+                "id": "estructura_praincodereci",
+                "name": "Estructura PRAINCODERECI",
+                "weight": 15,
+                "indicators": [
+                    "Sigue las etapas en orden sin saltar ninguna",
+                    "No paso de IN a CI sin pasar por CO y DE",
+                    "Cierre explicito con CTA especifico",
+                ],
+                "methodology_refs": ["PRAINCODERECI completo", "AIDA"],
             },
             {
-                "id": "creatividad",
-                "name": "Creatividad en Soluciones",
-                "description": "Propone alternativas, piensa fuera de la caja, ofrece opciones"
+                "id": "control_emocional",
+                "name": "Control emocional",
+                "weight": 15,
+                "indicators": [
+                    "Tono uniforme bajo presion",
+                    "No respondio con defensividad ante el primer NO",
+                    "Uso T-08 Silencio en vez de llenar el espacio",
+                    "Espejeo adaptativo del tono de Maria",
+                ],
+                "methodology_refs": ["PNL: espejeo y anclas", "T-08 Silencio activo"],
             },
             {
-                "id": "cierre",
-                "name": "Cierre Efectivo",
-                "description": "Cierra con terminos claros, confirma acuerdos, establece siguientes pasos"
-            }
-        ]
-    }
+                "id": "tecnica_cierre",
+                "name": "Tecnica de cierre",
+                "weight": 15,
+                "indicators": [
+                    "Identifico señal de compra antes de cerrar",
+                    "Uso lenguaje de presuposicion en el cierre",
+                    "No cerro prematuramente (antes de Resolucion)",
+                    "Sobrevivio el primer NO sin rendirse si aplicaba",
+                ],
+                "methodology_refs": ["PRAINCODERECI etapa CI", "PNL: lenguaje de presuposicion"],
+            },
+            {
+                "id": "valor_vs_precio",
+                "name": "Valor vs precio",
+                "weight": 10,
+                "indicators": [
+                    "Precio mencionado DESPUES de argumentos de valor",
+                    "Uso T-04 (Comparacion del costo del problema) al menos 1 vez",
+                    "Negocio con contraprestacion (no descuento directo) si pidio precio menor",
+                ],
+                "methodology_refs": ["T-04 Comparacion del costo", "Harvard: Negociacion basada en intereses", "SPIN: preguntas tipo N"],
+            },
+        ],
+    },
 }
 
+# Alias para mantener referencias antiguas en codigo de rutas/tests viejos.
+SKILLS_BY_SCENARIO = KPIS_BY_SCENARIO
 
-ANALYSIS_PROMPT_TEMPLATE = """Eres un coach experto en habilidades de comunicacion y ventas.
-Tu tarea es analizar una conversacion de practica y dar feedback detallado y constructivo.
+
+ANALYSIS_PROMPT_TEMPLATE = """Eres un coach experto en ventas consultivas que evalua transcripciones segun marcos metodologicos formales (PRAINCODERECI, Lean Six Sigma, SPIN, 8 tecnicas de objeciones T-01 a T-08).
 
 ## ESCENARIO
 Tipo: {scenario_type}
-Cliente/Contraparte: {avatar_name} - {avatar_role} en {avatar_company}
+Marco metodologico: {methodology}
+Cliente/Contraparte: {avatar_name} ({avatar_role}) en {avatar_company}
 Personalidad del cliente: {avatar_personality}
 
-## HABILIDADES A EVALUAR
-{skills_list}
+## KPIs A EVALUAR
+{kpis_block}
 
 ## CONVERSACION
 {conversation}
 
-## INSTRUCCIONES
-Analiza la conversacion evaluando cada habilidad. Se especifico y cita ejemplos concretos.
+## INSTRUCCIONES DE EVALUACION
+
+Para cada KPI, evalua cuantos de sus indicadores se observan en la transcripcion. Asigna un score 0-100 segun:
+- 0-40: pocos o ningun indicador presente, o uso erroneo
+- 41-60: 1 indicador parcial
+- 61-80: 2-3 indicadores presentes correctamente
+- 81-100: la mayoria/todos los indicadores presentes y bien ejecutados
+
+Para cada KPI lista que indicadores SI viste y cuales NO. Cita ejemplos textuales del vendedor (no del cliente) cuando sea posible.
+
+El "overall_score" se calcula ponderando: sum(kpi.score * kpi.weight) / 100.
 
 Responde UNICAMENTE con un JSON valido con esta estructura exacta:
 {{
-    "overall_score": <numero 0-100>,
+    "overall_score": <numero 0-100, calculado ponderado>,
     "overall_summary": "<resumen de 2-3 oraciones del desempeno general>",
     "skills": [
         {{
-            "id": "<id_habilidad>",
-            "name": "<nombre_habilidad>",
+            "id": "<id_kpi>",
+            "name": "<nombre_kpi>",
+            "weight": <peso del KPI>,
             "score": <numero 0-100>,
-            "feedback": "<feedback especifico de 2-3 oraciones>",
-            "moment": "<cita textual de la conversacion que ejemplifica esta habilidad, o null si no hay ejemplo>"
+            "feedback": "<feedback especifico de 2-3 oraciones citando momentos>",
+            "moment": "<cita textual del vendedor que ejemplifica este KPI, o null si no hay>",
+            "indicators_met": ["<indicador presente 1>", "..."],
+            "indicators_missed": ["<indicador ausente 1>", "..."]
         }}
     ],
     "strengths": ["<fortaleza 1>", "<fortaleza 2>"],
     "improvements": ["<area de mejora 1>", "<area de mejora 2>"],
     "key_moments": [
         {{
-            "quote": "<cita de la conversacion>",
-            "analysis": "<porque fue bueno o malo>",
+            "quote": "<cita textual de la conversacion>",
+            "analysis": "<por que fue bueno o malo segun el marco metodologico>",
             "type": "positive" | "negative" | "neutral"
         }}
     ],
@@ -130,11 +250,10 @@ Responde UNICAMENTE con un JSON valido con esta estructura exacta:
 }}
 
 IMPORTANTE:
-- Puntuaciones: 0-40 = Necesita trabajo, 41-60 = En desarrollo, 61-80 = Competente, 81-100 = Excelente
-- Se honesto pero constructivo. El objetivo es ayudar a mejorar.
-- Cita ejemplos especificos de la conversacion
-- Si la conversacion es muy corta, indica que necesitas mas interacciones para evaluar
-- Responde SOLO con el JSON, sin texto adicional"""
+- El array "skills" debe contener UNA entrada por cada KPI listado, en el mismo orden, con id y name exactos.
+- Se honesto pero constructivo. El feedback debe nombrar tecnicas/etapas especificas (T-04, etapa CO, SPIN-I, etc.) cuando aplique.
+- Si la conversacion es muy corta para evaluar, refleja eso en scores bajos pero no inventes evidencia.
+- Responde SOLO con el JSON, sin texto adicional, sin markdown."""
 
 
 async def analyze_conversation(
@@ -161,9 +280,9 @@ async def analyze_conversation(
         logger.error(f"[Analysis] Avatar no encontrado: {avatar_id}")
         return _empty_analysis("Avatar no encontrado")
 
-    skills_config = SKILLS_BY_SCENARIO.get(avatar_id)
-    if not skills_config:
-        logger.error(f"[Analysis] Configuracion de habilidades no encontrada: {avatar_id}")
+    kpis_config = KPIS_BY_SCENARIO.get(avatar_id)
+    if not kpis_config:
+        logger.error(f"[Analysis] Configuracion de KPIs no encontrada: {avatar_id}")
         return _empty_analysis("Configuracion no encontrada")
 
     # Verificar conversacion minima - si hay menos de 4-5 intercambios, usar demo
@@ -172,26 +291,32 @@ async def analyze_conversation(
 
     if actual_exchanges < min_exchanges:
         logger.info(f"[Analysis] Conversacion corta ({actual_exchanges} intercambios), generando analisis demo")
-        return _demo_analysis(avatar_id, skills_config, actual_exchanges, duration_seconds)
+        return _demo_analysis(avatar_id, kpis_config, actual_exchanges, duration_seconds)
 
     # Formatear conversacion para el prompt
     conversation_text = _format_conversation(conversation)
 
-    # Formatear lista de habilidades
-    skills_list = "\n".join([
-        f"- {s['name']}: {s['description']}"
-        for s in skills_config["skills"]
-    ])
+    # Formatear bloque de KPIs con indicadores y peso
+    kpis_block_lines = []
+    for k in kpis_config["kpis"]:
+        kpis_block_lines.append(f"\n### KPI: {k['name']} (id={k['id']}, peso={k['weight']}%)")
+        kpis_block_lines.append("Indicadores observables (cada uno presente -> sube el score):")
+        for ind in k["indicators"]:
+            kpis_block_lines.append(f"  - {ind}")
+        if k.get("methodology_refs"):
+            kpis_block_lines.append(f"Marcos metodologicos: {', '.join(k['methodology_refs'])}")
+    kpis_block = "\n".join(kpis_block_lines)
 
     # Construir prompt
     prompt = ANALYSIS_PROMPT_TEMPLATE.format(
-        scenario_type=skills_config["scenario_type"],
+        scenario_type=kpis_config["scenario_type"],
+        methodology=kpis_config.get("methodology", "—"),
         avatar_name=avatar["name"],
         avatar_role=avatar["role"],
         avatar_company=avatar["company"],
         avatar_personality=avatar["personality"],
-        skills_list=skills_list,
-        conversation=conversation_text
+        kpis_block=kpis_block,
+        conversation=conversation_text,
     )
 
     try:
@@ -212,9 +337,24 @@ async def analyze_conversation(
         # Parsear JSON
         analysis = json.loads(result_text)
 
+        # Recalcular overall_score ponderado por si el LLM lo dejo sin ponderar
+        kpi_weights = {k["id"]: k["weight"] for k in kpis_config["kpis"]}
+        skills_returned = analysis.get("skills") or []
+        if skills_returned and all(isinstance(s, dict) and "score" in s for s in skills_returned):
+            weighted_sum = 0
+            total_weight = 0
+            for s in skills_returned:
+                w = s.get("weight") or kpi_weights.get(s.get("id"), 0)
+                if w:
+                    weighted_sum += s["score"] * w
+                    total_weight += w
+            if total_weight:
+                analysis["overall_score"] = round(weighted_sum / total_weight)
+
         # Agregar metadatos
         analysis["avatar_id"] = avatar_id
-        analysis["scenario_type"] = skills_config["scenario_type"]
+        analysis["scenario_type"] = kpis_config["scenario_type"]
+        analysis["methodology"] = kpis_config.get("methodology", "")
         analysis["total_exchanges"] = len(conversation) // 2
         analysis["duration_seconds"] = duration_seconds
 
@@ -272,7 +412,7 @@ def _empty_analysis(reason: str) -> dict:
     }
 
 
-def _demo_analysis(avatar_id: str, skills_config: dict, exchanges: int, duration_seconds: int) -> dict:
+def _demo_analysis(avatar_id: str, kpis_config: dict, exchanges: int, duration_seconds: int) -> dict:
     """
     Genera un analisis demo realista para sesiones cortas.
     Esto permite mostrar el formato completo del reporte aunque la conversacion sea breve.
@@ -283,7 +423,7 @@ def _demo_analysis(avatar_id: str, skills_config: dict, exchanges: int, duration
     base_score = random.randint(62, 78)
 
     skills_analysis = []
-    for skill in skills_config["skills"]:
+    for skill in kpis_config["kpis"]:
         # Variar score alrededor del base para que sea realista
         skill_score = max(45, min(95, base_score + random.randint(-15, 15)))
 
@@ -308,9 +448,12 @@ def _demo_analysis(avatar_id: str, skills_config: dict, exchanges: int, duration
         skills_analysis.append({
             "id": skill["id"],
             "name": skill["name"],
+            "weight": skill.get("weight", 0),
             "score": skill_score,
             "feedback": feedback,
-            "moment": None  # En demo no tenemos citas reales
+            "moment": None,  # En demo no tenemos citas reales
+            "indicators_met": [],
+            "indicators_missed": skill.get("indicators", []),
         })
 
     # Ordenar por score para identificar fortalezas y areas de mejora
@@ -340,19 +483,25 @@ def _demo_analysis(avatar_id: str, skills_config: dict, exchanges: int, duration
         "Revisa las tecnicas de escucha activa antes de tu siguiente sesion"
     ]
 
+    # Recalcular overall_score ponderado para coherencia con el modo real
+    weighted_sum = sum(s["score"] * (s.get("weight") or 0) for s in skills_analysis)
+    total_weight = sum((s.get("weight") or 0) for s in skills_analysis)
+    overall = round(weighted_sum / total_weight) if total_weight else base_score
+
     return {
-        "overall_score": base_score,
-        "overall_summary": f"Sesion de practica breve ({exchanges} intercambios). Mostraste buena disposicion y profesionalismo. Para un analisis mas profundo, te recomendamos sesiones de al menos 4-5 intercambios donde puedas desarrollar mejor cada habilidad.",
+        "overall_score": overall,
+        "overall_summary": f"Sesion de practica breve ({exchanges} intercambios). Mostraste buena disposicion y profesionalismo. Para un analisis mas profundo, te recomendamos sesiones de al menos 4-5 intercambios donde puedas desarrollar mejor cada KPI.",
         "skills": skills_analysis,
         "strengths": strengths,
         "improvements": improvements,
         "key_moments": key_moments,
         "next_steps": next_steps,
         "avatar_id": avatar_id,
-        "scenario_type": skills_config["scenario_type"],
+        "scenario_type": kpis_config["scenario_type"],
+        "methodology": kpis_config.get("methodology", ""),
         "total_exchanges": exchanges,
         "duration_seconds": duration_seconds,
-        "is_demo": True  # Flag para indicar que es analisis demo
+        "is_demo": True,  # Flag para indicar que es analisis demo
     }
 
 

@@ -33,7 +33,14 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> 
         language="es",
         response_format="text"
     )
-    return transcription
+    # El SDK de Groq puede devolver str, un objeto con .text, o raramente tipos
+    # como int/None cuando el audio es muy corto o vacio. Normalizamos a str
+    # robustamente para que el caller nunca vea un tipo inesperado.
+    if transcription is None:
+        return ""
+    if hasattr(transcription, "text"):
+        transcription = transcription.text
+    return str(transcription).strip()
 
 
 async def transcribe_audio_with_details(

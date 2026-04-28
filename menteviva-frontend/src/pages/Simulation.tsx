@@ -3,11 +3,13 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff, Clock, Loader2 } from "lucide-react";
 import { AnimatedAvatar, AvatarCharacter } from "../components/avatar/AnimatedAvatar";
+import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
 import { useSessionStore } from "../stores/sessionStore";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useAudioRecorder } from "../hooks/useAudioRecorder";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { useSoundEffects } from "../hooks/useSoundEffects";
+import { getAvatar3DFlag, getAvatarModelUrl } from "../utils/avatar3dFlag";
 
 export function Simulation() {
   const navigate = useNavigate();
@@ -21,8 +23,14 @@ export function Simulation() {
   const prevMessagesLenRef = useRef(messages.length);
 
   // Hook de audio y sonidos
-  const { isPlaying, startStream, appendChunk, endStream, unlockAudio } = useAudioPlayer();
+  const { audioRef, isPlaying, startStream, appendChunk, endStream, unlockAudio } = useAudioPlayer();
   const { play: playSound } = useSoundEffects();
+
+  const use3DAvatar = useMemo(() => getAvatar3DFlag(), []);
+  const avatarModelUrl = useMemo(
+    () => getAvatarModelUrl(selectedAvatar?.id),
+    [selectedAvatar?.id]
+  );
 
   const handleAudioStart = useCallback(() => {
     startStream("audio/mpeg");
@@ -200,12 +208,21 @@ export function Simulation() {
         <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[#2a2a3a] to-[#1a1a2e] h-[40vh] md:h-auto md:flex-1">
           {/* Avatar centrado */}
           <div className="absolute inset-0 flex items-center justify-center">
-            <AnimatedAvatar
-              character={avatarCharacter}
-              isSpeaking={isSpeaking}
-              isActive={isAvatarActive}
-              size={typeof window !== "undefined" ? Math.min(280, window.innerWidth * 0.6) : 280}
-            />
+            {use3DAvatar && avatarModelUrl ? (
+              <TalkingHeadAvatar
+                audioRef={audioRef}
+                isSpeaking={isSpeaking}
+                isActive={isAvatarActive}
+                modelUrl={avatarModelUrl}
+              />
+            ) : (
+              <AnimatedAvatar
+                character={avatarCharacter}
+                isSpeaking={isSpeaking}
+                isActive={isAvatarActive}
+                size={typeof window !== "undefined" ? Math.min(280, window.innerWidth * 0.6) : 280}
+              />
+            )}
           </div>
 
           {/* Nombre del avatar (esquina inferior izquierda) */}

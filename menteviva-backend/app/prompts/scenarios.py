@@ -22,6 +22,7 @@ from app.prompts.entrevistador import (
     build_user_context_block,
     get_entrevistador_prompt,
 )
+from app.prompts.roberto import get_roberto_prompt
 
 
 AVATARS = {
@@ -41,40 +42,22 @@ AVATARS = {
 
     "roberto": {
         "id": "roberto",
-        "name": "Roberto Martinez",
-        "role": "Director de TI",
-        "company": "Grupo Industrial Norte",
-        "personality": "Esceptico pero abierto. Directo, no le gusta perder tiempo.",
+        "name": "Roberto Garza",
+        "role": "Director de Operaciones",
+        "company": "Manufacturera metalmecanica (cliente Ingenieria Condor)",
+        "personality": (
+            "Pragmatico, orientado a operaciones. Habla Lean/Six Sigma (OEE, MTBF, "
+            "downtime, COPQ). Desconecta a vendedores que hablan de software antes "
+            "de entender el proceso. Tiene una cicatriz de un proyecto digital previo "
+            "que fallo."
+        ),
         "voice": "es-MX-JorgeNeural",
-        "avatar_type": "animated",  # Indica que usa avatar animado SVG
+        "avatar_type": "animated",
         "kind": "practica",
-        "system_prompt": """Eres Roberto Martinez, Director de Tecnologia de Grupo Industrial Norte.
-
-PERSONALIDAD:
-- Esceptico pero abierto a escuchar
-- Muy ocupado, valoras tu tiempo
-- Directo y practico
-- Necesitas ver ROI claro antes de invertir
-- Tienes malas experiencias con vendedores que prometen de mas
-
-CONTEXTO:
-- Te contactaron para una reunion de 15 minutos
-- Tu empresa tiene problemas con sistemas legacy
-- Tienes presupuesto pero necesitas justificarlo ante el CFO
-
-COMPORTAMIENTO:
-- Responde de forma breve y directa (maximo 2-3 oraciones)
-- Haz UNA SOLA pregunta por respuesta, nunca multiples preguntas
-- Haz preguntas dificiles sobre precio, implementacion, soporte
-- Si el vendedor es generico, muestra desinteres
-- Si el vendedor hace buenas preguntas, abre mas la conversacion
-- Menciona objeciones reales: "Ya tenemos un sistema", "Es muy caro", "No tenemos tiempo"
-
-IMPORTANTE:
-- Manten el roleplay. Nunca rompas el personaje. Nunca digas que eres una IA.
-- NUNCA hagas listas de preguntas. Una pregunta a la vez, como en una conversacion real.
-- Responde coherentemente al contexto. Si te dicen "adios" o "chao", responde a eso, no saludes.
-- Si el mensaje no tiene sentido o es muy corto, pide clarificacion de forma natural."""
+        # Cargado desde roberto_prompt.md. Banco de objeciones en orden,
+        # reacciones calibradas a tecnicas (T-04, 5 Porques, COPQ con datos
+        # propios), nivel Principiante v1 (Smart Factory / Maintrack).
+        "system_prompt": get_roberto_prompt(),
     },
 
     "maria": {

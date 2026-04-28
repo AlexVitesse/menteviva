@@ -14,12 +14,15 @@ import {
 import { useMicVAD, utils as vadUtils } from "@ricky0123/vad-react";
 
 import { AnimatedAvatar } from "../components/avatar/AnimatedAvatar";
+import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
 import { ChatBox } from "../components/chat/ChatBox";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useSessionStore } from "../stores/sessionStore";
 import { ENTREVISTADOR_AVATAR } from "../utils/entrevistador";
-import { formatDuration } from "../utils/audio";
+import { formatDuration, isSecureOriginForMic } from "../utils/audio";
+import { buildMockDiagnostico } from "../utils/mockDiagnostico";
+import { getAvatar3DFlag } from "../utils/avatar3dFlag";
 
 type IndicatorState =
   | "loading"
@@ -37,6 +40,8 @@ export function Diagnostico() {
     messages,
     status,
     metrics,
+    serverError,
+    setServerError,
     setSelectedAvatar,
     updateDiagnostico,
     resetSession,
@@ -50,6 +55,16 @@ export function Diagnostico() {
   const [closingCountdown, setClosingCountdown] = useState<number | null>(null);
   const startRef = useRef<number>(Date.now());
   const closingTimerRef = useRef<number | null>(null);
+  // Pending failsafe setTimeouts (mock-fallback). Se cancelan en cuanto llega
+  // un diagnostico real, se aplica el mock, o el componente se desmonta.
+  // Sin esto, un failsafe atrasado puede SOBREESCRIBIR un diagnostico real
+  // que ya estaba en pantalla.
+  const failsafeTimersRef = useRef<Set<number>>(new Set());
+
+  const clearFailsafes = useCallback(() => {
+    failsafeTimersRef.current.forEach((id) => window.clearTimeout(id));
+    failsafeTimersRef.current.clear();
+  }, []);
 
   const targetSeconds = (diagnosticoVars?.minutos ?? 25) * 60;
   const progressPct = Math.min(100, (elapsed / targetSeconds) * 100);
@@ -68,7 +83,9 @@ export function Diagnostico() {
     setSelectedAvatar(ENTREVISTADOR_AVATAR);
   }, [userProfile, diagnosticoVars, navigate, resetSession, setSelectedAvatar]);
 
-  const { isPlaying, startStream, appendChunk, endStream, unlockAudio } = useAudioPlayer();
+  const { audioRef, isPlaying, startStream, appendChunk, endStream, unlockAudio } = useAudioPlayer();
+
+  const use3DAvatar = useMemo(() => getAvatar3DFlag(), []);
 
   const handleAudioStart = useCallback(() => startStream("audio/mpeg"), [startStream]);
   const handleAudioChunk = useCallback((chunk: string) => appendChunk(chunk), [appendChunk]);
@@ -100,8 +117,20 @@ export function Diagnostico() {
   });
 
   // VAD: detecta voz, auto-encodea WAV y manda al WS. Sin botones.
+  // Los assets (worklet, modelo ONNX, WASM) se sirven desde /vad/ para evitar
+  // fetch a CDN externo que rompe en movil (Audio Worklets tienen CORS estricto).
+  // ORT en single-thread: tunnels tipo ngrok no envian COOP/COEP, por lo que
+  // SharedArrayBuffer no esta disponible. Forzar numThreads=1 evita que ORT
+  // intente crear un worker multi-thread y falle en Chrome Android.
   const vad = useMicVAD({
     startOnLoad: false,
+    baseAssetPath: "/vad/",
+    onnxWASMBasePath: "/vad/",
+    ortConfig: (ort) => {
+      ort.env.wasm.numThreads = 1;
+      ort.env.wasm.proxy = false;
+      ort.env.logLevel = "warning";
+    },
     onSpeechEnd: (audio: Float32Array) => {
       console.log(`[VAD] speech end, ${audio.length} samples`);
       const wavBytes = vadUtils.encodeWAV(audio);
@@ -154,6 +183,19 @@ export function Diagnostico() {
     setPermissionError(null);
     setShowEscape(false);
 
+    // Bloqueo preventivo: en Chrome movil sobre HTTP (LAN IP), mediaDevices es
+    // undefined y getUserMedia tira TypeError. Mostramos un mensaje util antes.
+    if (!isSecureOriginForMic() || !navigator.mediaDevices?.getUserMedia) {
+      const host = window.location.hostname;
+      setPermissionError(
+        `Tu navegador bloquea el microfono en este origen (${host}). ` +
+        `En movil necesitas acceder via HTTPS — usa un tunnel (ngrok/cloudflared) ` +
+        `o abre el sitio desde localhost en desktop.`
+      );
+      setRequestingPermission(false);
+      return;
+    }
+
     unlockAudio().catch((e) => console.warn("[Diagnostico] unlock failed:", e));
     const escapeTimer = window.setTimeout(() => setShowEscape(true), 5000);
 
@@ -166,10 +208,21 @@ export function Diagnostico() {
       console.error("[Diagnostico] getUserMedia failed:", name, err);
       if (name === "NotAllowedError" || name === "PermissionDeniedError") {
         setPermissionError(
-          "Necesitamos acceso al microfono. Habilitalo en los ajustes del navegador y vuelve a intentar."
+          "Necesitamos acceso al microfono. Habilitalo en los ajustes del navegador (candado junto a la URL) y vuelve a intentar."
         );
-      } else if (name === "NotFoundError") {
-        setPermissionError("No detectamos ningun microfono conectado.");
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setPermissionError(
+          "No detectamos ningun microfono. En movil: revisa que ninguna otra app este usandolo y que no tengas audifonos Bluetooth sin micro conectados."
+        );
+      } else if (name === "NotReadableError" || name === "TrackStartError") {
+        setPermissionError(
+          "El microfono esta ocupado por otra app. Cierra WhatsApp, Zoom, Grabadora o cualquier llamada activa y vuelve a intentar."
+        );
+      } else if (name === "SecurityError" || name === "TypeError") {
+        // TypeError pasa cuando navigator.mediaDevices es undefined (HTTP en movil)
+        setPermissionError(
+          "Chrome bloquea el microfono en este origen. Accede desde HTTPS (ngrok/cloudflared) o desde localhost en desktop."
+        );
       } else {
         setPermissionError("No pudimos acceder al microfono. Intenta de nuevo.");
       }
@@ -184,19 +237,63 @@ export function Diagnostico() {
     setRequestingPermission(false);
   }
 
+  // Aplica un diagnostico demo (is_demo=true) al perfil y navega al resumen.
+  // Usado como fallback cuando el backend no puede cerrar la sesion limpio.
+  // Cancela cualquier failsafe pendiente para evitar dobles aplicaciones.
+  const applyDemoAndGoToPerfil = useCallback(() => {
+    clearFailsafes();
+    const demo = buildMockDiagnostico(userProfile);
+    updateDiagnostico(demo);
+    navigate("/diagnostico/perfil", { replace: true });
+  }, [clearFailsafes, navigate, updateDiagnostico, userProfile]);
+
+  // Programa un failsafe que aplica mock si en `delayMs` no hay metrics.
+  // Devuelve el id para que el caller lo trackee (aunque ya queda guardado en
+  // failsafeTimersRef).
+  const scheduleMockFailsafe = useCallback(
+    (delayMs: number) => {
+      const id = window.setTimeout(() => {
+        failsafeTimersRef.current.delete(id);
+        if (!useSessionStore.getState().metrics) {
+          applyDemoAndGoToPerfil();
+        }
+      }, delayMs);
+      failsafeTimersRef.current.add(id);
+      return id;
+    },
+    [applyDemoAndGoToPerfil],
+  );
+
+  // Cleanup global al desmontar el componente.
+  useEffect(() => {
+    return () => clearFailsafes();
+  }, [clearFailsafes]);
+
   useEffect(() => {
     if (!metrics) return;
+    // Llegaron metrics: cancelamos cualquier failsafe pendiente para evitar
+    // que un setTimeout atrasado sobreescriba el diagnostico real con un mock.
+    clearFailsafes();
     if (metrics.user_profile_update) {
       updateDiagnostico(metrics.user_profile_update);
+      navigate("/diagnostico/perfil");
+    } else {
+      console.warn("[Diagnostico] metrics sin user_profile_update, aplicando mock", metrics);
+      applyDemoAndGoToPerfil();
     }
-    navigate("/diagnostico/perfil");
-  }, [metrics, navigate, updateDiagnostico]);
+  }, [metrics, navigate, updateDiagnostico, applyDemoAndGoToPerfil, clearFailsafes]);
 
-  // Countdown del cierre auto
+  // Countdown del cierre auto. Al llegar a 0: si WS sigue vivo -> endSession
+  // normal; si esta caido -> demo fallback directo.
   useEffect(() => {
     if (closingCountdown === null) return;
     if (closingCountdown <= 0) {
-      endSession();
+      if (status === "disconnected") {
+        applyDemoAndGoToPerfil();
+      } else {
+        endSession();
+        scheduleMockFailsafe(10000);
+      }
       setClosingCountdown(null);
       return;
     }
@@ -208,13 +305,26 @@ export function Diagnostico() {
         window.clearTimeout(closingTimerRef.current);
       }
     };
-  }, [closingCountdown, endSession]);
+  }, [closingCountdown, endSession, status, applyDemoAndGoToPerfil, scheduleMockFailsafe]);
 
   function cancelClosing() {
     if (closingTimerRef.current !== null) {
       window.clearTimeout(closingTimerRef.current);
     }
     setClosingCountdown(null);
+  }
+
+  // "Terminar" con fallback: si el WS esta OK intentamos el cierre limpio
+  // (endSession -> analisis -> metrics -> navigate via useEffect de metrics).
+  // Si el WS esta caido, inyectamos un diagnostico demo y vamos al perfil
+  // para que el usuario siempre vea un resultado (no queda atrapado).
+  function handleTerminate() {
+    if (status === "disconnected") {
+      applyDemoAndGoToPerfil();
+      return;
+    }
+    endSession();
+    scheduleMockFailsafe(10000);
   }
 
   const indicatorState: IndicatorState = useMemo(() => {
@@ -251,7 +361,7 @@ export function Diagnostico() {
               </span>
             </div>
             <button
-              onClick={endSession}
+              onClick={handleTerminate}
               className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full border border-danger/50 text-danger hover:bg-danger/10 text-xs sm:text-sm"
             >
               <PhoneOff className="w-4 h-4" />
@@ -271,13 +381,20 @@ export function Diagnostico() {
 
       {sessionStarted && status === "disconnected" && (
         <div className="bg-danger/20 border-b border-danger/40 px-4 py-2 text-center text-xs sm:text-sm text-danger shrink-0">
-          Sin conexion al servidor. Verifica tu internet y recarga la pagina.
+          Sin conexion al servidor. Presiona Terminar para ir al inicio o recarga la pagina.
+        </div>
+      )}
+
+      {serverError && status !== "disconnected" && (
+        <div className="bg-warning/20 border-b border-warning/40 px-4 py-2 text-center text-xs sm:text-sm text-warning shrink-0 flex items-center justify-center gap-2">
+          <span>{serverError}</span>
+          <button onClick={() => setServerError(null)} className="underline opacity-80 hover:opacity-100">Cerrar</button>
         </div>
       )}
 
       {vad.errored && (
         <div className="bg-warning/20 border-b border-warning/40 px-4 py-2 text-center text-xs sm:text-sm text-warning shrink-0">
-          No pudimos iniciar el detector de voz. Recarga la pagina o usa otro navegador.
+          Detector de voz fallo: {typeof vad.errored === "string" ? vad.errored : "error desconocido"}. Recarga o usa otro navegador.
         </div>
       )}
 
@@ -287,11 +404,19 @@ export function Diagnostico() {
           animate={{ opacity: 1 }}
           className="relative rounded-xl overflow-hidden bg-gradient-to-br from-deep to-ink flex items-center justify-center h-[35vh] md:h-auto md:flex-1"
         >
-          <AnimatedAvatar
-            character="maria"
-            isActive={status === "thinking" || status === "generating_audio"}
-            isSpeaking={isPlaying}
-          />
+          {use3DAvatar ? (
+            <TalkingHeadAvatar
+              audioRef={audioRef}
+              isActive={status === "thinking" || status === "generating_audio"}
+              isSpeaking={isPlaying}
+            />
+          ) : (
+            <AnimatedAvatar
+              character="maria"
+              isActive={status === "thinking" || status === "generating_audio"}
+              isSpeaking={isPlaying}
+            />
+          )}
           <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg">
             <span className="text-xs sm:text-sm font-medium">{ENTREVISTADOR_AVATAR.name}</span>
           </div>
@@ -389,7 +514,8 @@ export function Diagnostico() {
               )}
 
               <p className="text-[11px] text-muted mt-4">
-                En movil: asegurate de NO tener el switch de silencio activado.
+                En movil (Android/iOS): el navegador solo permite el microfono sobre HTTPS.
+                Accede via un tunnel (ngrok, cloudflared) o desde localhost en desktop.
               </p>
             </motion.div>
           </motion.div>

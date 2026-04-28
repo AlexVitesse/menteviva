@@ -9,6 +9,7 @@ import { DiagnosticoSetup } from "./pages/DiagnosticoSetup";
 import { Diagnostico } from "./pages/Diagnostico";
 import { DiagnosticoPerfil } from "./pages/DiagnosticoPerfil";
 import { DiagnosticoRecomendacion } from "./pages/DiagnosticoRecomendacion";
+import { Landing } from "./pages/Landing";
 import { useSessionStore } from "./stores/sessionStore";
 
 /**
@@ -33,6 +34,17 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Root "/": landing publica para visitantes nuevos; dashboard para usuarios
+ * con perfil completo; flujo de setup si tienen registro pero no diagnostico.
+ */
+function Root() {
+  const userProfile = useSessionStore((s) => s.userProfile);
+  if (!userProfile?.registro) return <Landing />;
+  if (!userProfile.diagnostico) return <Navigate to="/diagnostico/setup" replace />;
+  return <Dashboard />;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -44,7 +56,8 @@ function App() {
         <Route path="/diagnostico/perfil" element={<DiagnosticoPerfil />} />
         <Route path="/diagnostico/recomendacion" element={<DiagnosticoRecomendacion />} />
 
-        <Route path="/" element={<OnboardingGuard><Dashboard /></OnboardingGuard>} />
+        <Route path="/" element={<Root />} />
+        <Route path="/dashboard" element={<OnboardingGuard><Dashboard /></OnboardingGuard>} />
         <Route path="/briefing" element={<OnboardingGuard><Briefing /></OnboardingGuard>} />
         <Route path="/simulation" element={<OnboardingGuard><Simulation /></OnboardingGuard>} />
         <Route path="/report" element={<OnboardingGuard><Report /></OnboardingGuard>} />

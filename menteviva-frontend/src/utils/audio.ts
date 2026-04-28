@@ -44,6 +44,23 @@ export function isAudioRecordingSupported(): boolean {
 }
 
 /**
+ * Detecta si el origen actual es "seguro" desde la perspectiva de la Web API.
+ * getUserMedia (y la mayoria de APIs sensibles) solo funcionan en secure context:
+ * HTTPS, localhost, 127.0.0.1, o file://. Chrome para Android bloquea getUserMedia
+ * en IPs de LAN sobre HTTP — incluso aunque desktop Chrome las permita.
+ * Ref: https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts
+ */
+export function isSecureOriginForMic(): boolean {
+  if (typeof window === "undefined") return false;
+  if (window.isSecureContext) return true;
+  // Fallback por si isSecureContext no esta disponible
+  const { protocol, hostname } = window.location;
+  if (protocol === "https:" || protocol === "file:") return true;
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") return true;
+  return false;
+}
+
+/**
  * Obtiene los formatos de audio soportados por el navegador
  */
 export function getSupportedAudioFormats(): string[] {

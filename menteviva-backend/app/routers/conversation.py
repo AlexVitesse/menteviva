@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.models import UserProfile
+from app.models.user_profile import Registro
 from app.services.groq_whisper import transcribe_audio
 from app.services.groq_llm import chat_stream
 from app.services.edge_tts import text_to_speech, text_to_speech_stream
@@ -215,89 +216,112 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                 exchange_count += 1
                 logger.info(f"[WS] === Intercambio #{exchange_count} (audio) ===")
 
-                # 1. Decodificar audio
-                audio_base64 = data.get("audio")
-                audio_format = data.get("format", "audio.webm")  # webm (MediaRecorder) o wav (VAD)
-                audio_bytes = base64.b64decode(audio_base64)
-                logger.debug(f"[WS] Audio recibido: {len(audio_bytes)} bytes ({audio_format})")
+                # Todo el intercambio va en un try/except para que un fallo
+                # de STT/LLM/TTS NO cierre el WS. Asi el cliente puede seguir
+                # mandando audio o un end_session aunque un turno haya fallado.
+                try:
+                    # 1. Decodificar audio
+                    audio_base64 = data.get("audio")
+                    audio_format = data.get("format", "audio.webm")
+                    audio_bytes = base64.b64decode(audio_base64)
+                    logger.debug(f"[WS] Audio recibido: {len(audio_bytes)} bytes ({audio_format})")
 
-                # 2. Transcribir con Whisper
-                await websocket.send_json({
-                    "type": "status",
-                    "status": "transcribing"
-                })
+                    # 2. Transcribir con Whisper
+                    await websocket.send_json({"type": "status", "status": "transcribing"})
 
-                t_start = time.time()
-                user_text = await transcribe_audio(audio_bytes, filename=audio_format)
-                t_whisper = time.time() - t_start
-                logger.info(f"[STT] Transcripcion ({t_whisper:.2f}s): \"{user_text[:100]}...\"" if len(user_text) > 100 else f"[STT] Transcripcion ({t_whisper:.2f}s): \"{user_text}\"")
+                    t_start = time.time()
+                    user_text = await transcribe_audio(audio_bytes, filename=audio_format)
+                    t_whisper = time.time() - t_start
+                    # Blindaje: transcribe_audio ya normaliza a str, pero por si acaso
+                    if not isinstance(user_text, str):
+                        user_text = str(user_text) if user_text is not None else ""
+                    preview = user_text[:100] + "..." if len(user_text) > 100 else user_text
+                    logger.info(f"[STT] Transcripcion ({t_whisper:.2f}s): \"{preview}\"")
 
-                await websocket.send_json({
-                    "type": "user_message",
-                    "content": user_text
-                })
+                    # Si el STT salio vacio (audio silente/ruido), no molestamos al
+                    # LLM. Emitimos ready y seguimos esperando el proximo turno.
+                    if not user_text:
+                        logger.info("[STT] Transcripcion vacia, saltando turno")
+                        exchange_count -= 1  # este turno no cuenta
+                        await websocket.send_json({"type": "status", "status": "ready"})
+                        continue
 
-                # 3. Agregar al historial
-                conversation_history.append({
-                    "role": "user",
-                    "content": user_text
-                })
+                    await websocket.send_json({"type": "user_message", "content": user_text})
 
-                # 4. Generar respuesta con LLM (streaming)
-                await websocket.send_json({
-                    "type": "status",
-                    "status": "thinking"
-                })
+                    # 3. Agregar al historial
+                    conversation_history.append({"role": "user", "content": user_text})
 
-                t_start = time.time()
-                full_response = ""
-                token_count = 0
-                async for token in chat_stream(conversation_history, system_prompt):
-                    full_response += token
-                    token_count += 1
-                    await websocket.send_json({
-                        "type": "assistant_token",
-                        "content": token
-                    })
-                t_llm = time.time() - t_start
-                logger.info(f"[LLM] Respuesta generada ({t_llm:.2f}s, {token_count} tokens): \"{full_response[:100]}...\"" if len(full_response) > 100 else f"[LLM] Respuesta generada ({t_llm:.2f}s, {token_count} tokens): \"{full_response}\"")
+                    # 4. Generar respuesta con LLM (streaming)
+                    await websocket.send_json({"type": "status", "status": "thinking"})
 
-                # Detectar [CIERRE] y limpiar texto antes de TTS/historial
-                full_response, should_close = _detect_closing(full_response)
+                    t_start = time.time()
+                    full_response = ""
+                    token_count = 0
+                    async for token in chat_stream(conversation_history, system_prompt):
+                        full_response += token
+                        token_count += 1
+                        await websocket.send_json({"type": "assistant_token", "content": token})
+                    t_llm = time.time() - t_start
+                    llm_preview = full_response[:100] + "..." if len(full_response) > 100 else full_response
+                    logger.info(f"[LLM] Respuesta generada ({t_llm:.2f}s, {token_count} tokens): \"{llm_preview}\"")
 
-                # 5. Agregar respuesta al historial (sin la marca)
-                conversation_history.append({
-                    "role": "assistant",
-                    "content": full_response
-                })
+                    # Detectar [CIERRE] y limpiar texto antes de TTS/historial
+                    full_response, should_close = _detect_closing(full_response)
 
-                # 6. Generar audio con TTS
-                await websocket.send_json({
-                    "type": "status",
-                    "status": "generating_audio"
-                })
+                    # Si Sofia solo emitio [CIERRE] sin despedida, sintetizamos una
+                    # despedida breve para que el usuario oiga algo amable antes
+                    # del countdown de la plataforma.
+                    if should_close and not full_response.strip():
+                        nombre = (
+                            user_profile.registro.nombre.split()[0]
+                            if user_profile and user_profile.registro
+                            else None
+                        )
+                        full_response = (
+                            f"Muchas gracias, {nombre}. Tengo buen material para darte tu mapa."
+                            if nombre
+                            else "Muchas gracias. Tengo buen material para darte tu mapa."
+                        )
+                        logger.info("[WS] [CIERRE] sin texto, usando despedida default")
 
-                t_start = time.time()
-                await _stream_tts_over_ws(websocket, full_response, avatar_id)
-                t_tts = time.time() - t_start
+                    # 5. Agregar respuesta al historial (sin la marca)
+                    conversation_history.append({"role": "assistant", "content": full_response})
 
-                if should_close:
-                    logger.info("[WS] Sofia emitio [CIERRE], enviando closing_intent")
-                    await websocket.send_json({"type": "closing_intent"})
+                    # 6. Generar audio con TTS
+                    await websocket.send_json({"type": "status", "status": "generating_audio"})
 
-                logger.info(f"[WS] Intercambio #{exchange_count} completado - Total: STT={t_whisper:.2f}s + LLM={t_llm:.2f}s + TTS={t_tts:.2f}s = {t_whisper+t_llm+t_tts:.2f}s")
+                    t_start = time.time()
+                    await _stream_tts_over_ws(websocket, full_response, avatar_id)
+                    t_tts = time.time() - t_start
 
-                await websocket.send_json({
-                    "type": "status",
-                    "status": "ready"
-                })
+                    if should_close:
+                        logger.info("[WS] Sofia emitio [CIERRE], enviando closing_intent")
+                        await websocket.send_json({"type": "closing_intent"})
+
+                    logger.info(f"[WS] Intercambio #{exchange_count} completado - Total: STT={t_whisper:.2f}s + LLM={t_llm:.2f}s + TTS={t_tts:.2f}s = {t_whisper+t_llm+t_tts:.2f}s")
+
+                    await websocket.send_json({"type": "status", "status": "ready"})
+                except Exception as e:
+                    # No cerramos el WS por un turno fallido. Reportamos y seguimos.
+                    logger.error(f"[WS] Error procesando intercambio #{exchange_count}: {e}", exc_info=True)
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "error": f"Hubo un problema procesando tu ultimo audio. Puedes seguir hablando o presionar Terminar.",
+                        })
+                        await websocket.send_json({"type": "status", "status": "ready"})
+                    except Exception:
+                        pass
 
             elif msg_type == "text":
                 # Modo texto (sin audio del usuario)
                 exchange_count += 1
-                user_text = data.get("text", "")
+                user_text = data.get("text") or ""
+                if not isinstance(user_text, str):
+                    user_text = str(user_text)
                 logger.info(f"[WS] === Intercambio #{exchange_count} (texto) ===")
-                logger.info(f"[WS] Texto usuario: \"{user_text[:100]}...\"" if len(user_text) > 100 else f"[WS] Texto usuario: \"{user_text}\"")
+                preview_u = user_text[:100] + "..." if len(user_text) > 100 else user_text
+                logger.info(f"[WS] Texto usuario: \"{preview_u}\"")
 
                 await websocket.send_json({
                     "type": "user_message",
@@ -325,10 +349,25 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                         "content": token
                     })
                 t_llm = time.time() - t_start
-                logger.info(f"[LLM] Respuesta generada ({t_llm:.2f}s, {token_count} tokens): \"{full_response[:100]}...\"" if len(full_response) > 100 else f"[LLM] Respuesta generada ({t_llm:.2f}s, {token_count} tokens): \"{full_response}\"")
+                preview_a = full_response[:100] + "..." if len(full_response) > 100 else full_response
+                logger.info(f"[LLM] Respuesta generada ({t_llm:.2f}s, {token_count} tokens): \"{preview_a}\"")
 
                 # Detectar [CIERRE] y limpiar texto antes de TTS/historial
                 full_response, should_close = _detect_closing(full_response)
+
+                # Despedida default si Sofia solo emitio [CIERRE]
+                if should_close and not full_response.strip():
+                    nombre = (
+                        user_profile.registro.nombre.split()[0]
+                        if user_profile and user_profile.registro
+                        else None
+                    )
+                    full_response = (
+                        f"Muchas gracias, {nombre}. Tengo buen material para darte tu mapa."
+                        if nombre
+                        else "Muchas gracias. Tengo buen material para darte tu mapa."
+                    )
+                    logger.info("[WS] [CIERRE] sin texto (modo texto), usando despedida default")
 
                 conversation_history.append({
                     "role": "assistant",
@@ -369,24 +408,35 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                 }
 
                 if avatar.get("kind") == "diagnostico":
-                    if not user_profile or not user_profile.registro:
-                        logger.error("[WS] Diagnostico sin registro: se requiere 'init' con user_profile")
-                        await websocket.send_json({
-                            "type": "session_end",
-                            "metrics": {
-                                **base_metrics,
-                                "user_profile_update": None,
-                                "error": "Diagnostico requiere registro: envia 'init' con user_profile antes de la conversacion.",
-                            },
-                        })
-                        break
+                    # Si el init rechazo el user_profile (validacion pydantic),
+                    # NO descartamos la conversacion. Construimos un Registro
+                    # placeholder para que el analysis pueda correr, y marcamos
+                    # el diagnostico como is_demo para que el UI muestre el aviso.
+                    registro_for_analysis = user_profile.registro if user_profile and user_profile.registro else None
+                    used_placeholder = False
+                    if registro_for_analysis is None:
+                        logger.warning(
+                            "[WS] Diagnostico sin registro valido — usando placeholder "
+                            "para no descartar la conversacion"
+                        )
+                        registro_for_analysis = Registro(
+                            nombre="Candidato",
+                            rol_objetivo="Profesional",
+                            industria="General",
+                            experience_level="mid",
+                        )
+                        used_placeholder = True
 
                     logger.info("[WS] Generando user_profile desde diagnostico...")
                     diagnostico = await generate_user_profile(
                         conversation=conversation_history,
-                        registro=user_profile.registro,
+                        registro=registro_for_analysis,
                         session_vars=session_vars,
                     )
+                    if used_placeholder:
+                        # Forzamos is_demo=true para que el frontend muestre
+                        # el banner "esto es un ejemplo, rehaz para tu real".
+                        diagnostico["is_demo"] = True
                     logger.info(
                         f"[WS] Diagnostico generado - recommended: "
                         f"{diagnostico.get('recommended_next_scenario')}/"

@@ -1,8 +1,11 @@
 """
-Servicio de LLM usando Groq con Llama 3.1 8B.
+Servicio de LLM usando Groq.
 
-Groq ofrece inferencia ultra-rapida y gratuita.
-Modelo: llama-3.1-8b-instant
+Modelo por defecto: openai/gpt-oss-20b (preview en Groq).
+Reemplazo de llama-3.1-8b-instant tras comparativa head-to-head: misma
+latencia (~0.66s/turno) pero cumple reglas estrictas del prompt mucho mejor
+(reasoning bake-in). Si gpt-oss-20b se cae, fallback razonable es
+llama-3.1-8b-instant.
 """
 
 import logging
