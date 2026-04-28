@@ -10,6 +10,7 @@ import { Diagnostico } from "./pages/Diagnostico";
 import { DiagnosticoPerfil } from "./pages/DiagnosticoPerfil";
 import { DiagnosticoRecomendacion } from "./pages/DiagnosticoRecomendacion";
 import { Landing } from "./pages/Landing";
+import { MiPlan } from "./pages/MiPlan";
 import { useSessionStore } from "./stores/sessionStore";
 
 /**
@@ -61,6 +62,7 @@ function App() {
         <Route path="/briefing" element={<OnboardingGuard><Briefing /></OnboardingGuard>} />
         <Route path="/simulation" element={<OnboardingGuard><Simulation /></OnboardingGuard>} />
         <Route path="/report" element={<OnboardingGuard><Report /></OnboardingGuard>} />
+        <Route path="/mi-plan" element={<OnboardingGuard><MiPlan /></OnboardingGuard>} />
       </Routes>
     </BrowserRouter>
   );

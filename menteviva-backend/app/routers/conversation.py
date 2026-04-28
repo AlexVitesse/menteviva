@@ -20,6 +20,7 @@ import json
 import base64
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.models import UserProfile
@@ -29,6 +30,7 @@ from app.services.groq_llm import chat_stream
 from app.services.edge_tts import text_to_speech, text_to_speech_stream
 from app.services.analysis import analyze_conversation, generate_user_profile
 from app.services.user_repo import save_diagnostic, upsert_user
+from app.services.session_repo import save_practice_session
 from app.prompts.scenarios import get_avatar, get_system_prompt
 from app.prompts.entrevistador import pick_greeting
 
@@ -164,6 +166,7 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
 
     user_profile: UserProfile | None = None
     session_vars: dict | None = None
+    level: str | None = None
     system_prompt = get_system_prompt(avatar_id)
 
     conversation_history = []
@@ -466,9 +469,31 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                         duration_seconds=duration_seconds,
                     )
                     logger.info(f"[WS] Analisis completado - Score: {analysis.get('overall_score', 'N/A')}")
+                    # Persistir sesion de practica (mejor esfuerzo — no bloquea respuesta).
+                    # Solo si tenemos user_id real; sesiones anonimas se descartan
+                    # porque no caben en el dashboard /mi-plan.
+                    session_id = None
+                    if user_profile and user_profile.user_id:
+                        try:
+                            session_id = await save_practice_session(
+                                user_id=user_profile.user_id,
+                                avatar_id=avatar_id,
+                                level=level,
+                                started_at=datetime.fromtimestamp(session_start_time).isoformat(),
+                                ended_at=datetime.utcnow().isoformat(),
+                                duration_seconds=duration_seconds,
+                                total_exchanges=total_exchanges,
+                                analysis=analysis,
+                                conversation=conversation_history,
+                            )
+                        except Exception as e:
+                            logger.error(f"[WS] save_practice_session fallo: {e}")
+                    metrics_payload = {**base_metrics, "analysis": analysis}
+                    if session_id:
+                        metrics_payload["session_id"] = session_id
                     await websocket.send_json({
                         "type": "session_end",
-                        "metrics": {**base_metrics, "analysis": analysis},
+                        "metrics": metrics_payload,
                     })
                 break
 

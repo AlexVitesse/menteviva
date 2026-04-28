@@ -57,6 +57,21 @@ export interface SessionMetrics {
   user_profile_update?: Diagnostico | null;
   is_fallback?: boolean;
   error?: string;
+  session_id?: number;  // viene del backend cuando la sesion se persistio en SQLite
+}
+
+// Dashboard /mi-plan
+export interface PracticeSessionSummary {
+  session_id: number;
+  user_id: string;
+  avatar_id: string;
+  level: string | null;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number | null;
+  total_exchanges: number | null;
+  overall_score: number | null;
+  created_at: string;
 }
 
 export type ConnectionStatus =

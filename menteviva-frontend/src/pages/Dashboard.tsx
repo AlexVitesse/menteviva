@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Play, CheckCircle2, AlertCircle } from "lucide-react";
+import { Play, CheckCircle2, AlertCircle, BarChart3 } from "lucide-react";
 import { AvatarCard } from "../components/avatar/AvatarCard";
 import { useSessionStore } from "../stores/sessionStore";
 import type { Avatar, Gap, Strength } from "../types";
@@ -66,11 +66,19 @@ export function Dashboard() {
           <h1 className="font-syne text-2xl font-bold bg-gradient-to-r from-violet-light to-teal bg-clip-text text-transparent">
             Mente Viva
           </h1>
-          {/* Demo Badge */}
-          <div className="px-3 py-1 rounded-full bg-gradient-to-r from-violet/20 to-teal/20 border border-violet/30">
-            <span className="text-xs font-semibold text-violet-light tracking-wider">
-              DEMO
-            </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate("/mi-plan")}
+              className="flex items-center gap-2 text-sm text-muted hover:text-white transition-colors"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Mi plan
+            </button>
+            <div className="px-3 py-1 rounded-full bg-gradient-to-r from-violet/20 to-teal/20 border border-violet/30">
+              <span className="text-xs font-semibold text-violet-light tracking-wider">
+                DEMO
+              </span>
+            </div>
           </div>
         </div>
       </header>

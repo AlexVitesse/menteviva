@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import init_db
-from app.routers import conversation, avatars, profiles
+from app.routers import conversation, avatars, profiles, sessions
 
 # ============ CONFIGURAR LOGGING ============
 
@@ -67,6 +67,7 @@ app.add_middleware(
 app.include_router(avatars.router, prefix="/api", tags=["avatars"])
 app.include_router(conversation.router, prefix="/api", tags=["conversation"])
 app.include_router(profiles.router, prefix="/api", tags=["profiles"])
+app.include_router(sessions.router, prefix="/api", tags=["sessions"])
 
 
 @app.on_event("startup")

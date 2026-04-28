@@ -15,7 +15,8 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronUp,
-  Lightbulb
+  Lightbulb,
+  BarChart3,
 } from "lucide-react";
 import { useSessionStore } from "../stores/sessionStore";
 import type { ConversationAnalysis, SkillAnalysis, KeyMoment } from "../types";
@@ -292,13 +293,20 @@ export function Report() {
           </div>
 
           {/* Actions */}
-          <div className="flex gap-4 justify-center">
+          <div className="flex flex-wrap gap-4 justify-center">
             <button
               onClick={() => navigate("/")}
               className="btn-secondary flex items-center gap-2"
             >
               <Home className="w-5 h-5" />
               Inicio
+            </button>
+            <button
+              onClick={() => navigate("/mi-plan")}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <BarChart3 className="w-5 h-5" />
+              Mi plan
             </button>
             <button
               onClick={() => navigate("/briefing")}

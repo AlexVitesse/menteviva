@@ -37,6 +37,25 @@ CREATE TABLE IF NOT EXISTS diagnostics (
 
 CREATE INDEX IF NOT EXISTS idx_diagnostics_user ON diagnostics(user_id);
 CREATE INDEX IF NOT EXISTS idx_diagnostics_created ON diagnostics(created_at);
+
+CREATE TABLE IF NOT EXISTS practice_sessions (
+    session_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id            TEXT NOT NULL,
+    avatar_id          TEXT NOT NULL,
+    level              TEXT,
+    started_at         TEXT NOT NULL,
+    ended_at           TEXT NOT NULL,
+    duration_seconds   INTEGER,
+    total_exchanges    INTEGER,
+    overall_score      INTEGER,
+    analysis_json      TEXT,
+    conversation_json  TEXT,
+    created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON practice_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_created ON practice_sessions(created_at);
 """
 
 
