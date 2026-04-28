@@ -5,7 +5,7 @@ import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff, Clock, Loader2 } f
 import { AnimatedAvatar, AvatarCharacter } from "../components/avatar/AnimatedAvatar";
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
 import { useSessionStore } from "../stores/sessionStore";
-import { useWebSocket } from "../hooks/useWebSocket";
+import { useWebSocket, type WsInitPayload } from "../hooks/useWebSocket";
 import { useAudioRecorder } from "../hooks/useAudioRecorder";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { useSoundEffects } from "../hooks/useSoundEffects";
@@ -13,7 +13,7 @@ import { getAvatar3DFlag, getAvatarModelUrl } from "../utils/avatar3dFlag";
 
 export function Simulation() {
   const navigate = useNavigate();
-  const { selectedAvatar, messages, status, metrics, serverError, userProfile, setServerError, setMetrics } = useSessionStore();
+  const { selectedAvatar, selectedLevel, messages, status, metrics, serverError, userProfile, setServerError, setMetrics } = useSessionStore();
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isEnding, setIsEnding] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -47,9 +47,14 @@ export function Simulation() {
     endStream();
   }, [endStream]);
 
-  const initPayload = useMemo(
-    () => (userProfile ? { user_profile: userProfile } : undefined),
-    [userProfile]
+  // El backend solo aplica `level` para avatares con supports_levels (Roberto).
+  // Mandar siempre el nivel seleccionado en Briefing es seguro y simplifica.
+  const initPayload = useMemo<WsInitPayload>(
+    () => ({
+      ...(userProfile ? { user_profile: userProfile } : {}),
+      level: selectedLevel,
+    }),
+    [userProfile, selectedLevel]
   );
 
   const { connect, sendAudio, endSession, disconnect } = useWebSocket({

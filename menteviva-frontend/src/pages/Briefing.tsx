@@ -1,9 +1,30 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Play, Target, Brain, Clock, MessageSquare, TrendingUp, ArrowLeft } from "lucide-react";
+import { Play, Target, Brain, Clock, MessageSquare, TrendingUp, ArrowLeft, Gauge } from "lucide-react";
 import { AnimatedAvatar, AvatarCharacter } from "../components/avatar/AnimatedAvatar";
-import { useSessionStore } from "../stores/sessionStore";
+import { useSessionStore, type SimulationLevel } from "../stores/sessionStore";
+
+const LEVELS: { value: SimulationLevel; label: string; description: string }[] = [
+  {
+    value: "principiante",
+    label: "Principiante",
+    description: "Roberto recibe vendedores en formación. Cede tras 2 objeciones manejadas + ROI claro.",
+  },
+  {
+    value: "intermedio",
+    label: "Intermedio",
+    description: "Roberto exige descomposición de OEE, ROI desglosado y propuesta de piloto antes de ceder.",
+  },
+  {
+    value: "avanzado",
+    label: "Avanzado",
+    description: "Roberto evalúa, no pregunta. Pide NPV/IRR + caso verificable + POC con go/no-go. Castiga descuentos prematuros.",
+  },
+];
+
+// Avatares que soportan seleccion de nivel. El backend ignora `level` para los demas.
+const AVATARS_WITH_LEVELS = new Set(["roberto"]);
 
 // Datos de escenarios para cada avatar
 const SCENARIOS = {
@@ -55,7 +76,8 @@ const SCENARIOS = {
 
 export function Briefing() {
   const navigate = useNavigate();
-  const { selectedAvatar, userProfile } = useSessionStore();
+  const { selectedAvatar, userProfile, selectedLevel, setSelectedLevel } = useSessionStore();
+  const supportsLevels = selectedAvatar ? AVATARS_WITH_LEVELS.has(selectedAvatar.id) : false;
 
   useEffect(() => {
     if (!selectedAvatar) {
@@ -147,6 +169,38 @@ export function Briefing() {
                       {c.replace(/_/g, " ")}
                     </span>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {supportsLevels && (
+              <div className="bg-surface rounded-xl p-6 border border-white/5">
+                <div className="flex items-center gap-2 mb-1">
+                  <Gauge className="w-5 h-5 text-violet-light" />
+                  <h3 className="font-syne font-bold">Nivel de dificultad</h3>
+                </div>
+                <p className="text-xs text-muted mb-4">
+                  Define qué tan exigente será {selectedAvatar.name} contigo.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {LEVELS.map((lvl) => {
+                    const isSelected = selectedLevel === lvl.value;
+                    return (
+                      <button
+                        key={lvl.value}
+                        type="button"
+                        onClick={() => setSelectedLevel(lvl.value)}
+                        className={`text-left rounded-lg p-3 border transition-colors ${
+                          isSelected
+                            ? "bg-violet/20 border-violet text-white"
+                            : "bg-ink/50 border-white/5 text-muted hover:border-violet/40 hover:text-white"
+                        }`}
+                      >
+                        <p className="font-syne font-bold text-sm mb-1">{lvl.label}</p>
+                        <p className="text-xs leading-snug">{lvl.description}</p>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

@@ -54,10 +54,11 @@ AVATARS = {
         "voice": "es-MX-JorgeNeural",
         "avatar_type": "animated",
         "kind": "practica",
-        # Cargado desde roberto_prompt.md. Banco de objeciones en orden,
-        # reacciones calibradas a tecnicas (T-04, 5 Porques, COPQ con datos
-        # propios), nivel Principiante v1 (Smart Factory / Maintrack).
-        "system_prompt": get_roberto_prompt(),
+        # system_prompt se resuelve dinamicamente en get_system_prompt() segun el
+        # nivel pedido (principiante/intermedio/avanzado). Roberto es el unico
+        # avatar con niveles de dificultad por ahora.
+        "system_prompt": None,
+        "supports_levels": True,
     },
 
     "maria": {
@@ -127,6 +128,7 @@ def get_system_prompt(
     avatar_id: str,
     user_profile: Optional[UserProfile] = None,
     session_vars: Optional[dict] = None,
+    level: Optional[str] = None,
 ) -> str:
     """
     Obtiene el system prompt ensamblado para el avatar.
@@ -134,15 +136,20 @@ def get_system_prompt(
     - Para avatares de kind="diagnostico" (entrevistador): carga el prompt
       maestro y sustituye las variables de sesion ({{nombre}}, {{rol}}, etc.)
       usando user_profile.registro y session_vars.
-    - Para avatares de kind="practica" (Roberto, Maria, Carlos): toma el
-      system_prompt estatico y, si user_profile.diagnostico existe, le agrega
-      el bloque "CONTEXTO DEL USUARIO" para que presione brechas especificas.
+    - Para avatares de kind="practica" con supports_levels=True (Roberto):
+      ensambla el prompt segun `level` (principiante/intermedio/avanzado).
+    - Para los demas avatares de kind="practica" (Maria, Carlos): toma el
+      system_prompt estatico de AVATARS.
+    - En todos los casos, si user_profile.diagnostico existe, agrega el
+      bloque "CONTEXTO DEL USUARIO" para que el avatar presione brechas.
 
     Args:
         avatar_id: ID del avatar.
         user_profile: perfil completo del usuario (registro + diagnostico?).
         session_vars: dict con keys opcionales idioma, tono, minutos,
             competencias para el diagnostico.
+        level: nivel de dificultad para avatares con supports_levels.
+            "principiante" (default) | "intermedio" | "avanzado".
 
     Returns:
         System prompt final, o string vacio si el avatar no existe.
@@ -154,7 +161,11 @@ def get_system_prompt(
     if avatar.get("kind") == "diagnostico":
         return get_entrevistador_prompt(user_profile, session_vars)
 
-    base_prompt = avatar.get("system_prompt") or ""
+    if avatar.get("supports_levels") and avatar_id == "roberto":
+        base_prompt = get_roberto_prompt(level or "principiante")
+    else:
+        base_prompt = avatar.get("system_prompt") or ""
+
     if user_profile and user_profile.diagnostico:
         base_prompt += build_user_context_block(user_profile)
     return base_prompt

@@ -16,6 +16,9 @@ const WS_BASE_URL = getWsBaseUrl();
 export interface WsInitPayload {
   user_profile?: UserProfile;
   session_vars?: Record<string, string | number | string[]>;
+  // Para avatares que soportan niveles de dificultad (Roberto). El backend
+  // ensambla el prompt segun este valor; ignorado por avatares sin niveles.
+  level?: "principiante" | "intermedio" | "avanzado";
 }
 
 interface UseWebSocketOptions {
@@ -78,8 +81,8 @@ export function useWebSocket({
       console.log("[WS] Connected");
       setStatus("ready");
       const payload = initPayloadRef.current;
-      if (payload && (payload.user_profile || payload.session_vars)) {
-        console.log("[WS] Sending init payload");
+      if (payload && (payload.user_profile || payload.session_vars || payload.level)) {
+        console.log("[WS] Sending init payload (level:", payload.level ?? "default", ")");
         ws.send(JSON.stringify({ type: "init", ...payload }));
       }
     };

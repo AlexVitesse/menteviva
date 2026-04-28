@@ -314,9 +314,12 @@ export function Report() {
   );
 }
 
-// Componente para cada habilidad
+// Componente para cada habilidad / KPI
 function SkillCard({ skill, index }: { skill: SkillAnalysis; index: number }) {
   const [expanded, setExpanded] = useState(false);
+  const hasIndicators =
+    (skill.indicators_met && skill.indicators_met.length > 0) ||
+    (skill.indicators_missed && skill.indicators_missed.length > 0);
 
   function getScoreColor(score: number) {
     if (score >= 80) return "bg-green-500";
@@ -338,7 +341,14 @@ function SkillCard({ skill, index }: { skill: SkillAnalysis; index: number }) {
       >
         <div className="flex-1">
           <div className="flex items-center justify-between mb-2">
-            <span className="font-medium">{skill.name}</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium">{skill.name}</span>
+              {skill.weight ? (
+                <span className="text-xs text-muted bg-white/5 px-2 py-0.5 rounded-full">
+                  peso {skill.weight}%
+                </span>
+              ) : null}
+            </div>
             <span className={`text-sm font-bold ${
               skill.score >= 80 ? "text-green-400" :
               skill.score >= 60 ? "text-yellow-400" :
@@ -370,6 +380,42 @@ function SkillCard({ skill, index }: { skill: SkillAnalysis; index: number }) {
           className="mt-4 pt-4 border-t border-white/10"
         >
           <p className="text-sm text-muted mb-3">{skill.feedback}</p>
+
+          {hasIndicators && (
+            <div className="grid sm:grid-cols-2 gap-3 mb-3">
+              {skill.indicators_met && skill.indicators_met.length > 0 && (
+                <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-3">
+                  <p className="text-xs text-green-400 font-bold uppercase mb-2">
+                    Lo que mostraste
+                  </p>
+                  <ul className="space-y-1.5">
+                    {skill.indicators_met.map((ind, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm">
+                        <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                        <span className="text-muted">{ind}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {skill.indicators_missed && skill.indicators_missed.length > 0 && (
+                <div className="bg-orange-500/5 border border-orange-500/20 rounded-lg p-3">
+                  <p className="text-xs text-orange-400 font-bold uppercase mb-2">
+                    Lo que faltó
+                  </p>
+                  <ul className="space-y-1.5">
+                    {skill.indicators_missed.map((ind, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm">
+                        <XCircle className="w-4 h-4 text-orange-400 mt-0.5 flex-shrink-0" />
+                        <span className="text-muted">{ind}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
           {skill.moment && (
             <div className="bg-white/5 rounded-lg p-3">
               <p className="text-xs text-muted mb-1">Ejemplo de la conversacion:</p>

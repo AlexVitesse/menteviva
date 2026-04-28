@@ -15,13 +15,19 @@ export interface Message {
   timestamp: Date;
 }
 
-// Analisis de habilidades
+// Analisis de habilidades / KPIs.
+// El backend ahora envia 6 KPIs por escenario con peso (suma 100). Los campos
+// `weight`, `indicators_met` e `indicators_missed` son opcionales para mantener
+// compatibilidad con respuestas antiguas o de demo.
 export interface SkillAnalysis {
   id: string;
   name: string;
   score: number;
   feedback: string;
   moment: string | null;
+  weight?: number;
+  indicators_met?: string[];
+  indicators_missed?: string[];
 }
 
 export interface KeyMoment {

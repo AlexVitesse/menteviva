@@ -183,12 +183,14 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                     continue
                 raw_profile = data.get("user_profile")
                 session_vars = data.get("session_vars")
+                level = data.get("level")  # principiante|intermedio|avanzado (Roberto)
                 if raw_profile:
                     try:
                         user_profile = UserProfile(**raw_profile)
                         logger.info(
                             f"[WS] Init - usuario: {user_profile.registro.nombre}, "
-                            f"diagnostico: {'si' if user_profile.diagnostico else 'no'}"
+                            f"diagnostico: {'si' if user_profile.diagnostico else 'no'}, "
+                            f"level: {level or 'default'}"
                         )
                         # Persistir registro en SQLite (no bloquea si falla)
                         try:
@@ -202,6 +204,7 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                     avatar_id,
                     user_profile=user_profile,
                     session_vars=session_vars,
+                    level=level,
                 )
                 await websocket.send_json({"type": "status", "status": "ready"})
 

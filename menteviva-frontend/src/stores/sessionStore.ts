@@ -24,10 +24,17 @@ export interface DiagnosticoSessionVars {
   competencias?: string[];
 }
 
+export type SimulationLevel = "principiante" | "intermedio" | "avanzado";
+
 interface SessionState {
   // Avatar seleccionado
   selectedAvatar: Avatar | null;
   setSelectedAvatar: (avatar: Avatar) => void;
+
+  // Nivel de dificultad seleccionado en Briefing (Roberto soporta 3 niveles).
+  // Default principiante. No persiste entre sesiones.
+  selectedLevel: SimulationLevel;
+  setSelectedLevel: (level: SimulationLevel) => void;
 
   // Configuracion de la sesion de diagnostico (transient, no persiste)
   diagnosticoVars: DiagnosticoSessionVars | null;
@@ -65,6 +72,9 @@ interface SessionState {
 export const useSessionStore = create<SessionState>((set, get) => ({
   selectedAvatar: null,
   setSelectedAvatar: (avatar) => set({ selectedAvatar: avatar }),
+
+  selectedLevel: "principiante",
+  setSelectedLevel: (level) => set({ selectedLevel: level }),
 
   diagnosticoVars: null,
   setDiagnosticoVars: (vars) => set({ diagnosticoVars: vars }),

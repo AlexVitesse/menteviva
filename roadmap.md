@@ -2,7 +2,51 @@
 
 Estado del producto y lo que sigue. Documento vivo: editar conforme cambien
 las prioridades. Para contexto del producto y arquitectura ver `CLAUDE.md`;
-para el detalle del paso 0 ya implementado ver `plan.txt`.
+para el detalle del paso 0 ya implementado ver `plan.txt`. Para el snapshot
+de la última sesión técnica ver `session-status-2026-04-27.md`.
+
+---
+
+## 🎯 Piloto vivo — semana del 28-Abr al 1-May 2026
+
+**Objetivo:** prueba en vivo con cliente accediendo a una URL pública. Sin
+auth ni DB nueva — se mantiene SQLite local (commit `aad3d07`) porque el
+producto no es la base de datos y meter Supabase/Firebase ahora consume
+tiempo que vale más en feature útil.
+
+### Plan día por día
+
+| Día | Entregable | Status |
+|---|---|---|
+| **Mar 28** | Roberto 3 niveles (Principiante/Intermedio/Avanzado) + tests por nivel | tasks #22, #23 |
+| **Mié 29** | UI de 6 KPIs en Report + selector de nivel en Briefing | tasks #24, #25 |
+| **Jue 30** | Dashboard `/mi-plan` leyendo de SQLite + endpoints `GET /api/sessions/...` si faltan | task #26 |
+| **Vie 1-May** | Deploy (Render backend con disco persistente + Vercel frontend) + validar Sofía/María con `gpt-oss-20b` + polish + bug bash | tasks #27, #28, #29 |
+
+### Diseño de los 3 niveles de Roberto
+
+| | Principiante (actual) | Intermedio | Avanzado |
+|---|---|---|---|
+| Vocabulario esperado | OEE, MTBF, downtime | + MTTR, FTQ, takt time, COPQ | Todos los anteriores **perfectos** — tropiezo = desconexión |
+| Banco de objeciones | 4 (tiempo, ROI, fracaso, DG/Finanzas) | 5 (+ "competencia más barata", "proyecto interno") | 6 (+ "ya hablamos con [competidor]", "CapEx hasta Q3", "integración con SAP") |
+| Para ceder | 2 objeciones manejadas + ROI claro | 3 objeciones + ROI con pay-back desglosado + propuesta de piloto | 4 objeciones + NPV/IRR + caso verificable + POC con go/no-go |
+| Castigo a técnicas básicas | Suave (desconexión a features-only) | Medio (subir presión por descuento prematuro) | Fuerte (Roberto se molesta visiblemente) |
+| 5 Porqués | Suficiente | No basta — pide datos | No funciona — pide procesos documentados |
+
+### Decisiones tomadas para el piloto (no re-discutir)
+
+- **SQLite, no Supabase/Firebase**: ya está integrado, "no tiene chiste" cambiarlo para una semana
+- **Sin auth real**: el registro existente (nombre + email) es suficiente para piloto
+- **Deploy con HTTPS por subdominio**, no IP plana: el navegador exige HTTPS para acceder al micrófono. Render (`menteviva-api.onrender.com`) + Vercel (`menteviva.vercel.app`) dan HTTPS automático sin dominio propio. IP plana sobre HTTP **rompe el demo**.
+- **Avatar 3D queda como preview opt-in** (`?avatar3d=1`); default 2D para no arriesgar el demo
+- **gpt-oss-20b para los 3 avatares**, con fallback a llama-3.1-8b-instant **sólo** si la validación del jueves revela degradación en Sofía/María
+
+### Riesgos abiertos del piloto
+
+- **Render free tier wipe el disco en restart** → necesita disco persistente (~$1/mo) o el .db se borra entre redeploys. Confirmar antes del viernes.
+- **CORS**: añadir el dominio de Vercel a `cors_origins` en `config.py` antes del deploy.
+- **WebSocket en Render**: validar que el plan free soporta WS (debería sí pero tipos free a veces tienen idle timeouts agresivos).
+- **Multi-dispositivo**: si el cliente prueba en laptop y luego en celular, no ve continuidad (SQLite por usuario en server, pero sin auth real cada registro es nuevo). Decir explícitamente en demo: "auth viene en sprint 2".
 
 ---
 
