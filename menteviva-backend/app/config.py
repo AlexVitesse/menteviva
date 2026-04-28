@@ -29,6 +29,18 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_model: str = "eleven_multilingual_v2"
 
+    # Firebase Admin SDK. Dos formas de configurar — usa una:
+    #  (1) FIREBASE_SERVICE_ACCOUNT_PATH: ruta absoluta o relativa a un JSON
+    #      descargado de Firebase Console > Project Settings > Service Accounts.
+    #      Recomendado en local (no comitear el JSON; ponerlo en .gitignore).
+    #  (2) FIREBASE_SERVICE_ACCOUNT_JSON: el contenido completo del JSON como
+    #      string. Usar en hosts (Render) que no permiten subir archivos.
+    # Si AMBAS estan vacias, el modulo firebase_auth no se inicializa y los
+    # endpoints de auth devuelven 503 — util para correr el resto del backend
+    # sin Firebase configurado todavia.
+    firebase_service_account_path: str = ""
+    firebase_service_account_json: str = ""
+
     # App
     app_name: str = "Mente Viva API"
     debug: bool = False

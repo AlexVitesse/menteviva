@@ -12,6 +12,7 @@ import { DiagnosticoRecomendacion } from "./pages/DiagnosticoRecomendacion";
 import { Landing } from "./pages/Landing";
 import { MiPlan } from "./pages/MiPlan";
 import { useSessionStore } from "./stores/sessionStore";
+import { useFirebaseAuth } from "./hooks/useFirebaseAuth";
 
 /**
  * Guard de onboarding:
@@ -47,6 +48,11 @@ function Root() {
 }
 
 function App() {
+  // Listener global de Firebase auth: hidrata sessionStore en login,
+  // limpia en logout. Si Firebase no esta configurado, no hace nada y
+  // se respeta el flujo legacy de localStorage.
+  useFirebaseAuth();
+
   return (
     <BrowserRouter>
       <Routes>

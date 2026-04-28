@@ -16,6 +16,7 @@ pydantic-settings = "^2.4.0"
 python-multipart = "^0.0.12"
 websockets = "^13.0"
 aiosqlite = "^0.22.1"
+firebase-admin = "^6.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

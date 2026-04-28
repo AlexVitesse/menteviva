@@ -64,6 +64,10 @@ interface SessionState {
   updateDiagnostico: (diagnostico: Diagnostico) => void;
   clearDiagnostico: () => void;
   clearUserProfile: () => void;
+  // Reemplaza el userProfile con uno traido del backend (post Firebase login).
+  // Persiste en localStorage para mantener el resto del flujo (sessionVars
+  // del WS, dashboard) que ya espera userProfile en el store.
+  setUserProfileFromAuth: (profile: UserProfile) => void;
 
   // Reset completo (no toca el userProfile)
   resetSession: () => void;
@@ -141,6 +145,11 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   clearUserProfile: () => {
     clearStoredProfile();
     set({ userProfile: null });
+  },
+
+  setUserProfileFromAuth: (profile) => {
+    saveUserProfile(profile);
+    set({ userProfile: profile });
   },
 
   resetSession: () =>

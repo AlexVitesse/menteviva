@@ -1,40 +1,53 @@
-import { lazy, Suspense, useState } from "react";
+import { FormEvent, lazy, Suspense, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { AlertCircle, Brain, LogIn, Sparkles, UserPlus } from "lucide-react";
+import { signInWithEmailAndPassword } from "firebase/auth";
 
-import { useSessionStore } from "../stores/sessionStore";
+import { firebaseAuth, isFirebaseConfigured } from "../lib/firebase";
 
-// La escena 3D pesa ~1MB. Lazy para que el primer paint del login no espere.
+// La escena 3D pesa ~1MB. Lazy para que el primer paint no espere.
 const Scene3D = lazy(() =>
   import("../components/login/Scene3D").then((mod) => ({ default: mod.Scene3D }))
 );
 
 export function Login() {
   const navigate = useNavigate();
-  const userProfile = useSessionStore((s) => s.userProfile);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isHovered, setIsHovered] = useState<"login" | "register" | null>(null);
+  const configured = isFirebaseConfigured();
 
-  function handleLogin() {
-    if (!userProfile) {
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+
+    if (!configured || !firebaseAuth) {
       setError(
-        "No encontramos sesion guardada en este navegador. Crea una cuenta nueva para empezar."
+        "Firebase no está configurado en este build. Avisa al equipo técnico."
       );
       return;
     }
-    if (!userProfile.diagnostico) {
-      navigate("/diagnostico/setup", { replace: true });
+    if (!email.trim() || !password) {
+      setError("Email y contraseña son requeridos.");
       return;
     }
-    navigate("/", { replace: true });
-  }
 
-  function handleRegister() {
-    navigate("/registro");
+    setSubmitting(true);
+    try {
+      await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
+      // El listener en useFirebaseAuth se encarga de:
+      // - traer el UserProfile via /api/auth/sync
+      // - meterlo en el store
+      // El guard de la app redirige a / o /diagnostico/setup según corresponda.
+      navigate("/", { replace: true });
+    } catch (err) {
+      setError(translateFirebaseError(err));
+    } finally {
+      setSubmitting(false);
+    }
   }
-
-  const greeting = userProfile?.registro?.nombre?.split(" ")[0];
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#0a0a0f]">
@@ -50,7 +63,6 @@ export function Login() {
             transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
             className="w-full"
           >
-            {/* Logo y titulo */}
             <motion.div
               className="mb-6 sm:mb-10 text-center"
               initial={{ opacity: 0, y: 20 }}
@@ -65,142 +77,116 @@ export function Login() {
                 <Brain className="h-10 w-10 text-violet-400" />
               </motion.div>
 
-              <motion.h1
-                className="mb-3 text-4xl sm:text-5xl font-bold tracking-tight font-syne"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-              >
+              <h1 className="mb-3 text-4xl sm:text-5xl font-bold tracking-tight font-syne">
                 <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-teal-400 bg-clip-text text-transparent">
                   Mente Viva
                 </span>
-              </motion.h1>
+              </h1>
 
-              <motion.p
-                className="flex items-center justify-center gap-2 text-white/60"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-              >
+              <p className="flex items-center justify-center gap-2 text-white/60">
                 <Sparkles className="h-4 w-4 text-violet-400" />
                 Practica habilidades blandas con avatares de IA
                 <Sparkles className="h-4 w-4 text-teal-400" />
-              </motion.p>
+              </p>
             </motion.div>
 
-            {/* Card glassmorphism */}
             <motion.div
               className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-white/10 bg-white/5 p-5 sm:p-8 shadow-2xl backdrop-blur-xl"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.5, duration: 0.6 }}
             >
-              {/* Borde con gradiente animado */}
-              <div className="pointer-events-none absolute inset-0 rounded-3xl">
-                <div className="absolute inset-[-1px] rounded-3xl bg-gradient-to-r from-violet-500/50 via-transparent to-teal-500/50 opacity-50" />
-              </div>
-
-              {/* Glow superior */}
               <div className="pointer-events-none absolute -top-20 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-violet-500/30 blur-3xl" />
 
-              <div className="relative space-y-5">
-                {/* Boton crear cuenta */}
-                <motion.button
-                  onClick={handleRegister}
-                  onHoverStart={() => setIsHovered("register")}
-                  onHoverEnd={() => setIsHovered(null)}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="group relative w-full overflow-hidden rounded-xl sm:rounded-2xl bg-gradient-to-r from-violet-600 to-violet-500 px-4 py-3.5 sm:py-4 text-sm sm:text-base font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:shadow-xl hover:shadow-violet-500/30"
-                >
-                  <motion.div
-                    className="absolute inset-0 bg-gradient-to-r from-violet-500 to-fuchsia-500"
-                    initial={{ x: "-100%" }}
-                    animate={{ x: isHovered === "register" ? "0%" : "-100%" }}
-                    transition={{ duration: 0.3 }}
+              <form onSubmit={handleSubmit} className="relative space-y-4">
+                <div>
+                  <label className="mb-1 block text-xs text-white/60">Email</label>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="tu@empresa.com"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
                   />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs text-white/60">Contraseña</label>
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                  />
+                </div>
+
+                {error && (
+                  <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                    <p className="text-xs text-white/80">{error}</p>
+                  </div>
+                )}
+
+                <motion.button
+                  type="submit"
+                  disabled={submitting}
+                  whileHover={{ scale: submitting ? 1 : 1.02 }}
+                  whileTap={{ scale: submitting ? 1 : 0.98 }}
+                  className="group relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-violet-600 to-violet-500 px-4 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition-all hover:shadow-xl hover:shadow-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   <span className="relative flex items-center justify-center gap-3">
-                    <UserPlus className="h-5 w-5" />
-                    Crear cuenta nueva
+                    <LogIn className="h-5 w-5" />
+                    {submitting ? "Entrando…" : "Iniciar sesión"}
                   </span>
                 </motion.button>
 
-                {/* Divider */}
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 pt-1">
                   <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/20 to-transparent" />
                   <span className="text-sm text-white/40">o</span>
                   <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/20 to-transparent" />
                 </div>
 
-                {/* Boton iniciar sesion */}
                 <motion.button
-                  onClick={handleLogin}
-                  onHoverStart={() => setIsHovered("login")}
-                  onHoverEnd={() => setIsHovered(null)}
+                  type="button"
+                  onClick={() => navigate("/registro")}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  className="group relative w-full overflow-hidden rounded-xl sm:rounded-2xl border border-violet-500/50 bg-violet-500/10 px-4 py-3.5 sm:py-4 text-sm sm:text-base font-semibold text-violet-300 backdrop-blur-sm transition-all hover:border-violet-400/70 hover:bg-violet-500/20 hover:text-violet-200"
+                  className="group relative w-full overflow-hidden rounded-xl border border-violet-500/50 bg-violet-500/10 px-4 py-3.5 text-sm font-semibold text-violet-300 backdrop-blur-sm transition-all hover:border-violet-400/70 hover:bg-violet-500/20 hover:text-violet-200"
                 >
-                  <motion.div
-                    className="absolute inset-0 bg-violet-500/10"
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{
-                      scale: isHovered === "login" ? 1 : 0,
-                      opacity: isHovered === "login" ? 1 : 0,
-                    }}
-                    transition={{ duration: 0.3 }}
-                    style={{ borderRadius: "1rem" }}
-                  />
                   <span className="relative flex items-center justify-center gap-3">
-                    <LogIn className="h-5 w-5" />
-                    Iniciar sesion
+                    <UserPlus className="h-5 w-5" />
+                    Crear cuenta nueva
                   </span>
                 </motion.button>
-
-                {/* Sesion guardada */}
-                <AnimatePresence>
-                  {greeting && !error && (
-                    <motion.p
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="pt-2 text-center text-sm text-white/50"
-                    >
-                      Hay una sesion guardada como{" "}
-                      <span className="text-violet-400">{greeting}</span>.
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-
-                {/* Error */}
-                <AnimatePresence>
-                  {error && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                      className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 backdrop-blur-sm"
-                    >
-                      <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-400" />
-                      <p className="text-sm text-white/80">{error}</p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+              </form>
             </motion.div>
 
-            {/* Footer */}
-            <motion.p
-              className="mt-8 text-center text-sm text-white/40"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.7 }}
-            >
-              Demo alpha · Tu perfil se guarda solo en este navegador
-            </motion.p>
+            <p className="mt-8 text-center text-sm text-white/40">
+              Demo alpha · Datos protegidos por Firebase Auth
+            </p>
           </motion.div>
         </div>
       </div>
     </main>
   );
+}
+
+function translateFirebaseError(err: unknown): string {
+  const code = (err as { code?: string })?.code ?? "";
+  if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
+    return "Email o contraseña incorrectos.";
+  }
+  if (code === "auth/invalid-email") {
+    return "Email con formato inválido.";
+  }
+  if (code === "auth/too-many-requests") {
+    return "Demasiados intentos. Espera unos minutos antes de reintentar.";
+  }
+  if (code === "auth/network-request-failed") {
+    return "Sin conexión. Revisa tu red.";
+  }
+  return `No pudimos iniciar sesión: ${(err as Error)?.message ?? "error desconocido"}`;
 }

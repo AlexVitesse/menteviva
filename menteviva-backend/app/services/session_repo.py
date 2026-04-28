@@ -9,9 +9,14 @@ El diagnostico vive en `diagnostics`; las sesiones de practica viven aqui.
 
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.db import get_db
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 logger = logging.getLogger("menteviva")
 
@@ -38,8 +43,8 @@ async def save_practice_session(
             INSERT INTO practice_sessions (
                 user_id, avatar_id, level, started_at, ended_at,
                 duration_seconds, total_exchanges, overall_score,
-                analysis_json, conversation_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                analysis_json, conversation_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 user_id,
@@ -52,6 +57,7 @@ async def save_practice_session(
                 overall_score,
                 json.dumps(analysis, ensure_ascii=False) if analysis else None,
                 json.dumps(conversation, ensure_ascii=False),
+                _now_iso(),
             ),
         )
         await db.commit()
