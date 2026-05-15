@@ -566,7 +566,8 @@ sudo systemctl restart menteviva-backend
 | Cloudflare Tunnel name | `menteviva-piloto` |
 | Server hostname / IP | _________________ |
 | User systemd (`menteviva`) creado | sí / no |
-| Password Postgres user `menteviva` | (guardado en password manager) |
+| Neon project ID | _________________ |
+| Neon connection string (pooled) | (guardado en password manager) |
+| Neon region | us-east-2 (o el más cercano) |
 | Logs path | `/var/log/menteviva/` |
-| DB | `postgresql://menteviva@127.0.0.1:5432/menteviva` |
 | Backups path | `/var/backups/menteviva/` |
