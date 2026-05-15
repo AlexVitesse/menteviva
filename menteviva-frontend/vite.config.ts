@@ -61,12 +61,20 @@ export default defineConfig({
     ],
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        // 127.0.0.1 explicito (no "localhost") porque Node en Windows resuelve
+// localhost a ::1 primero, y ese puerto puede estar bindeado por un
+// contenedor Docker de otro proyecto (caso real: ventarapid_ai_core en
+// :::8000). Forzar IPv4 garantiza pegarle a nuestro uvicorn de Windows.
+target: 'http://127.0.0.1:8000',
         changeOrigin: true,
         ws: true, // habilita upgrade a WebSocket para /api/conversation/...
       },
       '/health': {
-        target: 'http://localhost:8000',
+        // 127.0.0.1 explicito (no "localhost") porque Node en Windows resuelve
+// localhost a ::1 primero, y ese puerto puede estar bindeado por un
+// contenedor Docker de otro proyecto (caso real: ventarapid_ai_core en
+// :::8000). Forzar IPv4 garantiza pegarle a nuestro uvicorn de Windows.
+target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
     },
