@@ -1,6 +1,7 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { Check, Eye, EyeOff, X } from "lucide-react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 
 import { firebaseAuth, isFirebaseConfigured } from "../lib/firebase";
@@ -17,6 +18,34 @@ const EXPERIENCE_OPTIONS: { value: ExperienceLevel; label: string }[] = [
   { value: "executive", label: "Executive (director/VP/C-level)" },
 ];
 
+// Requisitos visibles para el usuario.
+// `required` = debe cumplirse para crear cuenta. Por defecto Firebase Auth
+// exige solo `min6` (puedes endurecer en Firebase Console -> Auth -> Settings
+// -> Password policy; si activas mas reglas alla, replica aqui las flags).
+interface PasswordCheck {
+  id: string;
+  label: string;
+  required: boolean;
+  test: (pw: string) => boolean;
+}
+
+const PASSWORD_CHECKS: PasswordCheck[] = [
+  { id: "min6", label: "Al menos 6 caracteres (Firebase)", required: true, test: (p) => p.length >= 6 },
+  { id: "min8", label: "Al menos 8 caracteres (recomendado)", required: false, test: (p) => p.length >= 8 },
+  { id: "mixCase", label: "Mayúscula y minúscula", required: false, test: (p) => /[a-z]/.test(p) && /[A-Z]/.test(p) },
+  { id: "number", label: "Al menos un número", required: false, test: (p) => /\d/.test(p) },
+  { id: "special", label: "Al menos un carácter especial (!@#$…)", required: false, test: (p) => /[^A-Za-z0-9]/.test(p) },
+];
+
+function strengthLabel(metCount: number): { label: string; color: string; pct: number } {
+  // metCount = total de checks cumplidos (incluye `min6`).
+  if (metCount <= 1) return { label: "Muy débil", color: "bg-red-500", pct: 20 };
+  if (metCount === 2) return { label: "Débil", color: "bg-orange-500", pct: 40 };
+  if (metCount === 3) return { label: "Razonable", color: "bg-yellow-500", pct: 60 };
+  if (metCount === 4) return { label: "Buena", color: "bg-lime-500", pct: 80 };
+  return { label: "Muy fuerte", color: "bg-green-500", pct: 100 };
+}
+
 export function Registro() {
   const navigate = useNavigate();
   const { userProfile, updateRegistro, setUserProfileFromAuth } = useSessionStore();
@@ -26,6 +55,9 @@ export function Registro() {
   const [nombre, setNombre] = useState(existingRegistro?.nombre ?? "");
   const [email, setEmail] = useState(existingRegistro?.email ?? "");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [rolObjetivo, setRolObjetivo] = useState(existingRegistro?.rol_objetivo ?? "");
   const [industria, setIndustria] = useState(existingRegistro?.industria ?? "");
   const [nivel, setNivel] = useState<ExperienceLevel>(
@@ -33,6 +65,15 @@ export function Registro() {
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const checks = useMemo(
+    () => PASSWORD_CHECKS.map((c) => ({ ...c, met: c.test(password) })),
+    [password]
+  );
+  const metCount = checks.filter((c) => c.met).length;
+  const requiredMet = checks.every((c) => !c.required || c.met);
+  const passwordsMatch = password.length > 0 && password === confirmPassword;
+  const strength = strengthLabel(metCount);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -45,18 +86,25 @@ export function Registro() {
     if (!isEdit) {
       if (!email.trim()) missing.push("email");
       if (!password) missing.push("contraseña");
-      if (password && password.length < 6) {
-        setError("La contraseña debe tener al menos 6 caracteres.");
-        return;
-      }
+      if (!confirmPassword) missing.push("confirmación de contraseña");
     }
     if (missing.length) {
       setError(`Falta completar: ${missing.join(", ")}.`);
       return;
     }
 
+    if (!isEdit) {
+      if (!requiredMet) {
+        setError("La contraseña no cumple los requisitos mínimos.");
+        return;
+      }
+      if (!passwordsMatch) {
+        setError("Las contraseñas no coinciden.");
+        return;
+      }
+    }
+
     if (isEdit) {
-      // Solo actualiza datos locales; no toca Firebase ni vuelve a registrar.
       updateRegistro({
         nombre: nombre.trim(),
         email: email.trim() || undefined,
@@ -77,9 +125,7 @@ export function Registro() {
 
     setSubmitting(true);
     try {
-      // 1) Crear cuenta en Firebase
       await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
-      // 2) Registrar en backend (apiFetch adjunta el ID token recién creado)
       const profile = await apiFetch<UserProfile>("/api/auth/register", {
         method: "POST",
         json: {
@@ -89,7 +135,6 @@ export function Registro() {
           experience_level: nivel,
         },
       });
-      // 3) Hidratar store y mandar al diagnóstico
       setUserProfileFromAuth(profile);
       navigate("/diagnostico/setup", { replace: true });
     } catch (err) {
@@ -140,16 +185,94 @@ export function Registro() {
           </Field>
 
           {!isEdit && (
-            <Field label="Contraseña * (mínimo 6 caracteres)">
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={inputClasses}
-                placeholder="••••••••"
-                autoComplete="new-password"
-              />
-            </Field>
+            <>
+              <Field label="Contraseña *">
+                <PasswordInput
+                  value={password}
+                  onChange={setPassword}
+                  show={showPassword}
+                  onToggle={() => setShowPassword((s) => !s)}
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                />
+              </Field>
+
+              {password && (
+                <div className="-mt-2 space-y-3">
+                  {/* Strength meter */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-muted">Fortaleza</span>
+                      <span className="text-xs font-medium">{strength.label}</span>
+                    </div>
+                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <motion.div
+                        className={`h-full rounded-full ${strength.color}`}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${strength.pct}%` }}
+                        transition={{ duration: 0.25 }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Checklist */}
+                  <ul className="space-y-1">
+                    {checks.map((c) => (
+                      <li
+                        key={c.id}
+                        className={`flex items-center gap-2 text-xs ${
+                          c.met
+                            ? "text-green-400"
+                            : c.required
+                            ? "text-orange-300"
+                            : "text-muted"
+                        }`}
+                      >
+                        {c.met ? (
+                          <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                        ) : (
+                          <X className="w-3.5 h-3.5 flex-shrink-0 opacity-60" />
+                        )}
+                        <span>
+                          {c.label}
+                          {c.required && !c.met && (
+                            <span className="ml-1 text-orange-400">(requerido)</span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <Field label="Confirmar contraseña *">
+                <PasswordInput
+                  value={confirmPassword}
+                  onChange={setConfirmPassword}
+                  show={showConfirm}
+                  onToggle={() => setShowConfirm((s) => !s)}
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                />
+                {confirmPassword.length > 0 && (
+                  <p
+                    className={`mt-1.5 flex items-center gap-1.5 text-xs ${
+                      passwordsMatch ? "text-green-400" : "text-orange-300"
+                    }`}
+                  >
+                    {passwordsMatch ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" /> Las contraseñas coinciden
+                      </>
+                    ) : (
+                      <>
+                        <X className="w-3.5 h-3.5" /> Las contraseñas no coinciden
+                      </>
+                    )}
+                  </p>
+                )}
+              </Field>
+            </>
           )}
 
           <Field label="Rol objetivo *">
@@ -212,6 +335,44 @@ export function Registro() {
           </div>
         </form>
       </motion.div>
+    </div>
+  );
+}
+
+function PasswordInput({
+  value,
+  onChange,
+  show,
+  onToggle,
+  placeholder,
+  autoComplete,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  show: boolean;
+  onToggle: () => void;
+  placeholder: string;
+  autoComplete: string;
+}) {
+  return (
+    <div className="relative">
+      <input
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${inputClasses} pr-11`}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        className="absolute inset-y-0 right-0 flex items-center px-3 text-muted hover:text-white transition-colors"
+        aria-label={show ? "Ocultar contraseña" : "Mostrar contraseña"}
+        tabIndex={-1}
+      >
+        {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
     </div>
   );
 }

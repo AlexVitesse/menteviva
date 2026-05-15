@@ -1,7 +1,7 @@
 import { FormEvent, lazy, Suspense, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { AlertCircle, Brain, LogIn, Sparkles, UserPlus } from "lucide-react";
+import { AlertCircle, Brain, Eye, EyeOff, LogIn, Sparkles, UserPlus } from "lucide-react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 
 import { firebaseAuth, isFirebaseConfigured } from "../lib/firebase";
@@ -15,6 +15,7 @@ export function Login() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const configured = isFirebaseConfigured();
@@ -113,14 +114,25 @@ export function Login() {
 
                 <div>
                   <label className="mb-1 block text-xs text-white/60">Contraseña</label>
-                  <input
-                    type="password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-11 text-sm text-white placeholder:text-white/30 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((s) => !s)}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-white/40 hover:text-white/80 transition-colors"
+                      aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 {error && (
