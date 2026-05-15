@@ -1,9 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Play, Target, Brain, Clock, MessageSquare, TrendingUp, ArrowLeft, Gauge } from "lucide-react";
 import { AnimatedAvatar, AvatarCharacter } from "../components/avatar/AnimatedAvatar";
 import { useSessionStore, type SimulationLevel } from "../stores/sessionStore";
+
+// Mismo conjunto que AvatarCard: avatares con snapshot 3D estatico.
+const AVATARS_WITH_PNG = new Set(["roberto", "maria"]);
 
 const LEVELS: { value: SimulationLevel; label: string; description: string }[] = [
   {
@@ -78,6 +81,7 @@ export function Briefing() {
   const navigate = useNavigate();
   const { selectedAvatar, userProfile, selectedLevel, setSelectedLevel } = useSessionStore();
   const supportsLevels = selectedAvatar ? AVATARS_WITH_LEVELS.has(selectedAvatar.id) : false;
+  const [imgErrored, setImgErrored] = useState(false);
 
   useEffect(() => {
     if (!selectedAvatar) {
@@ -118,13 +122,30 @@ export function Briefing() {
           {/* Left Column - Avatar Info */}
           <div className="md:col-span-1">
             <div className="bg-surface rounded-2xl p-6 border border-white/5">
-              {/* Avatar */}
+              {/* Avatar — mismo PNG snapshot que el Dashboard, con fallback al SVG. */}
               <div className="flex justify-center mb-4">
-                <AnimatedAvatar
-                  character={avatarCharacter}
-                  size={160}
-                  isActive={true}
-                />
+                {AVATARS_WITH_PNG.has(selectedAvatar.id) && !imgErrored ? (
+                  <div
+                    className="w-40 h-40 rounded-full overflow-hidden border-4 border-white/10"
+                    style={{
+                      background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
+                    }}
+                  >
+                    <img
+                      src={`/avatars/${selectedAvatar.id}.png`}
+                      alt={selectedAvatar.name}
+                      onError={() => setImgErrored(true)}
+                      className="w-full h-full object-cover object-top"
+                      draggable={false}
+                    />
+                  </div>
+                ) : (
+                  <AnimatedAvatar
+                    character={avatarCharacter}
+                    size={160}
+                    isActive={true}
+                  />
+                )}
               </div>
 
               {/* Avatar Info */}

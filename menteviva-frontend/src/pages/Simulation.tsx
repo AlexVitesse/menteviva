@@ -9,7 +9,7 @@ import { useWebSocket, type WsInitPayload } from "../hooks/useWebSocket";
 import { useAudioRecorder } from "../hooks/useAudioRecorder";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { useSoundEffects } from "../hooks/useSoundEffects";
-import { getAvatar3DFlag, getAvatarModelUrl } from "../utils/avatar3dFlag";
+import { getAvatar3DFlag, getAvatarModelUrl, getAvatarGender } from "../utils/avatar3dFlag";
 
 export function Simulation() {
   const navigate = useNavigate();
@@ -29,6 +29,10 @@ export function Simulation() {
   const use3DAvatar = useMemo(() => getAvatar3DFlag(), []);
   const avatarModelUrl = useMemo(
     () => getAvatarModelUrl(selectedAvatar?.id),
+    [selectedAvatar?.id]
+  );
+  const avatarGender = useMemo(
+    () => getAvatarGender(selectedAvatar?.id),
     [selectedAvatar?.id]
   );
 
@@ -219,6 +223,7 @@ export function Simulation() {
                 isSpeaking={isSpeaking}
                 isActive={isAvatarActive}
                 modelUrl={avatarModelUrl}
+                gender={avatarGender}
               />
             ) : (
               <AnimatedAvatar
