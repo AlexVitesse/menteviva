@@ -1,0 +1,37 @@
+# Postgres local para desarrollo de Mente Viva.
+#
+# Levantar:   docker compose -f docker-compose.dev.yml up -d
+# Detener:    docker compose -f docker-compose.dev.yml down
+# Logs:       docker compose -f docker-compose.dev.yml logs -f postgres
+# Borrar TODO (datos incluidos):
+#             docker compose -f docker-compose.dev.yml down -v
+#
+# Connection string para el backend (.env):
+#   DATABASE_URL=postgresql+psycopg://menteviva:dev@127.0.0.1:5433/menteviva
+#
+# Puerto host = 5433 a proposito para no chocar con un Postgres instalado
+# globalmente en el sistema (que usualmente toma 5432).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: menteviva-pg-dev
+    environment:
+      POSTGRES_USER: menteviva
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: menteviva
+      # Locale en es_MX para consistencia con prod (Neon usa el locale del cluster).
+      LANG: es_MX.UTF-8
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U menteviva -d menteviva"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata-dev:
