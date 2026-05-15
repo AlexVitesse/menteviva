@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Check } from "lucide-react";
 import type { Avatar } from "../../types";
@@ -9,12 +10,18 @@ interface Props {
   onClick: () => void;
 }
 
+// Avatares con snapshot 3D estatico en /public/avatars/{id}.png. Si el PNG
+// no existe (ej. carlos), el componente cae al SVG AnimatedAvatar.
+const AVATARS_WITH_PNG = new Set(["roberto", "maria"]);
+
 export function AvatarCard({ avatar, isSelected, onClick }: Props) {
-  // Mapear el ID del avatar al character del AnimatedAvatar
   const avatarCharacter: AvatarCharacter =
     avatar.id === "roberto" ? "roberto" :
     avatar.id === "maria" ? "maria" :
     "roberto"; // fallback
+
+  const [imgErrored, setImgErrored] = useState(false);
+  const showPng = AVATARS_WITH_PNG.has(avatar.id) && !imgErrored;
 
   return (
     <motion.div
@@ -24,6 +31,7 @@ export function AvatarCard({ avatar, isSelected, onClick }: Props) {
       className={`
         relative overflow-hidden cursor-pointer
         bg-card rounded-2xl p-6 border-2 transition-all duration-300
+        h-full flex flex-col
         ${isSelected
           ? "border-violet shadow-lg shadow-violet/20"
           : "border-white/5 hover:border-white/20"}
@@ -63,11 +71,22 @@ export function AvatarCard({ avatar, isSelected, onClick }: Props) {
             background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)",
           }}
         >
-          <AnimatedAvatar
-            character={avatarCharacter}
-            isActive={false}
-            size={136}
-          />
+          {showPng ? (
+            <img
+              src={`/avatars/${avatar.id}.png`}
+              alt={avatar.name}
+              onError={() => setImgErrored(true)}
+              // object-position top: encuadra cabeza/hombros (no torso/T-pose).
+              className="w-full h-full object-cover object-top"
+              draggable={false}
+            />
+          ) : (
+            <AnimatedAvatar
+              character={avatarCharacter}
+              isActive={false}
+              size={136}
+            />
+          )}
         </div>
 
         {/* Breathing ring animation */}
@@ -88,8 +107,9 @@ export function AvatarCard({ avatar, isSelected, onClick }: Props) {
       <p className="text-sm text-teal text-center mb-2">{avatar.role}</p>
       <p className="text-xs text-muted text-center mb-4">{avatar.company}</p>
 
-      {/* Personality tag */}
-      <div className="flex justify-center">
+      {/* Personality tag — mt-auto lo empuja al fondo para que ambas cards
+          tengan la accion visual al mismo nivel sin importar el largo del texto. */}
+      <div className="flex justify-center mt-auto">
         <span className="text-xs px-4 py-1.5 rounded-full bg-violet/10
                          border border-violet/20 text-violet-lighter">
           {avatar.personality}

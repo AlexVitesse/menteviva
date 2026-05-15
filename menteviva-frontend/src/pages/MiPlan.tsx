@@ -11,6 +11,7 @@ import {
   Calendar,
   Clock,
   TrendingUp,
+  RotateCcw,
 } from "lucide-react";
 import { useSessionStore } from "../stores/sessionStore";
 import type { PracticeSessionSummary } from "../types";
@@ -25,7 +26,8 @@ const AVATAR_LABELS: Record<string, string> = {
 
 export function MiPlan() {
   const navigate = useNavigate();
-  const { userProfile, setSelectedAvatar, setSelectedLevel } = useSessionStore();
+  const { userProfile, setSelectedAvatar, setSelectedLevel, clearDiagnostico } =
+    useSessionStore();
   const [sessions, setSessions] = useState<PracticeSessionSummary[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
 
@@ -47,6 +49,17 @@ export function MiPlan() {
 
   const diag = userProfile.diagnostico;
   const firstName = userProfile.registro.nombre.split(" ")[0];
+
+  function handleRedoDiagnostic() {
+    if (
+      !confirm(
+        "Esto reemplaza tu diagnóstico actual al terminar la nueva entrevista. ¿Continuar?"
+      )
+    )
+      return;
+    clearDiagnostico();
+    navigate("/diagnostico/setup");
+  }
 
   function startNextChallenge() {
     if (!diag) return;
@@ -108,15 +121,24 @@ export function MiPlan() {
           {/* Diagnostico resumen */}
           {diag && (
             <section className="bg-card/50 border border-violet/20 rounded-2xl p-6">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-4 gap-2">
                 <h3 className="font-syne text-lg font-bold">Tu diagnóstico</h3>
-                <span className="text-xs text-muted">
-                  {new Date(diag.completed_at).toLocaleDateString("es-MX", {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  })}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted hidden sm:inline">
+                    {new Date(diag.completed_at).toLocaleDateString("es-MX", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </span>
+                  <button
+                    onClick={handleRedoDiagnostic}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-xs text-muted hover:text-cream hover:bg-white/10 transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Rehacer
+                  </button>
+                </div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4 mb-4">
