@@ -37,7 +37,7 @@ if not exist "menteviva-backend\.env" (
 )
 
 echo [1/2] Iniciando Backend (FastAPI - Puerto 8000)...
-start "Mente Viva - Backend" cmd /k "cd /d "%~dp0menteviva-backend" && poetry run uvicorn app.main:app --reload --port 8000"
+start "Mente Viva - Backend" cmd /k "cd /d "%~dp0menteviva-backend" && poetry run python -m app"
 
 :: Esperar un poco para que el backend inicie
 timeout /t 3 /nobreak >nul

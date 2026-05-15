@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db import init_db  # noqa: E402
+from app.db import init_db, close_pool  # noqa: E402
 from app.models.user_profile import Registro, UserProfile  # noqa: E402
 from app.services.session_repo import (  # noqa: E402
     get_session,
@@ -58,6 +58,7 @@ async def main():
     print(f"full keys: {list(full.keys())}")
     print(f"full overall_score: {full['overall_score']}")
     print(f"full level: {full['level']}")
+    await close_pool()
     print("OK")
 
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db import get_db  # noqa: E402
+from app.db import get_db, close_pool  # noqa: E402
 from app.services.user_repo import save_diagnostic  # noqa: E402
 
 TEST_EMAIL = "preview-test-2026@menteviva.dev"
@@ -13,12 +13,12 @@ TEST_EMAIL = "preview-test-2026@menteviva.dev"
 
 async def main():
     async with get_db() as db:
-        row = await (
-            await db.execute(
-                "SELECT user_id FROM users WHERE email = ?",
+        async with db.cursor() as cur:
+            await cur.execute(
+                "SELECT user_id FROM users WHERE email = %s",
                 (TEST_EMAIL,),
             )
-        ).fetchone()
+            row = await cur.fetchone()
         if not row:
             print(f"User {TEST_EMAIL} no encontrado")
             sys.exit(1)
@@ -43,6 +43,7 @@ async def main():
     }
     diag_id = await save_diagnostic(user_id=uid, diagnostico=diag, conversation=[])
     print(f"saved diag_id: {diag_id}")
+    await close_pool()
 
 
 if __name__ == "__main__":

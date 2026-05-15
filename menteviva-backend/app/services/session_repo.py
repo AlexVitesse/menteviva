@@ -38,30 +38,33 @@ async def save_practice_session(
         overall_score = int(analysis["overall_score"])
 
     async with get_db() as db:
-        cursor = await db.execute(
-            """
-            INSERT INTO practice_sessions (
-                user_id, avatar_id, level, started_at, ended_at,
-                duration_seconds, total_exchanges, overall_score,
-                analysis_json, conversation_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                user_id,
-                avatar_id,
-                level,
-                started_at,
-                ended_at,
-                duration_seconds,
-                total_exchanges,
-                overall_score,
-                json.dumps(analysis, ensure_ascii=False) if analysis else None,
-                json.dumps(conversation, ensure_ascii=False),
-                _now_iso(),
-            ),
-        )
+        async with db.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO practice_sessions (
+                    user_id, avatar_id, level, started_at, ended_at,
+                    duration_seconds, total_exchanges, overall_score,
+                    analysis_json, conversation_json, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING session_id
+                """,
+                (
+                    user_id,
+                    avatar_id,
+                    level,
+                    started_at,
+                    ended_at,
+                    duration_seconds,
+                    total_exchanges,
+                    overall_score,
+                    json.dumps(analysis, ensure_ascii=False) if analysis else None,
+                    json.dumps(conversation, ensure_ascii=False),
+                    _now_iso(),
+                ),
+            )
+            row = await cur.fetchone()
+            sid = int(row["session_id"]) if row else 0
         await db.commit()
-        sid = cursor.lastrowid or 0
     logger.info(
         f"[DB] practice_session saved id={sid} user={user_id} avatar={avatar_id} "
         f"level={level} score={overall_score}"
@@ -72,31 +75,31 @@ async def save_practice_session(
 async def list_user_sessions(user_id: str, limit: int = 50) -> list[dict]:
     """Lista ligera para el dashboard — sin la conversacion completa."""
     async with get_db() as db:
-        rows = await (
-            await db.execute(
+        async with db.cursor() as cur:
+            await cur.execute(
                 """
                 SELECT session_id, user_id, avatar_id, level, started_at, ended_at,
                        duration_seconds, total_exchanges, overall_score, created_at
                 FROM practice_sessions
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY created_at DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (user_id, limit),
             )
-        ).fetchall()
+            rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
 
 async def get_session(session_id: int) -> Optional[dict]:
     """Devuelve una sesion completa con analisis y conversacion parseados."""
     async with get_db() as db:
-        row = await (
-            await db.execute(
-                "SELECT * FROM practice_sessions WHERE session_id = ?",
+        async with db.cursor() as cur:
+            await cur.execute(
+                "SELECT * FROM practice_sessions WHERE session_id = %s",
                 (session_id,),
             )
-        ).fetchone()
+            row = await cur.fetchone()
         if not row:
             return None
         return {

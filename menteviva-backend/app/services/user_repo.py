@@ -1,5 +1,5 @@
 """
-Repositorio de usuarios y diagnosticos en SQLite.
+Repositorio de usuarios y diagnosticos en Postgres.
 
 Todo en JSON dentro de columnas TEXT — mantiene el contrato con el
 frontend sin normalizar (prioridad: velocidad de iteracion).
@@ -23,30 +23,31 @@ async def upsert_user(profile: UserProfile) -> None:
     """Inserta o actualiza el registro del usuario."""
     r = profile.registro
     async with get_db() as db:
-        await db.execute(
-            """
-            INSERT INTO users (user_id, nombre, email, rol_objetivo, industria,
-                               experience_level, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                nombre = excluded.nombre,
-                email = excluded.email,
-                rol_objetivo = excluded.rol_objetivo,
-                industria = excluded.industria,
-                experience_level = excluded.experience_level,
-                updated_at = excluded.updated_at
-            """,
-            (
-                profile.user_id,
-                r.nombre,
-                r.email,
-                r.rol_objetivo,
-                r.industria,
-                r.experience_level,
-                profile.created_at,
-                profile.updated_at,
-            ),
-        )
+        async with db.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO users (user_id, nombre, email, rol_objetivo, industria,
+                                   experience_level, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    nombre = EXCLUDED.nombre,
+                    email = EXCLUDED.email,
+                    rol_objetivo = EXCLUDED.rol_objetivo,
+                    industria = EXCLUDED.industria,
+                    experience_level = EXCLUDED.experience_level,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    profile.user_id,
+                    r.nombre,
+                    r.email,
+                    r.rol_objetivo,
+                    r.industria,
+                    r.experience_level,
+                    profile.created_at,
+                    profile.updated_at,
+                ),
+            )
         await db.commit()
     logger.info(f"[DB] upsert user {profile.user_id} ({r.nombre})")
 
@@ -66,38 +67,39 @@ async def register_firebase_user(
     """
     now = _now_iso()
     async with get_db() as db:
-        await db.execute(
-            """
-            INSERT INTO users (
-                user_id, nombre, email, rol_objetivo, industria,
-                experience_level, created_at, updated_at,
-                auth_provider, firebase_uid, email_verified, last_login
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                nombre = excluded.nombre,
-                email = excluded.email,
-                rol_objetivo = excluded.rol_objetivo,
-                industria = excluded.industria,
-                experience_level = excluded.experience_level,
-                updated_at = excluded.updated_at,
-                email_verified = excluded.email_verified,
-                last_login = excluded.last_login
-            """,
-            (
-                firebase_uid,
-                registro.nombre,
-                email,
-                registro.rol_objetivo,
-                registro.industria,
-                registro.experience_level,
-                now,
-                now,
-                "firebase",
-                firebase_uid,
-                1 if email_verified else 0,
-                now,
-            ),
-        )
+        async with db.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO users (
+                    user_id, nombre, email, rol_objetivo, industria,
+                    experience_level, created_at, updated_at,
+                    auth_provider, firebase_uid, email_verified, last_login
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    nombre = EXCLUDED.nombre,
+                    email = EXCLUDED.email,
+                    rol_objetivo = EXCLUDED.rol_objetivo,
+                    industria = EXCLUDED.industria,
+                    experience_level = EXCLUDED.experience_level,
+                    updated_at = EXCLUDED.updated_at,
+                    email_verified = EXCLUDED.email_verified,
+                    last_login = EXCLUDED.last_login
+                """,
+                (
+                    firebase_uid,
+                    registro.nombre,
+                    email,
+                    registro.rol_objetivo,
+                    registro.industria,
+                    registro.experience_level,
+                    now,
+                    now,
+                    "firebase",
+                    firebase_uid,
+                    email_verified,
+                    now,
+                ),
+            )
         await db.commit()
     logger.info(f"[DB] firebase user registrado uid={firebase_uid} ({registro.nombre})")
     profile = await get_user_profile(firebase_uid)
@@ -110,10 +112,11 @@ async def register_firebase_user(
 async def touch_last_login(user_id: str) -> None:
     """Actualiza last_login al hacer /auth/sync. Tolera user inexistente."""
     async with get_db() as db:
-        await db.execute(
-            "UPDATE users SET last_login = ? WHERE user_id = ?",
-            (_now_iso(), user_id),
-        )
+        async with db.cursor() as cur:
+            await cur.execute(
+                "UPDATE users SET last_login = %s WHERE user_id = %s",
+                (_now_iso(), user_id),
+            )
         await db.commit()
 
 
@@ -123,26 +126,29 @@ async def save_diagnostic(
     conversation: list[dict],
 ) -> int:
     """Guarda un diagnostico + la conversacion que lo origino. Retorna el id."""
-    is_demo = 1 if diagnostico.get("is_demo") else 0
+    is_demo = bool(diagnostico.get("is_demo"))
     completed_at = diagnostico.get("completed_at", "")
     async with get_db() as db:
-        cursor = await db.execute(
-            """
-            INSERT INTO diagnostics (user_id, completed_at, diagnostico_json,
-                                     conversation_json, is_demo, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                user_id,
-                completed_at,
-                json.dumps(diagnostico, ensure_ascii=False),
-                json.dumps(conversation, ensure_ascii=False),
-                is_demo,
-                _now_iso(),
-            ),
-        )
+        async with db.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO diagnostics (user_id, completed_at, diagnostico_json,
+                                         conversation_json, is_demo, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING diagnostic_id
+                """,
+                (
+                    user_id,
+                    completed_at,
+                    json.dumps(diagnostico, ensure_ascii=False),
+                    json.dumps(conversation, ensure_ascii=False),
+                    is_demo,
+                    _now_iso(),
+                ),
+            )
+            row = await cur.fetchone()
+            diag_id = int(row["diagnostic_id"]) if row else 0
         await db.commit()
-        diag_id = cursor.lastrowid or 0
     logger.info(f"[DB] diagnostic saved id={diag_id} user={user_id} is_demo={is_demo}")
     return diag_id
 
@@ -153,19 +159,18 @@ async def get_user_profile(user_id: str) -> Optional[UserProfile]:
     None si el usuario no existe.
     """
     async with get_db() as db:
-        user_row = await (
-            await db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-        ).fetchone()
-        if not user_row:
-            return None
+        async with db.cursor() as cur:
+            await cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            user_row = await cur.fetchone()
+            if not user_row:
+                return None
 
-        diag_row = await (
-            await db.execute(
-                "SELECT diagnostico_json FROM diagnostics WHERE user_id = ? "
+            await cur.execute(
+                "SELECT diagnostico_json FROM diagnostics WHERE user_id = %s "
                 "ORDER BY created_at DESC LIMIT 1",
                 (user_id,),
             )
-        ).fetchone()
+            diag_row = await cur.fetchone()
 
         diagnostico = None
         if diag_row:
@@ -193,29 +198,29 @@ async def get_user_profile(user_id: str) -> Optional[UserProfile]:
 async def list_user_diagnostics(user_id: str) -> list[dict]:
     """Lista ligera para historial (sin el JSON completo, solo metadatos)."""
     async with get_db() as db:
-        rows = await (
-            await db.execute(
+        async with db.cursor() as cur:
+            await cur.execute(
                 """
                 SELECT diagnostic_id, completed_at, is_demo, created_at
                 FROM diagnostics
-                WHERE user_id = ?
+                WHERE user_id = %s
                 ORDER BY created_at DESC
                 """,
                 (user_id,),
             )
-        ).fetchall()
+            rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
 
 async def get_diagnostic(diagnostic_id: int) -> Optional[dict]:
     """Devuelve un diagnostico completo por su id."""
     async with get_db() as db:
-        row = await (
-            await db.execute(
-                "SELECT * FROM diagnostics WHERE diagnostic_id = ?",
+        async with db.cursor() as cur:
+            await cur.execute(
+                "SELECT * FROM diagnostics WHERE diagnostic_id = %s",
                 (diagnostic_id,),
             )
-        ).fetchone()
+            row = await cur.fetchone()
         if not row:
             return None
         return {

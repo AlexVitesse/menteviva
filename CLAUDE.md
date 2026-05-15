@@ -36,9 +36,15 @@ All commands below assume the **primary** app (`menteviva-backend` + `menteviva-
 ```bash
 cd menteviva-backend
 poetry install
-poetry run uvicorn app.main:app --reload --port 8000
+poetry run python -m app                  # entry point preferido: setea SelectorEventLoop en Windows
+# Tambien funciona en Linux/Mac (en Windows uvicorn directo rompe con psycopg async).
 # Health:   http://localhost:8000/health
 # OpenAPI:  http://localhost:8000/docs
+
+# Postgres dev (Docker, ver docker-compose.dev.yml):
+docker compose -f docker-compose.dev.yml up -d
+# Connection string default en .env:
+#   DATABASE_URL=postgresql://menteviva:dev@127.0.0.1:5433/menteviva
 ```
 
 ### Frontend only

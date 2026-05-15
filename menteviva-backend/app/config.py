@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     firebase_service_account_path: str = ""
     firebase_service_account_json: str = ""
 
+    # Database — Postgres connection string.
+    # Dev local Docker:  postgresql://menteviva:dev@127.0.0.1:5433/menteviva
+    # Prod Neon:         postgresql://<user>:<pwd>@<host>.neon.tech/menteviva?sslmode=require
+    # El driver es psycopg async (psycopg 3.x); no incluir "+psycopg" en la URL,
+    # psycopg.AsyncConnection acepta una connection string libpq estandar.
+    database_url: str = "postgresql://menteviva:dev@127.0.0.1:5433/menteviva"
+    db_pool_min_size: int = 2
+    db_pool_max_size: int = 10
+
     # App
     app_name: str = "Mente Viva API"
     debug: bool = False
