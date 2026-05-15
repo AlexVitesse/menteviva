@@ -41,8 +41,8 @@ export function HowItWorks() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <span className="text-sm font-medium text-violet-400 uppercase tracking-wider">Proceso</span>
-          <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl md:text-5xl font-bold text-white mt-3">
+          <span className="text-sm font-medium text-violet-light uppercase tracking-wider">Proceso</span>
+          <h2 className="font-syne text-3xl sm:text-4xl md:text-5xl font-bold text-cream mt-3">
             Cómo funciona
           </h2>
         </motion.div>
@@ -59,9 +59,9 @@ export function HowItWorks() {
             >
               {/* Gradient Border Card */}
               <div className="relative rounded-2xl p-[1px] bg-gradient-to-b from-violet-500/50 via-transparent to-teal-500/50 hover:from-violet-500 hover:to-teal-500 transition-all duration-500">
-                <div className="relative rounded-2xl bg-[#0d0c1d] p-6 sm:p-8 h-full backdrop-blur-xl">
+                <div className="relative rounded-2xl bg-deep p-6 sm:p-8 h-full backdrop-blur-xl">
                   {/* Step Number */}
-                  <div className="font-[family-name:var(--font-heading)] text-6xl font-bold text-white/5 absolute top-4 right-4">
+                  <div className="font-syne text-6xl font-bold text-cream/5 absolute top-4 right-4">
                     {step.number}
                   </div>
                   
@@ -79,10 +79,10 @@ export function HowItWorks() {
                   </div>
 
                   {/* Content */}
-                  <h3 className="font-[family-name:var(--font-heading)] text-xl sm:text-2xl font-bold text-white mb-3">
+                  <h3 className="font-syne text-xl sm:text-2xl font-bold text-cream mb-3">
                     {step.title}
                   </h3>
-                  <p className="text-white/60 leading-relaxed">
+                  <p className="text-muted leading-relaxed">
                     {step.description}
                   </p>
 

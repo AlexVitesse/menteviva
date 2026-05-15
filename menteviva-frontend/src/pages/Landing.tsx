@@ -14,8 +14,8 @@ const BrainScene = lazy(() =>
 
 export function Landing() {
   return (
-    <main className="relative min-h-screen overflow-x-hidden bg-[#08071A]">
-      <Suspense fallback={<div className="fixed inset-0 z-0 bg-[#08071A]" />}>
+    <main className="relative min-h-screen overflow-x-hidden bg-ink">
+      <Suspense fallback={<div className="fixed inset-0 z-0 bg-ink" />}>
         <BrainScene />
       </Suspense>
 

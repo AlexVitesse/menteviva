@@ -78,7 +78,7 @@ function StatusIcon({ status }: { status: boolean | "limited" }) {
   }
   return (
     <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center">
-      <X className="w-4 h-4 text-white/40" />
+      <X className="w-4 h-4 text-subtle" />
     </div>
   )
 }
@@ -97,11 +97,11 @@ export function Comparison() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <span className="text-sm font-medium text-violet-400 uppercase tracking-wider">Comparativa</span>
-          <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl md:text-5xl font-bold text-white mt-3">
+          <span className="text-sm font-medium text-violet-light uppercase tracking-wider">Comparativa</span>
+          <h2 className="font-syne text-3xl sm:text-4xl md:text-5xl font-bold text-cream mt-3">
             Por qué Mente Viva
           </h2>
-          <p className="mt-4 text-lg text-white/60 max-w-2xl mx-auto">
+          <p className="mt-4 text-lg text-muted max-w-2xl mx-auto">
             Combinamos lo mejor de los cursos online y el coaching personal.
           </p>
         </motion.div>
@@ -113,17 +113,17 @@ export function Comparison() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="relative rounded-2xl p-[1px] bg-gradient-to-b from-violet-500/50 via-transparent to-teal-500/50"
         >
-          <div className="rounded-2xl bg-[#0d0c1d] overflow-hidden">
+          <div className="rounded-2xl bg-deep overflow-hidden">
             {/* Table Header */}
             <div className="grid grid-cols-4 gap-4 p-4 sm:p-6 border-b border-white/10 bg-white/5">
-              <div className="text-sm font-medium text-white/60">Característica</div>
+              <div className="text-sm font-medium text-muted">Característica</div>
               <div className="text-center">
-                <span className="inline-block px-3 py-1 rounded-full bg-gradient-to-r from-violet-500 to-teal-500 text-sm font-bold text-white">
+                <span className="inline-block px-3 py-1 rounded-full bg-gradient-to-r from-violet-light to-teal text-sm font-bold text-cream">
                   Mente Viva
                 </span>
               </div>
-              <div className="text-center text-sm font-medium text-white/60">Cursos Online</div>
-              <div className="text-center text-sm font-medium text-white/60">Coaches</div>
+              <div className="text-center text-sm font-medium text-muted">Cursos Online</div>
+              <div className="text-center text-sm font-medium text-muted">Coaches</div>
             </div>
 
             {/* Table Body */}
@@ -136,7 +136,7 @@ export function Comparison() {
                   transition={{ duration: 0.4, delay: 0.3 + index * 0.05 }}
                   className="grid grid-cols-4 gap-4 p-4 sm:p-6 hover:bg-white/5 transition-colors"
                 >
-                  <div className="text-sm text-white/80">{row.feature}</div>
+                  <div className="text-sm text-cream/80">{row.feature}</div>
                   <div className="flex justify-center">
                     <StatusIcon status={row.menteViva} />
                   </div>
@@ -157,7 +157,7 @@ export function Comparison() {
           initial={{ opacity: 0 }}
           animate={isInView ? { opacity: 1 } : {}}
           transition={{ duration: 0.6, delay: 0.6 }}
-          className="flex justify-center gap-6 mt-6 text-sm text-white/50"
+          className="flex justify-center gap-6 mt-6 text-sm text-subtle"
         >
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded-full bg-teal-500/20 flex items-center justify-center">
@@ -173,7 +173,7 @@ export function Comparison() {
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center">
-              <X className="w-3 h-3 text-white/40" />
+              <X className="w-3 h-3 text-subtle" />
             </div>
             <span>No incluido</span>
           </div>

@@ -56,11 +56,11 @@ export function Features() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <span className="text-sm font-medium text-teal-400 uppercase tracking-wider">Características</span>
-          <h2 className="font-[family-name:var(--font-heading)] text-3xl sm:text-4xl md:text-5xl font-bold text-white mt-3">
+          <span className="text-sm font-medium text-teal uppercase tracking-wider">Características</span>
+          <h2 className="font-syne text-3xl sm:text-4xl md:text-5xl font-bold text-cream mt-3">
             Todo lo que necesitas para mejorar
           </h2>
-          <p className="mt-4 text-lg text-white/60 max-w-2xl mx-auto">
+          <p className="mt-4 text-lg text-muted max-w-2xl mx-auto">
             Herramientas diseñadas para maximizar tu aprendizaje y darte resultados reales.
           </p>
         </motion.div>
@@ -81,16 +81,16 @@ export function Features() {
                 
                 {/* Icon */}
                 <div className={`relative w-12 h-12 rounded-xl bg-gradient-to-br ${feature.gradient} p-[1px] mb-5`}>
-                  <div className="w-full h-full rounded-xl bg-[#0d0c1d] flex items-center justify-center">
-                    <feature.icon className="w-5 h-5 text-white" />
+                  <div className="w-full h-full rounded-xl bg-deep flex items-center justify-center">
+                    <feature.icon className="w-5 h-5 text-cream" />
                   </div>
                 </div>
 
                 {/* Content */}
-                <h3 className="relative font-[family-name:var(--font-heading)] text-lg font-bold text-white mb-2">
+                <h3 className="relative font-syne text-lg font-bold text-cream mb-2">
                   {feature.title}
                 </h3>
-                <p className="relative text-white/60 text-sm leading-relaxed">
+                <p className="relative text-muted text-sm leading-relaxed">
                   {feature.description}
                 </p>
               </div>

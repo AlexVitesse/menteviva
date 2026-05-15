@@ -23,10 +23,10 @@ export function Hero() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.1 }}
-          className="font-[family-name:var(--font-heading)] text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight tracking-tight text-balance mb-6"
+          className="font-syne text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-cream leading-tight tracking-tight text-balance mb-6"
         >
           Practica las conversaciones{" "}
-          <span className="bg-gradient-to-r from-violet-400 via-purple-400 to-teal-400 bg-clip-text text-transparent">
+          <span className="bg-gradient-to-r from-violet-light to-teal bg-clip-text text-transparent">
             difíciles
           </span>
           , antes de tenerlas.
@@ -37,7 +37,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.2 }}
-          className="text-lg sm:text-xl text-white/60 max-w-2xl mx-auto mb-10 text-pretty"
+          className="text-lg sm:text-xl text-muted max-w-2xl mx-auto mb-10 text-pretty"
         >
           Entrena tus habilidades blandas con avatares de IA que simulan situaciones reales. 
           Feedback instantáneo, sin juicio, a tu ritmo.
@@ -83,8 +83,8 @@ export function Hero() {
             { value: "24/7", label: "Disponible" },
           ].map((stat, i) => (
             <div key={i} className="text-center">
-              <div className="font-[family-name:var(--font-heading)] text-2xl sm:text-3xl font-bold text-white">{stat.value}</div>
-              <div className="text-sm text-white/50">{stat.label}</div>
+              <div className="font-syne text-2xl sm:text-3xl font-bold text-cream">{stat.value}</div>
+              <div className="text-sm text-subtle">{stat.label}</div>
             </div>
           ))}
         </motion.div>
