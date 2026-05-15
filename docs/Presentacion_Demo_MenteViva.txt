@@ -1,0 +1,168 @@
+================================================================================
+                    MENTE VIVA - GUIA DE PRESENTACION DEMO
+================================================================================
+
+INTRODUCCION (1 minuto)
+-----------------------
+
+"Les voy a mostrar Mente Viva, una plataforma de entrenamiento donde pueden
+practicar conversaciones dificiles con avatares inteligentes que responden
+como personas reales."
+
+"Imaginen poder ensayar una negociacion importante, una venta complicada,
+o una conversacion dificil con un cliente... pero sin el riesgo de arruinarla
+en la vida real."
+
+"Mente Viva les da un espacio seguro para practicar, cometer errores,
+y mejorar - con feedback inmediato de lo que hicieron bien y que pueden mejorar."
+
+
+================================================================================
+
+DEMOSTRACION PASO A PASO
+========================
+
+PASO 1: SELECCIONAR ESCENARIO
+-----------------------------
+[Mostrar pantalla principal con los avatares]
+
+"Aqui vemos los escenarios disponibles. Cada uno simula una situacion real:"
+
+- ROBERTO MARTINEZ: Director de TI de una empresa industrial
+  "Escenario de venta B2B. Roberto es esceptico, directo, y no le gusta
+  perder el tiempo. Ideal para practicar ventas consultivas."
+
+- MARIA GONZALEZ: Gerente de Compras de una cadena retail
+  "Escenario de negociacion. Maria busca el mejor precio y tiene
+  cotizaciones de la competencia. Ideal para practicar negociacion."
+
+[Seleccionar un avatar]
+
+
+PASO 2: BRIEFING DEL ESCENARIO
+------------------------------
+[Mostrar pantalla de briefing]
+
+"Antes de iniciar, la plataforma nos da contexto:"
+
+- Quien es la persona con la que vamos a hablar
+- Cual es su rol y empresa
+- Que habilidades se van a evaluar
+- Tips para la conversacion
+
+"Esto simula la preparacion que harian antes de una reunion real."
+
+[Clic en INICIAR SIMULACION]
+
+
+PASO 3: CONVERSACION EN VIVO
+----------------------------
+[Mostrar pantalla de simulacion]
+
+"Ahora estamos en la simulacion. Funciona asi:"
+
+1. "Presiono el boton de microfono para hablar"
+2. "El avatar escucha, procesa mi mensaje, y responde con voz"
+3. "Es una conversacion natural, como si estuviera en una videollamada"
+
+[Realizar 3-4 intercambios de ejemplo]
+
+TIPS PARA LA DEMO:
+- Saludar profesionalmente
+- Hacer preguntas sobre sus necesidades
+- Escuchar las objeciones y responder con calma
+- Proponer un siguiente paso concreto
+
+"Noten como el avatar responde de forma realista - hace preguntas dificiles,
+pone objeciones, y reacciona segun como le hablo."
+
+[Despues de 4+ intercambios, clic en FINALIZAR]
+
+
+PASO 4: REPORTE DE FEEDBACK
+---------------------------
+[Mostrar pantalla de resultados]
+
+"Al terminar, la IA analiza toda la conversacion y genera un reporte:"
+
+- SCORE GENERAL: Puntuacion de 0 a 100
+  "Indica el desempeno general en la conversacion"
+
+- HABILIDADES EVALUADAS: 5 competencias con score individual
+  "Por ejemplo: Escucha Activa, Manejo de Objeciones, Rapport, etc."
+
+- FEEDBACK ESPECIFICO: Que hice bien y que puedo mejorar
+  "No es feedback generico - la IA cita momentos especificos de MI conversacion"
+
+- RECOMENDACIONES: Pasos concretos para mejorar
+  "Acciones practicas para la siguiente practica"
+
+"Este feedback seria imposible de obtener sin un coach humano observando
+cada conversacion. Mente Viva lo hace automaticamente."
+
+
+================================================================================
+
+PUNTOS CLAVE PARA ENFATIZAR
+===========================
+
+1. PRACTICA SIN RIESGO
+   "Pueden cometer errores aqui, no en una llamada real con un cliente"
+
+2. FEEDBACK INMEDIATO
+   "No tienen que esperar a que un coach revise su grabacion"
+
+3. DISPONIBLE 24/7
+   "Practiquen cuando quieran, cuantas veces quieran"
+
+4. PERSONALIZADO
+   "El feedback es sobre SU conversacion, no consejos genericos"
+
+5. MEJORA MEDIBLE
+   "Pueden ver su progreso sesion a sesion"
+
+
+================================================================================
+
+RESPUESTAS A PREGUNTAS FRECUENTES
+=================================
+
+P: "Es una IA de verdad o respuestas pregrabadas?"
+R: "Es IA generativa. El avatar genera respuestas unicas basadas en lo que
+   ustedes dicen. Cada conversacion es diferente."
+
+P: "Que tan realista es?"
+R: "El avatar tiene personalidad definida, hace objeciones reales, y
+   responde segun el contexto. No es perfecto, pero es suficientemente
+   retador para practicar."
+
+P: "Funciona en celular?"
+R: "Si, funciona en cualquier navegador con microfono."
+
+P: "Que escenarios tienen disponibles?"
+R: "Actualmente tenemos venta B2B y negociacion. Estamos desarrollando
+   mas escenarios como entrevistas de trabajo, feedback a empleados,
+   y atencion a clientes dificiles."
+
+P: "Como sabe la IA que evaluar?"
+R: "Cada escenario tiene habilidades especificas. La IA analiza la
+   conversacion completa y evalua basado en mejores practicas de
+   comunicacion y ventas."
+
+
+================================================================================
+
+CIERRE DE LA DEMO
+=================
+
+"Eso es Mente Viva: un gimnasio para sus habilidades de comunicacion."
+
+"Asi como van al gym para fortalecer el cuerpo, pueden usar Mente Viva
+para fortalecer sus habilidades de conversacion."
+
+"Preguntas?"
+
+
+================================================================================
+                         FIN DE LA GUIA DE PRESENTACION
+================================================================================

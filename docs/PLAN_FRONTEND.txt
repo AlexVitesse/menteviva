@@ -1,0 +1,1089 @@
+================================================================================
+                    PLAN FRONTEND - MENTE VIVA DEMO
+                    React + Vite + TypeScript + Framer Motion
+================================================================================
+
+OBJETIVO:
+Frontend con 3 páginas: Dashboard (elegir avatar), Simulación (chat por voz),
+y Reporte (resultados). Diseño oscuro premium, animaciones fluidas.
+
+================================================================================
+1. ESTRUCTURA DE CARPETAS
+================================================================================
+
+menteviva-frontend/
+├── package.json
+├── vite.config.ts
+├── tsconfig.json
+├── tailwind.config.js
+├── postcss.config.js
+├── index.html
+├── .env.example
+├── public/
+│   └── avatars/               # Archivos Lottie JSON
+│       ├── roberto.json
+│       ├── maria.json
+│       └── carlos.json
+└── src/
+    ├── main.tsx
+    ├── App.tsx
+    ├── index.css              # Tailwind + custom styles
+    ├── vite-env.d.ts
+    │
+    ├── pages/
+    │   ├── Dashboard.tsx      # Página 1: Elegir avatar
+    │   ├── Simulation.tsx     # Página 2: Chat con avatar
+    │   └── Report.tsx         # Página 3: Resultados
+    │
+    ├── components/
+    │   ├── layout/
+    │   │   ├── Header.tsx
+    │   │   └── Container.tsx
+    │   │
+    │   ├── avatar/
+    │   │   ├── AvatarCard.tsx       # Card seleccionable
+    │   │   ├── AvatarDisplay.tsx    # Avatar grande en simulación
+    │   │   └── AvatarLottie.tsx     # Wrapper de Lottie
+    │   │
+    │   ├── chat/
+    │   │   ├── ChatBox.tsx          # Contenedor de mensajes
+    │   │   ├── ChatMessage.tsx      # Mensaje individual
+    │   │   └── TypingIndicator.tsx  # "Escribiendo..."
+    │   │
+    │   ├── voice/
+    │   │   ├── VoiceButton.tsx      # Botón push-to-talk
+    │   │   ├── AudioVisualizer.tsx  # Ondas de audio
+    │   │   └── VoiceRecorder.tsx    # Lógica de grabación
+    │   │
+    │   └── report/
+    │       ├── ScoreCircle.tsx      # Score animado circular
+    │       ├── MetricBar.tsx        # Barra de KPI
+    │       └── ConversationReview.tsx # Historial
+    │
+    ├── hooks/
+    │   ├── useWebSocket.ts          # Conexión WebSocket
+    │   ├── useAudioRecorder.ts      # Grabar audio
+    │   └── useAudioPlayer.ts        # Reproducir audio
+    │
+    ├── services/
+    │   └── api.ts                   # Fetch avatars
+    │
+    ├── stores/
+    │   └── sessionStore.ts          # Zustand para estado global
+    │
+    ├── types/
+    │   └── index.ts                 # TypeScript types
+    │
+    └── utils/
+        └── audio.ts                 # Helpers de audio
+
+================================================================================
+2. DEPENDENCIAS (package.json)
+================================================================================
+
+{
+  "name": "menteviva-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-router-dom": "^6.26.0",
+    "framer-motion": "^11.5.0",
+    "@lottiefiles/react-lottie-player": "^3.5.0",
+    "zustand": "^4.5.0",
+    "lucide-react": "^0.441.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.0",
+    "postcss": "^8.4.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0"
+  }
+}
+
+================================================================================
+3. CONFIGURACIÓN TAILWIND (tailwind.config.js)
+================================================================================
+
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  theme: {
+    extend: {
+      colors: {
+        // Paleta Mente Viva
+        ink: "#08071A",
+        deep: "#110F2B",
+        panel: "#181630",
+        card: "#201D3E",
+        // Acentos
+        violet: {
+          DEFAULT: "#7C3AED",
+          light: "#A855F7",
+          lighter: "#C084FC",
+        },
+        teal: {
+          DEFAULT: "#06B6D4",
+          dark: "#0E7490",
+        },
+        // Semáforo
+        success: "#16A34A",
+        warning: "#F97316",
+        danger: "#DC2626",
+        // Texto
+        cream: "#F5F3FF",
+        muted: "rgba(245, 243, 255, 0.6)",
+        subtle: "rgba(245, 243, 255, 0.35)",
+      },
+      fontFamily: {
+        syne: ["Syne", "sans-serif"],
+        sans: ["Instrument Sans", "sans-serif"],
+      },
+      animation: {
+        "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "breathe": "breathe 4s ease-in-out infinite",
+      },
+      keyframes: {
+        breathe: {
+          "0%, 100%": { transform: "scale(1)" },
+          "50%": { transform: "scale(1.02)" },
+        },
+      },
+    },
+  },
+  plugins: [],
+};
+
+================================================================================
+4. ESTILOS BASE (src/index.css)
+================================================================================
+
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-ink text-cream font-sans antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-violet hover:bg-violet-light text-white font-syne font-bold
+           px-6 py-3 rounded-xl transition-all duration-200
+           hover:shadow-lg hover:shadow-violet/25;
+  }
+
+  .btn-secondary {
+    @apply border border-violet text-violet hover:bg-violet/10
+           font-syne font-bold px-6 py-3 rounded-xl transition-all;
+  }
+
+  .card {
+    @apply bg-card border border-white/5 rounded-2xl p-6;
+  }
+
+  .card-hover {
+    @apply card hover:border-violet/30 hover:shadow-lg
+           hover:shadow-violet/10 transition-all cursor-pointer;
+  }
+}
+
+================================================================================
+5. TIPOS (src/types/index.ts)
+================================================================================
+
+export interface Avatar {
+  id: string;
+  name: string;
+  role: string;
+  company: string;
+  personality: string;
+  voice: string;
+  lottie_url: string;
+}
+
+export interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+}
+
+export interface SessionMetrics {
+  total_exchanges: number;
+  duration_seconds: number;
+  conversation: Message[];
+}
+
+export type ConnectionStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "transcribing"
+  | "thinking"
+  | "generating_audio"
+  | "ready";
+
+================================================================================
+6. STORE GLOBAL (src/stores/sessionStore.ts)
+================================================================================
+
+import { create } from "zustand";
+import type { Avatar, Message, SessionMetrics, ConnectionStatus } from "../types";
+
+interface SessionState {
+  // Avatar seleccionado
+  selectedAvatar: Avatar | null;
+  setSelectedAvatar: (avatar: Avatar) => void;
+
+  // Mensajes de la conversación
+  messages: Message[];
+  addMessage: (message: Message) => void;
+  clearMessages: () => void;
+
+  // Estado de conexión
+  status: ConnectionStatus;
+  setStatus: (status: ConnectionStatus) => void;
+
+  // Métricas finales
+  metrics: SessionMetrics | null;
+  setMetrics: (metrics: SessionMetrics) => void;
+
+  // Reset completo
+  resetSession: () => void;
+}
+
+export const useSessionStore = create<SessionState>((set) => ({
+  selectedAvatar: null,
+  setSelectedAvatar: (avatar) => set({ selectedAvatar: avatar }),
+
+  messages: [],
+  addMessage: (message) =>
+    set((state) => ({ messages: [...state.messages, message] })),
+  clearMessages: () => set({ messages: [] }),
+
+  status: "disconnected",
+  setStatus: (status) => set({ status }),
+
+  metrics: null,
+  setMetrics: (metrics) => set({ metrics }),
+
+  resetSession: () =>
+    set({
+      messages: [],
+      status: "disconnected",
+      metrics: null,
+    }),
+}));
+
+================================================================================
+7. HOOK WEBSOCKET (src/hooks/useWebSocket.ts)
+================================================================================
+
+import { useCallback, useRef, useEffect } from "react";
+import { useSessionStore } from "../stores/sessionStore";
+
+const WS_BASE_URL = import.meta.env.VITE_WS_URL || "ws://localhost:8000";
+
+export function useWebSocket(avatarId: string | undefined) {
+  const wsRef = useRef<WebSocket | null>(null);
+  const { setStatus, addMessage, setMetrics } = useSessionStore();
+
+  const connect = useCallback(() => {
+    if (!avatarId) return;
+
+    const ws = new WebSocket(`${WS_BASE_URL}/api/conversation/${avatarId}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setStatus("ready");
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      switch (data.type) {
+        case "status":
+          setStatus(data.status);
+          break;
+
+        case "user_message":
+          addMessage({
+            id: crypto.randomUUID(),
+            role: "user",
+            content: data.content,
+            timestamp: new Date(),
+          });
+          break;
+
+        case "assistant_token":
+          // Actualizar último mensaje del assistant con nuevo token
+          // (manejar streaming)
+          break;
+
+        case "assistant_audio":
+          addMessage({
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: data.content,
+            timestamp: new Date(),
+          });
+          // Reproducir audio
+          playAudio(data.audio);
+          break;
+
+        case "session_end":
+          setMetrics(data.metrics);
+          break;
+      }
+    };
+
+    ws.onclose = () => {
+      setStatus("disconnected");
+    };
+
+    ws.onerror = () => {
+      setStatus("disconnected");
+    };
+  }, [avatarId, setStatus, addMessage, setMetrics]);
+
+  const sendAudio = useCallback((audioBase64: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: "audio",
+        audio: audioBase64,
+      }));
+    }
+  }, []);
+
+  const endSession = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "end_session" }));
+    }
+  }, []);
+
+  const disconnect = useCallback(() => {
+    wsRef.current?.close();
+    wsRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => disconnect();
+  }, [disconnect]);
+
+  return { connect, sendAudio, endSession, disconnect };
+}
+
+// Helper para reproducir audio base64
+function playAudio(base64: string) {
+  const audio = new Audio(`data:audio/mp3;base64,${base64}`);
+  audio.play();
+}
+
+================================================================================
+8. HOOK GRABACIÓN AUDIO (src/hooks/useAudioRecorder.ts)
+================================================================================
+
+import { useState, useRef, useCallback } from "react";
+
+export function useAudioRecorder() {
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: "audio/webm;codecs=opus",
+      });
+
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error("Error al acceder al micrófono:", error);
+    }
+  }, []);
+
+  const stopRecording = useCallback((): Promise<string> => {
+    return new Promise((resolve) => {
+      if (!mediaRecorderRef.current) {
+        resolve("");
+        return;
+      }
+
+      mediaRecorderRef.current.onstop = async () => {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const base64 = await blobToBase64(blob);
+        resolve(base64);
+      };
+
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
+      setIsRecording(false);
+    });
+  }, []);
+
+  return { isRecording, startRecording, stopRecording };
+}
+
+// Helper
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      resolve(base64);
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
+================================================================================
+9. PÁGINA 1: DASHBOARD (src/pages/Dashboard.tsx)
+================================================================================
+
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Play } from "lucide-react";
+import { AvatarCard } from "../components/avatar/AvatarCard";
+import { useSessionStore } from "../stores/sessionStore";
+import type { Avatar } from "../types";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+export function Dashboard() {
+  const navigate = useNavigate();
+  const [avatars, setAvatars] = useState<Avatar[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { selectedAvatar, setSelectedAvatar, resetSession } = useSessionStore();
+
+  useEffect(() => {
+    resetSession();
+    fetchAvatars();
+  }, []);
+
+  async function fetchAvatars() {
+    try {
+      const res = await fetch(`${API_URL}/api/avatars`);
+      const data = await res.json();
+      setAvatars(data.avatars);
+    } catch (error) {
+      console.error("Error fetching avatars:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleStart() {
+    if (selectedAvatar) {
+      navigate("/simulation");
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-ink">
+      {/* Header */}
+      <header className="border-b border-white/5 px-8 py-6">
+        <h1 className="font-syne text-2xl font-bold bg-gradient-to-r from-violet-light to-teal bg-clip-text text-transparent">
+          Mente Viva
+        </h1>
+      </header>
+
+      {/* Main */}
+      <main className="max-w-5xl mx-auto px-8 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <h2 className="font-syne text-3xl font-bold mb-2">
+            Elige tu escenario
+          </h2>
+          <p className="text-muted mb-10">
+            Selecciona con quién quieres practicar hoy
+          </p>
+
+          {/* Avatar Grid */}
+          {loading ? (
+            <div className="text-muted">Cargando avatares...</div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+              {avatars.map((avatar, index) => (
+                <motion.div
+                  key={avatar.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <AvatarCard
+                    avatar={avatar}
+                    isSelected={selectedAvatar?.id === avatar.id}
+                    onClick={() => setSelectedAvatar(avatar)}
+                  />
+                </motion.div>
+              ))}
+            </div>
+          )}
+
+          {/* Start Button */}
+          <motion.div
+            className="flex justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+          >
+            <button
+              onClick={handleStart}
+              disabled={!selectedAvatar}
+              className={`
+                btn-primary flex items-center gap-3 text-lg px-10 py-4
+                ${!selectedAvatar && "opacity-50 cursor-not-allowed"}
+              `}
+            >
+              <Play className="w-5 h-5" />
+              Iniciar Simulación
+            </button>
+          </motion.div>
+        </motion.div>
+      </main>
+    </div>
+  );
+}
+
+================================================================================
+10. COMPONENTE AVATAR CARD (src/components/avatar/AvatarCard.tsx)
+================================================================================
+
+import { motion } from "framer-motion";
+import { Player } from "@lottiefiles/react-lottie-player";
+import { Check } from "lucide-react";
+import type { Avatar } from "../../types";
+
+interface Props {
+  avatar: Avatar;
+  isSelected: boolean;
+  onClick: () => void;
+}
+
+export function AvatarCard({ avatar, isSelected, onClick }: Props) {
+  return (
+    <motion.div
+      onClick={onClick}
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      className={`
+        card-hover relative overflow-hidden
+        ${isSelected ? "border-violet ring-2 ring-violet/30" : ""}
+      `}
+    >
+      {/* Selected indicator */}
+      {isSelected && (
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          className="absolute top-4 right-4 w-8 h-8 bg-violet rounded-full
+                     flex items-center justify-center"
+        >
+          <Check className="w-5 h-5 text-white" />
+        </motion.div>
+      )}
+
+      {/* Lottie Avatar */}
+      <div className="w-32 h-32 mx-auto mb-4 rounded-full bg-deep overflow-hidden">
+        <Player
+          autoplay
+          loop
+          src={avatar.lottie_url}
+          style={{ width: "100%", height: "100%" }}
+        />
+      </div>
+
+      {/* Info */}
+      <h3 className="font-syne text-lg font-bold text-center mb-1">
+        {avatar.name}
+      </h3>
+      <p className="text-sm text-teal text-center mb-2">{avatar.role}</p>
+      <p className="text-xs text-muted text-center">{avatar.company}</p>
+
+      {/* Personality tag */}
+      <div className="mt-4 flex justify-center">
+        <span className="text-xs px-3 py-1 rounded-full bg-violet/10
+                         border border-violet/20 text-violet-lighter">
+          {avatar.personality}
+        </span>
+      </div>
+    </motion.div>
+  );
+}
+
+================================================================================
+11. PÁGINA 2: SIMULATION (src/pages/Simulation.tsx)
+================================================================================
+
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { Mic, MicOff, StopCircle } from "lucide-react";
+import { Player } from "@lottiefiles/react-lottie-player";
+import { ChatBox } from "../components/chat/ChatBox";
+import { useSessionStore } from "../stores/sessionStore";
+import { useWebSocket } from "../hooks/useWebSocket";
+import { useAudioRecorder } from "../hooks/useAudioRecorder";
+
+export function Simulation() {
+  const navigate = useNavigate();
+  const { selectedAvatar, messages, status, metrics } = useSessionStore();
+  const { connect, sendAudio, endSession, disconnect } = useWebSocket(
+    selectedAvatar?.id
+  );
+  const { isRecording, startRecording, stopRecording } = useAudioRecorder();
+
+  useEffect(() => {
+    if (!selectedAvatar) {
+      navigate("/");
+      return;
+    }
+    connect();
+    return () => disconnect();
+  }, [selectedAvatar]);
+
+  useEffect(() => {
+    if (metrics) {
+      navigate("/report");
+    }
+  }, [metrics]);
+
+  async function handleVoiceButton() {
+    if (isRecording) {
+      const audioBase64 = await stopRecording();
+      if (audioBase64) {
+        sendAudio(audioBase64);
+      }
+    } else {
+      startRecording();
+    }
+  }
+
+  function handleEndSession() {
+    endSession();
+  }
+
+  if (!selectedAvatar) return null;
+
+  return (
+    <div className="min-h-screen bg-ink flex flex-col">
+      {/* Header */}
+      <header className="border-b border-white/5 px-8 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <span className="font-syne font-bold text-violet-light">
+            Mente Viva
+          </span>
+          <span className="text-muted">|</span>
+          <span className="text-muted">{selectedAvatar.name}</span>
+        </div>
+        <button
+          onClick={handleEndSession}
+          className="btn-secondary text-sm px-4 py-2 flex items-center gap-2"
+        >
+          <StopCircle className="w-4 h-4" />
+          Terminar
+        </button>
+      </header>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col lg:flex-row gap-6 p-6">
+        {/* Avatar Section */}
+        <div className="lg:w-1/2 flex flex-col items-center justify-center">
+          <motion.div
+            animate={{
+              scale: status === "thinking" || status === "generating_audio"
+                ? [1, 1.02, 1]
+                : 1,
+            }}
+            transition={{ repeat: Infinity, duration: 2 }}
+            className="relative"
+          >
+            {/* Avatar Lottie */}
+            <div className="w-64 h-64 rounded-full bg-deep border-2 border-violet/30
+                            overflow-hidden shadow-xl shadow-violet/20">
+              <Player
+                autoplay
+                loop
+                src={selectedAvatar.lottie_url}
+                style={{ width: "100%", height: "100%" }}
+              />
+            </div>
+
+            {/* Status indicator */}
+            <AnimatePresence>
+              {status !== "ready" && status !== "disconnected" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute -bottom-8 left-1/2 -translate-x-1/2
+                             px-4 py-2 rounded-full bg-card border border-white/10"
+                >
+                  <span className="text-sm text-muted">
+                    {status === "transcribing" && "Escuchando..."}
+                    {status === "thinking" && "Pensando..."}
+                    {status === "generating_audio" && "Generando voz..."}
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+
+          {/* Avatar info */}
+          <div className="mt-12 text-center">
+            <h2 className="font-syne text-xl font-bold">{selectedAvatar.name}</h2>
+            <p className="text-teal">{selectedAvatar.role}</p>
+            <p className="text-muted text-sm">{selectedAvatar.company}</p>
+          </div>
+        </div>
+
+        {/* Chat Section */}
+        <div className="lg:w-1/2 flex flex-col">
+          <ChatBox messages={messages} className="flex-1" />
+
+          {/* Voice Button */}
+          <div className="flex justify-center pt-6">
+            <motion.button
+              onMouseDown={handleVoiceButton}
+              onMouseUp={handleVoiceButton}
+              onTouchStart={handleVoiceButton}
+              onTouchEnd={handleVoiceButton}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              disabled={status !== "ready"}
+              className={`
+                w-20 h-20 rounded-full flex items-center justify-center
+                transition-all duration-200
+                ${isRecording
+                  ? "bg-danger shadow-lg shadow-danger/30"
+                  : "bg-violet shadow-lg shadow-violet/30"}
+                ${status !== "ready" && "opacity-50 cursor-not-allowed"}
+              `}
+            >
+              {isRecording ? (
+                <MicOff className="w-8 h-8 text-white" />
+              ) : (
+                <Mic className="w-8 h-8 text-white" />
+              )}
+            </motion.button>
+          </div>
+
+          <p className="text-center text-muted text-sm mt-3">
+            {isRecording
+              ? "Suelta para enviar"
+              : "Mantén presionado para hablar"}
+          </p>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+================================================================================
+12. COMPONENTE CHAT (src/components/chat/ChatBox.tsx)
+================================================================================
+
+import { useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import type { Message } from "../../types";
+
+interface Props {
+  messages: Message[];
+  className?: string;
+}
+
+export function ChatBox({ messages, className = "" }: Props) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
+  }, [messages]);
+
+  return (
+    <div
+      ref={scrollRef}
+      className={`card overflow-y-auto space-y-4 ${className}`}
+    >
+      {messages.length === 0 ? (
+        <p className="text-muted text-center py-8">
+          Presiona el micrófono para comenzar la conversación
+        </p>
+      ) : (
+        <AnimatePresence mode="popLayout">
+          {messages.map((message) => (
+            <motion.div
+              key={message.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className={`flex ${
+                message.role === "user" ? "justify-end" : "justify-start"
+              }`}
+            >
+              <div
+                className={`
+                  max-w-[80%] px-4 py-3 rounded-2xl
+                  ${message.role === "user"
+                    ? "bg-violet text-white rounded-br-sm"
+                    : "bg-deep text-cream rounded-bl-sm"
+                  }
+                `}
+              >
+                <p className="text-sm">{message.content}</p>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      )}
+    </div>
+  );
+}
+
+================================================================================
+13. PÁGINA 3: REPORT (src/pages/Report.tsx)
+================================================================================
+
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Home, RotateCcw, Trophy } from "lucide-react";
+import { useSessionStore } from "../stores/sessionStore";
+
+export function Report() {
+  const navigate = useNavigate();
+  const { selectedAvatar, metrics, messages } = useSessionStore();
+
+  // Score simulado basado en número de intercambios
+  const score = Math.min(95, 50 + (metrics?.total_exchanges || 0) * 8);
+
+  function getScoreColor(score: number) {
+    if (score >= 75) return "text-success";
+    if (score >= 50) return "text-warning";
+    return "text-danger";
+  }
+
+  function getScoreLabel(score: number) {
+    if (score >= 85) return "Excelente";
+    if (score >= 75) return "Muy bien";
+    if (score >= 60) return "Bien";
+    if (score >= 50) return "Regular";
+    return "Necesita práctica";
+  }
+
+  return (
+    <div className="min-h-screen bg-ink">
+      {/* Header */}
+      <header className="border-b border-white/5 px-8 py-6">
+        <h1 className="font-syne text-2xl font-bold bg-gradient-to-r from-violet-light to-teal bg-clip-text text-transparent">
+          Mente Viva
+        </h1>
+      </header>
+
+      <main className="max-w-3xl mx-auto px-8 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          {/* Title */}
+          <div className="text-center mb-10">
+            <Trophy className="w-12 h-12 text-warning mx-auto mb-4" />
+            <h2 className="font-syne text-3xl font-bold mb-2">
+              Sesión Completada
+            </h2>
+            <p className="text-muted">
+              Practicaste con {selectedAvatar?.name}
+            </p>
+          </div>
+
+          {/* Score Card */}
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="card text-center mb-8"
+          >
+            <p className="text-muted mb-2">Tu puntuación</p>
+            <motion.span
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className={`font-syne text-7xl font-bold ${getScoreColor(score)}`}
+            >
+              {score}
+            </motion.span>
+            <p className="text-xl mt-2">{getScoreLabel(score)}</p>
+          </motion.div>
+
+          {/* Metrics */}
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <div className="card text-center">
+              <p className="text-muted text-sm">Intercambios</p>
+              <p className="font-syne text-2xl font-bold text-violet-light">
+                {metrics?.total_exchanges || messages.length / 2}
+              </p>
+            </div>
+            <div className="card text-center">
+              <p className="text-muted text-sm">Mensajes</p>
+              <p className="font-syne text-2xl font-bold text-teal">
+                {messages.length}
+              </p>
+            </div>
+          </div>
+
+          {/* Conversation Summary */}
+          <div className="card mb-8">
+            <h3 className="font-syne font-bold mb-4">Resumen de conversación</h3>
+            <div className="space-y-3 max-h-64 overflow-y-auto">
+              {messages.map((msg, i) => (
+                <div key={i} className="text-sm">
+                  <span className={msg.role === "user" ? "text-violet-light" : "text-teal"}>
+                    {msg.role === "user" ? "Tú: " : `${selectedAvatar?.name}: `}
+                  </span>
+                  <span className="text-muted">{msg.content}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={() => navigate("/")}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Home className="w-5 h-5" />
+              Inicio
+            </button>
+            <button
+              onClick={() => navigate("/simulation")}
+              className="btn-primary flex items-center gap-2"
+            >
+              <RotateCcw className="w-5 h-5" />
+              Practicar de nuevo
+            </button>
+          </div>
+        </motion.div>
+      </main>
+    </div>
+  );
+}
+
+================================================================================
+14. APP ROUTER (src/App.tsx)
+================================================================================
+
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Dashboard } from "./pages/Dashboard";
+import { Simulation } from "./pages/Simulation";
+import { Report } from "./pages/Report";
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/simulation" element={<Simulation />} />
+        <Route path="/report" element={<Report />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default App;
+
+================================================================================
+15. MAIN ENTRY (src/main.tsx)
+================================================================================
+
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App";
+import "./index.css";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+================================================================================
+16. ENV EXAMPLE (.env.example)
+================================================================================
+
+VITE_API_URL=http://localhost:8000
+VITE_WS_URL=ws://localhost:8000
+
+================================================================================
+17. COMANDOS PARA EJECUTAR
+================================================================================
+
+# Crear proyecto
+npm create vite@latest menteviva-frontend -- --template react-ts
+
+# Instalar dependencias
+npm install react-router-dom framer-motion @lottiefiles/react-lottie-player zustand lucide-react
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+
+# Ejecutar desarrollo
+npm run dev
+
+# El frontend estará en http://localhost:5173
+
+================================================================================
+18. LOTTIE AVATARS - DONDE CONSEGUIRLOS
+================================================================================
+
+Opciones gratuitas de Lottie para avatares:
+
+1. LottieFiles.com (buscar "business person", "avatar", "character")
+   - https://lottiefiles.com/featured/business-character
+   - https://lottiefiles.com/search?q=customer+service
+
+2. Crear propios con:
+   - Rive (rive.app) - Editor gratuito
+   - SVGator - Animar SVGs
+
+3. Ejemplos gratuitos sugeridos:
+   - Customer service character
+   - Business person talking
+   - Professional avatar
+
+Guardar los JSON en: public/avatars/roberto.json, maria.json, carlos.json
+
+================================================================================
+FIN DEL PLAN FRONTEND
+================================================================================

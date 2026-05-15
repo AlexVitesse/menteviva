@@ -14,12 +14,14 @@ build/
 .env
 .env.local
 *.local
+secrets/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+.claude/
 
 # Logs
 logs/
@@ -33,4 +35,13 @@ nul
 # Temp files
 *.tmp
 *.temp
-.claude/
+
+# Large media and backups
+screenshots/
+media/snapshots/
+landingv0/
+login v0/
+menteviva-frontend/*.png
+menteviva-frontend/tpose-*.png
+*.png
+!menteviva-frontend/public/avatars/*.png

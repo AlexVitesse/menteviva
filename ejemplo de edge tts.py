@@ -44,7 +44,7 @@ app.add_middleware(
 )
 
 # Configuración global
-GROQ_API_KEY = "REDACTED_GROQ_KEY"
+GROQ_API_KEY = "" # Reemplazar con variable de entorno o .env
 PDF_PATH = "papalote_knowledge_base.pdf"  # Ruta a tu PDF inicial
 CHROMA_PERSIST_DIRECTORY = "./chroma_db"  # Directorio donde se guardará Chroma
 UPLOADS_DIRECTORY = "./uploads"  # Directorio para archivos subidos
