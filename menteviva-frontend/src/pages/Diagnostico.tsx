@@ -4,18 +4,21 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Clock,
   Mic,
+  MicOff,
   PhoneOff,
   Loader2,
   AlertCircle,
   Volume2,
+  VolumeX,
   Brain,
   PauseCircle,
+  Video,
+  VideoOff,
 } from "lucide-react";
 import { useMicVAD, utils as vadUtils } from "@ricky0123/vad-react";
 
 import { AnimatedAvatar } from "../components/avatar/AnimatedAvatar";
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
-import { ChatBox } from "../components/chat/ChatBox";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useSessionStore } from "../stores/sessionStore";
@@ -53,6 +56,9 @@ export function Diagnostico() {
   const [requestingPermission, setRequestingPermission] = useState(false);
   const [showEscape, setShowEscape] = useState(false);
   const [closingCountdown, setClosingCountdown] = useState<number | null>(null);
+  // Toggle visual de "tu camara" — placeholder, no abre webcam real.
+  // Match con la UI de Simulation.tsx para que ambas vistas se vean iguales.
+  const [isCameraOn, setIsCameraOn] = useState(true);
   const startRef = useRef<number>(Date.now());
   const closingTimerRef = useRef<number | null>(null);
   // Pending failsafe setTimeouts (mock-fallback). Se cancelan en cuanto llega
@@ -83,7 +89,16 @@ export function Diagnostico() {
     setSelectedAvatar(ENTREVISTADOR_AVATAR);
   }, [userProfile, diagnosticoVars, navigate, resetSession, setSelectedAvatar]);
 
-  const { audioRef, isPlaying, startStream, appendChunk, endStream, unlockAudio } = useAudioPlayer();
+  const {
+    audioRef,
+    isPlaying,
+    startStream,
+    appendChunk,
+    endStream,
+    unlockAudio,
+    isMuted,
+    toggleMute,
+  } = useAudioPlayer();
 
   const use3DAvatar = useMemo(() => getAvatar3DFlag(), []);
 
@@ -248,8 +263,6 @@ export function Diagnostico() {
   }, [clearFailsafes, navigate, updateDiagnostico, userProfile]);
 
   // Programa un failsafe que aplica mock si en `delayMs` no hay metrics.
-  // Devuelve el id para que el caller lo trackee (aunque ya queda guardado en
-  // failsafeTimersRef).
   const scheduleMockFailsafe = useCallback(
     (delayMs: number) => {
       const id = window.setTimeout(() => {
@@ -343,34 +356,36 @@ export function Diagnostico() {
     return "paused";
   }, [sessionStarted, vad.loading, vad.userSpeaking, vad.listening, isPlaying, status]);
 
+  // Estilo del boton Mic en el footer: refleja estado del VAD (es display, no
+  // push-to-talk como en Simulation — la captura es automatica).
+  const micStyle = vad.userSpeaking
+    ? "bg-red-500/20 text-red-400"
+    : !vad.listening
+    ? "bg-white/5 text-white/30"
+    : "bg-white/10 text-white";
+
   return (
-    <div className="h-screen bg-ink text-cream flex flex-col overflow-hidden">
-      <header className="px-3 sm:px-6 py-2 sm:py-3 border-b border-white/5 shrink-0">
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="min-w-0 flex-1">
-            <p className="font-syne text-sm sm:text-lg font-bold truncate">Diagnostico</p>
-            <p className="text-[10px] sm:text-xs text-muted truncate">
-              {userProfile?.registro.nombre} · {userProfile?.registro.rol_objetivo}
-            </p>
+    <div className="h-screen bg-[#1a1a1a] flex flex-col overflow-hidden">
+      {/* Header estilo Zoom — alineado con Simulation.tsx */}
+      <header className="bg-[#232323] px-3 sm:px-4 py-2 border-b border-white/10 shrink-0">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shrink-0" />
+            <span className="text-white/80 text-xs sm:text-sm font-medium truncate">
+              <span className="hidden sm:inline">Mente Viva - </span>Diagnóstico
+            </span>
           </div>
-          <div className="flex items-center gap-2 sm:gap-4 text-sm text-muted shrink-0">
-            <div className="flex items-center gap-1 sm:gap-2">
-              <Clock className="w-4 h-4" />
-              <span className="font-mono text-xs sm:text-sm">
-                {formatDuration(elapsed)} / {formatDuration(targetSeconds)}
-              </span>
-            </div>
-            <button
-              onClick={handleTerminate}
-              className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full border border-danger/50 text-danger hover:bg-danger/10 text-xs sm:text-sm"
-            >
-              <PhoneOff className="w-4 h-4" />
-              <span className="hidden sm:inline">Terminar</span>
-            </button>
+          <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 bg-white/5 rounded-full shrink-0">
+            <Clock className="w-3 h-3 sm:w-4 sm:h-4 text-white/60" />
+            <span className="text-white font-mono text-xs sm:text-sm">
+              {formatDuration(elapsed)} / {formatDuration(targetSeconds)}
+            </span>
           </div>
         </div>
-        {/* Progress bar */}
-        <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+        {/* Progress bar — propia de Diagnostico (Simulation no la tiene porque
+            no hay duracion objetivo fija). Se queda como segunda fila del
+            header para no romper el look Zoom. */}
+        <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden mt-2">
           <motion.div
             className="h-full bg-gradient-to-r from-violet to-teal"
             animate={{ width: `${progressPct}%` }}
@@ -379,6 +394,7 @@ export function Diagnostico() {
         </div>
       </header>
 
+      {/* Banners de error — preservados del layout anterior */}
       {sessionStarted && status === "disconnected" && (
         <div className="bg-danger/20 border-b border-danger/40 px-4 py-2 text-center text-xs sm:text-sm text-danger shrink-0">
           Sin conexion al servidor. Presiona Terminar para ir al inicio o recarga la pagina.
@@ -398,35 +414,164 @@ export function Diagnostico() {
         </div>
       )}
 
-      <main className="flex-1 flex flex-col md:flex-row gap-2 md:gap-4 p-2 md:p-4 min-h-0">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="relative rounded-xl overflow-hidden bg-gradient-to-br from-deep to-ink flex items-center justify-center h-[35vh] md:h-auto md:flex-1"
-        >
-          {use3DAvatar ? (
-            <TalkingHeadAvatar
-              audioRef={audioRef}
-              isActive={status === "thinking" || status === "generating_audio"}
-              isSpeaking={isPlaying}
-            />
-          ) : (
-            <AnimatedAvatar
-              character="maria"
-              isActive={status === "thinking" || status === "generating_audio"}
-              isSpeaking={isPlaying}
-            />
-          )}
-          <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg">
-            <span className="text-xs sm:text-sm font-medium">{ENTREVISTADOR_AVATAR.name}</span>
+      {/* Main: avatar grande + sidebar (tu video + chat). Mismo grid que Simulation. */}
+      <main className="flex-1 flex flex-col md:flex-row gap-2 p-2 overflow-hidden min-h-0">
+        {/* Panel principal con avatar 3D */}
+        <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[#2a2a3a] to-[#1a1a2e] h-[40vh] md:h-auto md:flex-1">
+          <div className="absolute inset-0 flex items-center justify-center">
+            {use3DAvatar ? (
+              <TalkingHeadAvatar
+                audioRef={audioRef}
+                isActive={status === "thinking" || status === "generating_audio"}
+                isSpeaking={isPlaying}
+              />
+            ) : (
+              <AnimatedAvatar
+                character="maria"
+                isActive={status === "thinking" || status === "generating_audio"}
+                isSpeaking={isPlaying}
+                size={typeof window !== "undefined" ? Math.min(280, window.innerWidth * 0.6) : 280}
+              />
+            )}
           </div>
-        </motion.div>
 
-        <aside className="flex-1 md:flex-none md:w-[400px] flex flex-col gap-3 min-h-0">
-          <ChatBox messages={messages} className="flex-1 min-h-0" />
-          <ConversationIndicator state={indicatorState} />
-        </aside>
+          {/* Nombre del avatar (esquina inferior izquierda) — match Simulation */}
+          <div className="absolute bottom-4 left-4 px-3 py-1.5 bg-black/60 rounded-md backdrop-blur-sm">
+            <span className="text-white text-sm font-medium">{ENTREVISTADOR_AVATAR.name}</span>
+            <span className="text-white/60 text-xs ml-2">{ENTREVISTADOR_AVATAR.role}</span>
+          </div>
+
+          {/* Indicador de estado: como Diagnostico tiene VAD + sofiaSpeaking,
+              conservamos el ConversationIndicator (mas informativo que el dot
+              simple de Simulation). Lo posicionamos top-right para no chocar
+              con el nombre del avatar abajo. */}
+          <div className="absolute top-3 left-3 right-3 sm:left-auto sm:right-3 sm:max-w-xs z-10">
+            <ConversationIndicator state={indicatorState} />
+          </div>
+        </div>
+
+        {/* Sidebar: video tuyo + chat compacto inline (igual que Simulation). */}
+        <div className="md:w-64 flex flex-col gap-2 min-h-0 flex-1 md:flex-none">
+          {/* Tu video — oculto en movil para dar espacio al chat */}
+          <div className="relative h-32 md:h-48 rounded-xl overflow-hidden bg-gradient-to-br from-[#3a3a4a] to-[#2a2a3a] border border-white/10 hidden sm:block">
+            {isCameraOn ? (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-20 h-20 rounded-full bg-violet/20 flex items-center justify-center">
+                  <span className="text-3xl font-bold text-violet">Tú</span>
+                </div>
+              </div>
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center bg-[#1a1a1a]">
+                <VideoOff className="w-8 h-8 text-white/30" />
+              </div>
+            )}
+
+            {/* Tu nombre + indicador de voz */}
+            <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 rounded text-xs text-white">
+              Tú {vad.userSpeaking && <span className="text-red-400 ml-1">● Hablando</span>}
+            </div>
+
+            {/* Indicador pulsante cuando el VAD detecta voz */}
+            {vad.userSpeaking && (
+              <div className="absolute top-2 right-2">
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ repeat: Infinity, duration: 0.5 }}
+                  className="w-3 h-3 bg-red-500 rounded-full"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Chat compacto inline */}
+          <div className="flex-1 rounded-xl bg-[#232323] border border-white/10 overflow-hidden flex flex-col">
+            <div className="px-3 py-2 border-b border-white/10 text-xs text-white/60 font-medium">
+              Chat
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+              {messages.length === 0 ? (
+                <p className="text-white/40 text-xs text-center py-4">
+                  Sofía iniciará la conversación...
+                </p>
+              ) : (
+                messages.slice(-6).map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`text-xs p-2 rounded-lg ${
+                      msg.role === "user"
+                        ? "bg-violet/20 text-violet-lighter ml-4"
+                        : "bg-white/5 text-white/80 mr-4"
+                    }`}
+                  >
+                    <span className="font-medium text-[10px] text-white/50 block mb-0.5">
+                      {msg.role === "user" ? "Tú" : ENTREVISTADOR_AVATAR.name}
+                    </span>
+                    {msg.content.length > 100 ? msg.content.slice(0, 100) + "..." : msg.content}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       </main>
+
+      {/* Footer estilo Zoom — Mic state-display, Camara, Mute (nuevo), Terminar */}
+      <footer className="bg-[#232323] px-6 py-3 flex items-center justify-center gap-4 border-t border-white/10">
+        {/* Mic — solo display del estado VAD, no push-to-talk (la captura es automatica) */}
+        <div
+          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg ${micStyle}`}
+          aria-label="Estado del microfono"
+        >
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+            vad.userSpeaking ? "bg-red-500" : "bg-white/10"
+          }`}>
+            {vad.userSpeaking ? <Mic className="w-5 h-5 text-white" /> : !vad.listening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          </div>
+          <span className="text-[10px]">
+            {vad.userSpeaking ? "Hablando" : !vad.listening ? "Pausado" : "Escuchando"}
+          </span>
+        </div>
+
+        {/* Camara — toggle placeholder, no abre webcam real */}
+        <button
+          onClick={() => setIsCameraOn(!isCameraOn)}
+          className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all"
+        >
+          <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+            {isCameraOn ? (
+              <Video className="w-5 h-5" />
+            ) : (
+              <VideoOff className="w-5 h-5 text-red-400" />
+            )}
+          </div>
+          <span className="text-[10px]">Video</span>
+        </button>
+
+        {/* Mute — silencia el audio TTS del avatar (no afecta tu mic) */}
+        <button
+          onClick={toggleMute}
+          className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all"
+          aria-label={isMuted ? "Activar audio del avatar" : "Silenciar audio del avatar"}
+        >
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+            isMuted ? "bg-red-500/30" : "bg-white/10"
+          }`}>
+            {isMuted ? <VolumeX className="w-5 h-5 text-red-400" /> : <Volume2 className="w-5 h-5" />}
+          </div>
+          <span className="text-[10px]">{isMuted ? "Activar" : "Silenciar"}</span>
+        </button>
+
+        {/* Terminar */}
+        <button
+          onClick={handleTerminate}
+          className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+        >
+          <div className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center">
+            <PhoneOff className="w-5 h-5 text-white" />
+          </div>
+          <span className="text-[10px]">Terminar</span>
+        </button>
+      </footer>
 
       <AnimatePresence>
         {closingCountdown !== null && (
@@ -578,7 +723,7 @@ function ConversationIndicator({ state }: { state: IndicatorState }) {
   const Icon = cfg.icon;
   const isLoading = state === "loading";
   return (
-    <div className={`shrink-0 rounded-2xl border p-4 flex items-center gap-3 ${cfg.color} transition-colors`}>
+    <div className={`shrink-0 rounded-2xl border p-3 flex items-center gap-3 backdrop-blur-md ${cfg.color} transition-colors`}>
       <div className="relative shrink-0">
         {cfg.pulse && (
           <motion.div

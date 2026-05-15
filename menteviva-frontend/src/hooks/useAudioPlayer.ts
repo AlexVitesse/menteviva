@@ -11,6 +11,9 @@ import { useRef, useCallback, useState, useEffect } from "react";
 export function useAudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  // Ref espejo de isMuted para usar dentro de callbacks sin recrearlos en cada toggle
+  const isMutedRef = useRef(false);
   const currentBlobUrl = useRef<string | null>(null);
 
   // Buffer de chunks para streaming. Acumulamos hasta endStream() y reproducimos
@@ -45,6 +48,18 @@ export function useAudioPlayer() {
       }
     };
   }, []);
+
+  // Mantener audio.muted sincronizado con el estado isMuted. Esto cubre el
+  // caso de toggle durante reproduccion en curso. Para clips nuevos (set src
+  // en playAudio/endStream) tambien se aplica explicitamente abajo, asi el
+  // nuevo elemento arranca con el muted correcto sin un frame de audio
+  // audible mientras React despacha el efecto.
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+    if (audioRef.current) {
+      audioRef.current.muted = isMuted;
+    }
+  }, [isMuted]);
 
   const cleanupPreviousSource = useCallback(() => {
     if (currentBlobUrl.current) {
@@ -90,6 +105,9 @@ export function useAudioPlayer() {
         audio.addEventListener("error", onError);
 
         audio.src = url;
+        // Persistir el estado mute entre clips: si el usuario silencio, los
+        // siguientes clips tambien arrancan muted.
+        audio.muted = isMutedRef.current;
         audio.play().catch(reject);
       } catch (error) {
         reject(error);
@@ -102,6 +120,11 @@ export function useAudioPlayer() {
     (_mimeType = "audio/mpeg") => {
       console.log("[Audio] startStream");
       cleanupPreviousSource();
+      // Asegurar que el elemento persistente respete el mute actual al
+      // arrancar un nuevo stream.
+      if (audioRef.current) {
+        audioRef.current.muted = isMutedRef.current;
+      }
     },
     [cleanupPreviousSource]
   );
@@ -141,6 +164,8 @@ export function useAudioPlayer() {
     console.log(`[Audio] blob creado: ${blob.size} bytes, url: ${url}`);
 
     audioRef.current.src = url;
+    // Aplicar mute persistente al nuevo clip
+    audioRef.current.muted = isMutedRef.current;
     audioRef.current
       .play()
       .then(() => console.log("[Audio] play() OK"))
@@ -236,9 +261,21 @@ export function useAudioPlayer() {
     audioRef.current?.play();
   }, []);
 
+  // Silencia/desilencia el avatar sin detener la grabacion del mic del
+  // usuario. Persiste entre clips: el effect de arriba sincroniza el
+  // elemento <audio>, y playAudio/endStream/startStream leen isMutedRef.
+  const setMuted = useCallback((v: boolean) => {
+    setIsMuted(v);
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    setIsMuted((prev) => !prev);
+  }, []);
+
   return {
     audioRef,
     isPlaying,
+    isMuted,
     playAudio,
     startStream,
     appendChunk,
@@ -247,5 +284,7 @@ export function useAudioPlayer() {
     stopAudio,
     pauseAudio,
     resumeAudio,
+    toggleMute,
+    setMuted,
   };
 }
