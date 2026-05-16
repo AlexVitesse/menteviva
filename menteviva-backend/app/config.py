@@ -21,9 +21,18 @@ class Settings(BaseSettings):
 
     @property
     def groq_api_keys(self) -> list[str]:
-        """Retorna lista de API keys válidas para rotación."""
+        """Retorna lista de API keys válidas para rotación.
+
+        Filtra vacías Y los placeholders del .env.example (`gsk_xxxxx...`):
+        si alguien copia .env.example sin reemplazar GROQ_API_KEY_2/3/4, esas
+        keys-basura entran al round-robin y 3 de cada 4 requests dan 401. Una
+        key real de Groq es `gsk_` + 52 chars; los placeholders tienen 'xxxx'.
+        """
         keys = [self.groq_api_key, self.groq_api_key_2, self.groq_api_key_3, self.groq_api_key_4]
-        return [k for k in keys if k]  # Solo keys no vacías
+        return [
+            k for k in keys
+            if k and k.startswith("gsk_") and len(k) >= 50 and "xxxx" not in k
+        ]
 
     # ElevenLabs TTS
     elevenlabs_api_key: str = ""
