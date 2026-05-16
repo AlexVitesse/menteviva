@@ -132,12 +132,24 @@ _pool: AsyncConnectionPool | None = None
 
 def _build_pool() -> AsyncConnectionPool:
     """Crea el pool. No abre conexiones todavia (open=False permite warm-up
-    durante startup_db)."""
+    durante startup_db).
+
+    `check` valida cada conexion ANTES de entregarla: si esta muerta, el pool
+    la descarta y abre una nueva. Imprescindible con Neon, que suspende el
+    compute tras ~5 min idle (free tier scale-to-zero) y deja las conexiones
+    del pool con el SSL cerrado. Sin esto, la primera query tras un periodo
+    idle revienta con "SSL connection has been closed unexpectedly".
+
+    `max_idle` recicla conexiones ociosas para no acumular sockets que Neon
+    ya cerro del otro lado.
+    """
     return AsyncConnectionPool(
         conninfo=settings.database_url,
         min_size=settings.db_pool_min_size,
         max_size=settings.db_pool_max_size,
         kwargs={"row_factory": dict_row},
+        check=AsyncConnectionPool.check_connection,
+        max_idle=120.0,
         open=False,
     )
 
