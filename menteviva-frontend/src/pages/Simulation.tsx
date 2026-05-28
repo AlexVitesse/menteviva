@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff, Clock, Loader2 } from "lucide-react";
+import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff, Clock, Loader2, Pause, Play } from "lucide-react";
 import { AnimatedAvatar, AvatarCharacter } from "../components/avatar/AnimatedAvatar";
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
 import { useSessionStore } from "../stores/sessionStore";
@@ -15,6 +15,12 @@ export function Simulation() {
   const navigate = useNavigate();
   const { selectedAvatar, selectedLevel, messages, status, metrics, serverError, userProfile, setServerError, setMetrics } = useSessionStore();
   const [isCameraOn, setIsCameraOn] = useState(true);
+  const [isMicMuted, setIsMicMuted] = useState(false);
+  // Ref espejo de isMicMuted: handleVoiceButton lo lee de forma sincrona para no
+  // depender del valor (posiblemente stale) capturado en el closure de render.
+  // Cierra la carrera "muteo con una mano + toque del boton con la otra".
+  const isMicMutedRef = useRef(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const endTimeoutRef = useRef<number | null>(null);
@@ -23,7 +29,7 @@ export function Simulation() {
   const prevMessagesLenRef = useRef(messages.length);
 
   // Hook de audio y sonidos
-  const { audioRef, isPlaying, startStream, appendChunk, endStream, unlockAudio } = useAudioPlayer();
+  const { audioRef, isPlaying, startStream, appendChunk, endStream, unlockAudio, pauseAudio, resumeAudio } = useAudioPlayer();
   const { play: playSound } = useSoundEffects();
 
   const use3DAvatar = useMemo(() => getAvatar3DFlag(), []);
@@ -37,6 +43,9 @@ export function Simulation() {
   );
 
   const handleAudioStart = useCallback(() => {
+    // Cada nuevo clip del avatar arranca reproduciendo: resetea el estado de
+    // pausa del usuario (si pauso el turno anterior, este turno suena normal).
+    setIsPaused(false);
     startStream("audio/mpeg");
   }, [startStream]);
 
@@ -127,6 +136,35 @@ export function Simulation() {
   // Debounce para evitar doble-trigger en mobile (touch + click sintetico)
   const lastButtonRef = useRef(0);
 
+  // Pausa/reanuda la voz del avatar. isPaused distingue "pausado por el usuario"
+  // de "termino de hablar" (ambos dejan isPlaying en false).
+  function handleTogglePause() {
+    if (isPaused) {
+      resumeAudio();
+      setIsPaused(false);
+    } else {
+      pauseAudio();
+      setIsPaused(true);
+    }
+  }
+
+  async function handleToggleMicMute() {
+    const next = !isMicMuted;
+    // Flip inmediato para feedback visual sin esperar a unlockAudio (que en iOS
+    // puede tardar hasta ~3.5s la primera vez por los timeouts de unlock). El ref
+    // se actualiza de forma sincrona para que un toque del boton de voz en el
+    // mismo frame ya vea el mute, antes de que React confirme el re-render.
+    isMicMutedRef.current = next;
+    setIsMicMuted(next);
+    // Si estabas grabando (push-to-talk + mute con la otra mano), cancela la
+    // grabacion en curso: libera el mic y descarta el audio (no se envia).
+    if (next && isRecording) {
+      await stopRecording();
+    }
+    // Aprovechamos el gesto del usuario para desbloquear el playback en iOS.
+    await unlockAudio();
+  }
+
   async function handleVoiceButton() {
     const now = Date.now();
     if (now - lastButtonRef.current < 250) return;
@@ -134,6 +172,12 @@ export function Simulation() {
 
     // Desbloquea audio en iOS Safari en el primer toque
     await unlockAudio();
+
+    // Mic silenciado: no grabamos ni enviamos nada. El avatar no te oye.
+    // Leemos el ref (no el estado del closure) para no perder un muteo recien
+    // hecho con la otra mano en el mismo frame.
+    if (isMicMutedRef.current) return;
+
     if (isRecording) {
       playSound("recordStop");
       const audioBase64 = await stopRecording();
@@ -142,6 +186,10 @@ export function Simulation() {
         sendAudio(audioBase64);
       }
     } else {
+      // El usuario pasa a hablar: si habia pausado la voz del avatar, ese clip
+      // ya quedo atras. Limpiamos isPaused para no dejar el subtitulo anterior
+      // clavado en pantalla durante el resto de la sesion.
+      setIsPaused(false);
       playSound("recordStart");
       startRecording();
     }
@@ -288,7 +336,7 @@ export function Simulation() {
 
           {/* Subtítulos del avatar */}
           <AnimatePresence>
-            {isSpeaking && lastAssistantMessage && (
+            {(isSpeaking || isPaused) && lastAssistantMessage && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -324,6 +372,7 @@ export function Simulation() {
             {/* Tu nombre */}
             <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 rounded text-xs text-white">
               Tú {isRecording && <span className="text-red-400 ml-1">● Grabando</span>}
+              {isMicMuted && !isRecording && <span className="text-red-400 ml-1">● Mic silenciado</span>}
             </div>
 
             {/* Indicador de micrófono */}
@@ -379,12 +428,12 @@ export function Simulation() {
           onTouchStart={handleVoiceButton}
           onTouchEnd={handleVoiceButton}
           whileTap={{ scale: 0.95 }}
-          disabled={status !== "ready"}
+          disabled={status !== "ready" || isMicMuted}
           className={`
             flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all
             ${isRecording
               ? "bg-red-500/20 text-red-400"
-              : status !== "ready"
+              : status !== "ready" || isMicMuted
               ? "bg-white/5 text-white/30 cursor-not-allowed"
               : "bg-white/10 text-white hover:bg-white/20"}
           `}
@@ -392,14 +441,51 @@ export function Simulation() {
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
             isRecording ? "bg-red-500" : "bg-white/10"
           }`}>
-            {isRecording ? (
+            <Mic className="w-5 h-5" />
+          </div>
+          <span className="text-[10px]">{isRecording ? "Suelta" : "Hablar"}</span>
+        </motion.button>
+
+        {/* Botón Silenciar mi micrófono */}
+        <button
+          onClick={handleToggleMicMute}
+          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all ${
+            isMicMuted
+              ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+              : "bg-white/10 text-white hover:bg-white/20"
+          }`}
+        >
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+            isMicMuted ? "bg-red-500" : "bg-white/10"
+          }`}>
+            {isMicMuted ? (
               <MicOff className="w-5 h-5 text-white" />
             ) : (
               <Mic className="w-5 h-5" />
             )}
           </div>
-          <span className="text-[10px]">{isRecording ? "Suelta" : "Hablar"}</span>
-        </motion.button>
+          <span className="text-[10px]">{isMicMuted ? "Muteado" : "Silenciar"}</span>
+        </button>
+
+        {/* Botón Pausa/Reanudar voz del avatar */}
+        <button
+          onClick={handleTogglePause}
+          disabled={!isPlaying && !isPaused}
+          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all ${
+            !isPlaying && !isPaused
+              ? "bg-white/5 text-white/30 cursor-not-allowed"
+              : "bg-white/10 text-white hover:bg-white/20"
+          }`}
+        >
+          <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+            {isPaused ? (
+              <Play className="w-5 h-5" />
+            ) : (
+              <Pause className="w-5 h-5" />
+            )}
+          </div>
+          <span className="text-[10px]">{isPaused ? "Reanudar" : "Pausa"}</span>
+        </button>
 
         {/* Botón Cámara */}
         <button

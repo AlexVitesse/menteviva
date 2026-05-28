@@ -20,7 +20,16 @@ export function useAudioRecorder() {
 
     try {
       setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Limpieza de audio del microfono: cancelacion de eco, supresion de ruido
+      // y control automatico de ganancia. Mejora la transcripcion de Whisper y
+      // reduce el ruido de fondo que el navegador captura por defecto.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
 
       // Detectar el mejor formato soportado
       const mimeType = getBestAudioFormat();

@@ -1,6 +1,18 @@
 import { useRef, useCallback, useState, useEffect } from "react";
 
 /**
+ * Reproduce el elemento y traga el rechazo de play(): autoplay bloqueado, src
+ * reemplazado por un turno nuevo, o elemento interrumpido. Centraliza el patron
+ * para no dejar unhandled rejections ruidosos en consola y mantener un solo
+ * lugar donde cambiar como se reportan los fallos de playback.
+ */
+function safePlay(audio: HTMLAudioElement | null, context: string) {
+  audio?.play().catch((err) => {
+    console.warn(`[Audio] ${context} play() rejected:`, err);
+  });
+}
+
+/**
  * useAudioPlayer: reproduce audio del avatar.
  *
  * Dos modos:
@@ -166,12 +178,7 @@ export function useAudioPlayer() {
     audioRef.current.src = url;
     // Aplicar mute persistente al nuevo clip
     audioRef.current.muted = isMutedRef.current;
-    audioRef.current
-      .play()
-      .then(() => console.log("[Audio] play() OK"))
-      .catch((err) => {
-        console.warn("[Audio] play() rejected:", err);
-      });
+    safePlay(audioRef.current, "endStream");
   }, []);
 
   /**
@@ -258,7 +265,7 @@ export function useAudioPlayer() {
   }, []);
 
   const resumeAudio = useCallback(() => {
-    audioRef.current?.play();
+    safePlay(audioRef.current, "resume");
   }, []);
 
   // Silencia/desilencia el avatar sin detener la grabacion del mic del
