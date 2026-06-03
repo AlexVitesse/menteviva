@@ -26,8 +26,13 @@ import { useFirebaseAuth } from "./hooks/useFirebaseAuth";
  */
 function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const userProfile = useSessionStore((s) => s.userProfile);
+  const needsRegistration = useSessionStore((s) => s.needsRegistration);
   const location = useLocation();
 
+  // Autenticado en Firebase pero sin fila en la DB: completar registro primero.
+  if (needsRegistration) {
+    return <Navigate to="/registro" replace state={{ from: location.pathname }} />;
+  }
   if (!userProfile?.registro) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
@@ -38,11 +43,38 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * Pantalla cuando /auth/sync falla por algo que NO es 404 (401/500/503): en vez
+ * de dejar al usuario en el landing sin explicacion, mostramos el error con un
+ * boton de reintento (recarga -> re-dispara onAuthStateChanged -> reintenta sync;
+ * cubre el caso de Neon despertando del suspend).
+ */
+function AuthErrorScreen({ message }: { message: string }) {
+  return (
+    <div className="min-h-screen bg-ink text-cream flex items-center justify-center p-6">
+      <div className="w-full max-w-md bg-card rounded-2xl border border-white/10 p-8 text-center">
+        <h1 className="font-syne text-2xl font-bold mb-3">No pudimos cargar tu sesión</h1>
+        <p className="text-muted text-sm mb-6">{message}</p>
+        <button
+          onClick={() => window.location.reload()}
+          className="w-full font-syne font-bold text-sm py-3 rounded-[10px] bg-violet text-white hover:bg-violet-light transition-colors"
+        >
+          Reintentar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Root "/": landing publica para visitantes nuevos; dashboard para usuarios
  * con perfil completo; flujo de setup si tienen registro pero no diagnostico.
  */
 function Root() {
   const userProfile = useSessionStore((s) => s.userProfile);
+  const needsRegistration = useSessionStore((s) => s.needsRegistration);
+  const authError = useSessionStore((s) => s.authError);
+  if (authError) return <AuthErrorScreen message={authError} />;
+  if (needsRegistration) return <Navigate to="/registro" replace />;
   if (!userProfile?.registro) return <Landing />;
   if (!userProfile.diagnostico) return <Navigate to="/diagnostico/setup" replace />;
   return <Dashboard />;

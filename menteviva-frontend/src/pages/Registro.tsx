@@ -48,12 +48,21 @@ function strengthLabel(metCount: number): { label: string; color: string; pct: n
 
 export function Registro() {
   const navigate = useNavigate();
-  const { userProfile, updateRegistro, setUserProfileFromAuth } = useSessionStore();
+  const { userProfile, updateRegistro, setUserProfileFromAuth, needsRegistration } =
+    useSessionStore();
   const existingRegistro = userProfile?.registro;
   const isEdit = Boolean(existingRegistro);
+  // Autenticado en Firebase pero sin fila en la DB: solo faltan los datos de
+  // perfil; la cuenta de auth ya existe -> no recreamos credenciales (no pedimos
+  // email/password). isNewAccount = alta desde cero (visitante no autenticado).
+  const isCompleteProfile =
+    !isEdit && (needsRegistration || Boolean(firebaseAuth?.currentUser));
+  const isNewAccount = !isEdit && !isCompleteProfile;
 
   const [nombre, setNombre] = useState(existingRegistro?.nombre ?? "");
-  const [email, setEmail] = useState(existingRegistro?.email ?? "");
+  const [email, setEmail] = useState(
+    existingRegistro?.email ?? firebaseAuth?.currentUser?.email ?? ""
+  );
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -83,7 +92,7 @@ export function Registro() {
     if (!nombre.trim()) missing.push("nombre");
     if (!rolObjetivo.trim()) missing.push("rol objetivo");
     if (!industria.trim()) missing.push("industria");
-    if (!isEdit) {
+    if (isNewAccount) {
       if (!email.trim()) missing.push("email");
       if (!password) missing.push("contraseña");
       if (!confirmPassword) missing.push("confirmación de contraseña");
@@ -93,7 +102,7 @@ export function Registro() {
       return;
     }
 
-    if (!isEdit) {
+    if (isNewAccount) {
       if (!requiredMet) {
         setError("La contraseña no cumple los requisitos mínimos.");
         return;
@@ -125,7 +134,11 @@ export function Registro() {
 
     setSubmitting(true);
     try {
-      await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
+      // Cuenta nueva: creamos credenciales en Firebase. En modo "completar
+      // perfil" ya estamos autenticados, asi que vamos directo a /auth/register.
+      if (isNewAccount) {
+        await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
+      }
       const profile = await apiFetch<UserProfile>("/api/auth/register", {
         method: "POST",
         json: {
@@ -152,11 +165,17 @@ export function Registro() {
         className="w-full max-w-xl bg-card rounded-2xl border border-white/5 p-8 shadow-2xl"
       >
         <h1 className="font-syne text-3xl font-bold mb-2">
-          {isEdit ? "Editar registro" : "Bienvenido a Mente Viva"}
+          {isEdit
+            ? "Editar registro"
+            : isCompleteProfile
+            ? "Completa tu perfil"
+            : "Bienvenido a Mente Viva"}
         </h1>
         <p className="text-muted mb-6">
           {isEdit
             ? "Actualiza tu información. El diagnóstico previo se conserva."
+            : isCompleteProfile
+            ? "Tu cuenta ya existe; solo faltan estos datos para terminar tu registro."
             : "Crea tu cuenta. Lo usaremos para guardar tu progreso entre sesiones."}
         </p>
 
@@ -172,7 +191,7 @@ export function Registro() {
             />
           </Field>
 
-          <Field label={isEdit ? "Email (no editable)" : "Email *"}>
+          <Field label={isEdit || isCompleteProfile ? "Email (no editable)" : "Email *"}>
             <input
               type="email"
               value={email}
@@ -180,11 +199,11 @@ export function Registro() {
               className={inputClasses}
               placeholder="maria@ejemplo.com"
               autoComplete="email"
-              disabled={isEdit}
+              disabled={isEdit || isCompleteProfile}
             />
           </Field>
 
-          {!isEdit && (
+          {isNewAccount && (
             <>
               <Field label="Contraseña *">
                 <PasswordInput
@@ -327,9 +346,13 @@ export function Registro() {
               className="flex-1 font-syne font-bold text-sm py-3 rounded-[10px] bg-violet text-white hover:bg-violet-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitting
-                ? "Creando cuenta…"
+                ? isNewAccount
+                  ? "Creando cuenta…"
+                  : "Guardando…"
                 : isEdit
                 ? "Guardar cambios"
+                : isCompleteProfile
+                ? "Completar registro"
                 : "Crear cuenta y continuar"}
             </button>
           </div>

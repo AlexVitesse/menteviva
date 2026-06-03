@@ -69,6 +69,15 @@ interface SessionState {
   // del WS, dashboard) que ya espera userProfile en el store.
   setUserProfileFromAuth: (profile: UserProfile) => void;
 
+  // Estado de autenticacion Firebase (lo setea useFirebaseAuth tras /auth/sync).
+  // needsRegistration: logueado en Firebase pero sin fila en la DB -> /registro.
+  // authError: fallo de /auth/sync que NO es 404 (401/500/503) -> mostrar al
+  // usuario en vez de mandarlo al landing en silencio.
+  needsRegistration: boolean;
+  setNeedsRegistration: (v: boolean) => void;
+  authError: string | null;
+  setAuthError: (error: string | null) => void;
+
   // Reset completo (no toca el userProfile)
   resetSession: () => void;
 }
@@ -144,13 +153,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   clearUserProfile: () => {
     clearStoredProfile();
-    set({ userProfile: null });
+    set({ userProfile: null, needsRegistration: false, authError: null });
   },
 
   setUserProfileFromAuth: (profile) => {
     saveUserProfile(profile);
-    set({ userProfile: profile });
+    set({ userProfile: profile, needsRegistration: false, authError: null });
   },
+
+  needsRegistration: false,
+  setNeedsRegistration: (v) => set({ needsRegistration: v }),
+  authError: null,
+  setAuthError: (error) => set({ authError: error }),
 
   resetSession: () =>
     set({

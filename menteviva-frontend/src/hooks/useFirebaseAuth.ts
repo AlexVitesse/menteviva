@@ -28,9 +28,13 @@ export interface FirebaseAuthStatus {
 export function useFirebaseAuth(): FirebaseAuthStatus {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [needsRegistration, setNeedsRegistration] = useState(false);
   const setUserProfileFromAuth = useSessionStore((s) => s.setUserProfileFromAuth);
   const clearUserProfile = useSessionStore((s) => s.clearUserProfile);
+  const setNeedsRegistration = useSessionStore((s) => s.setNeedsRegistration);
+  const setAuthError = useSessionStore((s) => s.setAuthError);
+  // El flag vive en el store (lo consumen App.tsx y Registro.tsx); lo leemos
+  // tambien aqui para mantener el shape del retorno por compatibilidad.
+  const needsRegistration = useSessionStore((s) => s.needsRegistration);
 
   useEffect(() => {
     if (!firebaseAuth) {
@@ -41,8 +45,7 @@ export function useFirebaseAuth(): FirebaseAuthStatus {
     const unsub = onAuthStateChanged(firebaseAuth, async (fbUser) => {
       setUser(fbUser);
       if (!fbUser) {
-        clearUserProfile();
-        setNeedsRegistration(false);
+        clearUserProfile(); // limpia perfil + needsRegistration + authError
         setReady(true);
         return;
       }
@@ -50,21 +53,28 @@ export function useFirebaseAuth(): FirebaseAuthStatus {
         const profile = await apiFetch<UserProfile>("/api/auth/sync", {
           method: "POST",
         });
-        setUserProfileFromAuth(profile);
-        setNeedsRegistration(false);
+        setUserProfileFromAuth(profile); // limpia needsRegistration + authError
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
-          // Logueado en Firebase pero falta completar registro en backend.
+          // Logueado en Firebase pero falta la fila en la DB: hay que completar
+          // el registro. App.tsx redirige a /registro al ver este flag.
           setNeedsRegistration(true);
+          setAuthError(null);
         } else {
+          // 401/500/503: no pudimos validar la sesion. Lo exponemos en vez de
+          // mandar al landing en silencio (App.tsx muestra AuthErrorScreen).
           console.error("[useFirebaseAuth] /auth/sync falló:", err);
+          setNeedsRegistration(false);
+          setAuthError(
+            "No pudimos validar tu sesión con el servidor. Reintenta en un momento; si persiste, avisa al equipo."
+          );
         }
       } finally {
         setReady(true);
       }
     });
     return () => unsub();
-  }, [setUserProfileFromAuth, clearUserProfile]);
+  }, [setUserProfileFromAuth, clearUserProfile, setNeedsRegistration, setAuthError]);
 
   return { ready, user, needsRegistration };
 }
