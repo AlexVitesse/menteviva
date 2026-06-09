@@ -13,6 +13,10 @@ interface TalkingHeadAvatarProps {
   // Animacion idle oficial RPM. Por default usa feminine porque Sofia (avatar
   // del diagnostico) lo es. Para Roberto u otros masculinos pasar "masculine".
   gender?: AvatarGender;
+  // Modo Gemini: el audio del avatar suena via Web Audio (PCM), no por el
+  // <audio> de audioRef. Si se pasa un analyser externo, el lip-sync lee de el
+  // en vez de crear uno desde el media element (que estaria mudo).
+  externalAnalyser?: AnalyserNode | null;
 }
 
 const DEFAULT_MODEL_URL = "/avatars/sofia.glb";
@@ -70,11 +74,13 @@ function AvatarModel({
   audioRef,
   isSpeaking,
   idleAnimUrl,
+  externalAnalyser,
 }: {
   url: string;
   audioRef: RefObject<HTMLAudioElement | null>;
   isSpeaking: boolean;
   idleAnimUrl: string;
+  externalAnalyser?: AnalyserNode | null;
 }) {
   const { scene } = useGLTF(url);
   // FBX oficial de RPM con la animacion de breathing/idle. El mixer aplica
@@ -182,13 +188,28 @@ function AvatarModel({
   }, [scene, idleFbx]);
 
   useEffect(() => {
+    // Modo Gemini: lip-sync desde el analyser externo (reproductor PCM). Su
+    // audio NO pasa por el <audio> element, asi que no usamos getAudioGraph.
+    if (externalAnalyser) {
+      externalAnalyser.fftSize = 1024;
+      externalAnalyser.smoothingTimeConstant = 0.5;
+      externalAnalyser.minDecibels = -55;
+      externalAnalyser.maxDecibels = -10;
+      const buf = new ArrayBuffer(externalAnalyser.frequencyBinCount);
+      graphRef.current = {
+        ctx: externalAnalyser.context as AudioContext,
+        analyser: externalAnalyser,
+        data: new Uint8Array(buf),
+      };
+      return;
+    }
     const el = audioRef.current;
     if (!el) return;
     graphRef.current = getAudioGraph(el);
     if (graphRef.current.ctx.state === "suspended") {
       graphRef.current.ctx.resume().catch(() => {});
     }
-  }, [audioRef]);
+  }, [audioRef, externalAnalyser]);
 
   useFrame((_, delta) => {
     // ANIMATION MIXER PRIMERO. El idle anim escribe bones (rotaciones del
@@ -332,6 +353,7 @@ export function TalkingHeadAvatar({
   isSpeaking,
   modelUrl = DEFAULT_MODEL_URL,
   gender = "feminine",
+  externalAnalyser,
 }: TalkingHeadAvatarProps) {
   const idleAnimUrl = useMemo(() => IDLE_ANIM_URL[gender], [gender]);
   return (
@@ -354,6 +376,7 @@ export function TalkingHeadAvatar({
             audioRef={audioRef}
             isSpeaking={isSpeaking}
             idleAnimUrl={idleAnimUrl}
+            externalAnalyser={externalAnalyser}
           />
           <Environment preset="studio" />
         </Suspense>

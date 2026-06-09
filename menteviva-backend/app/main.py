@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.db import init_db, close_pool
-from app.routers import auth, conversation, avatars, profiles, sessions
+from app.routers import auth, conversation, avatars, profiles, sessions, simli
 
 # ============ CONFIGURAR LOGGING ============
 
@@ -71,6 +71,7 @@ app.include_router(conversation.router, prefix="/api", tags=["conversation"])
 app.include_router(profiles.router, prefix="/api", tags=["profiles"])
 app.include_router(sessions.router, prefix="/api", tags=["sessions"])
 app.include_router(auth.router, prefix="/api", tags=["auth"])
+app.include_router(simli.router, prefix="/api", tags=["simli"])
 
 
 @app.on_event("startup")

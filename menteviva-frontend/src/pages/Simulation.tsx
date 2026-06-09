@@ -6,8 +6,13 @@ import { AnimatedAvatar, AvatarCharacter } from "../components/avatar/AnimatedAv
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
 import { useSessionStore } from "../stores/sessionStore";
 import { useWebSocket, type WsInitPayload } from "../hooks/useWebSocket";
+import { useGeminiLive } from "../hooks/useGeminiLive";
 import { useAudioRecorder } from "../hooks/useAudioRecorder";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
+
+// Proveedor de tiempo real. "gemini" = audio nativo continuo (mic streaming +
+// barge-in). Cualquier otro valor (o ausente) = modo Groq push-to-talk actual.
+const IS_GEMINI = (import.meta.env.VITE_REALTIME_PROVIDER || "groq") === "gemini";
 import { useSoundEffects } from "../hooks/useSoundEffects";
 import { getAvatar3DFlag, getAvatarModelUrl, getAvatarGender } from "../utils/avatar3dFlag";
 
@@ -78,12 +83,28 @@ export function Simulation() {
     initPayload,
   });
 
+  // Modo Gemini Live (audio nativo continuo). Se instancia siempre (reglas de
+  // hooks) pero solo se conecta cuando IS_GEMINI; en modo Groq queda inerte.
+  const gemini = useGeminiLive({ avatarId: selectedAvatar?.id, initPayload });
+
   const { isRecording, error: audioError, startRecording, stopRecording } = useAudioRecorder();
 
   useEffect(() => {
     if (!selectedAvatar) {
       navigate("/");
       return;
+    }
+    if (IS_GEMINI) {
+      // Conectar y arrancar la captura continua del mic. El playback del avatar
+      // y el barge-in los maneja el hook internamente.
+      gemini
+        .connect()
+        .then(() => gemini.startMic())
+        .catch((e) => {
+          console.error("[Simulation] inicio Gemini fallo:", e);
+          setServerError("No se pudo iniciar el micrófono. Revisa los permisos del navegador.");
+        });
+      return () => gemini.disconnect();
     }
     connect();
     return () => disconnect();
@@ -156,6 +177,12 @@ export function Simulation() {
     // mismo frame ya vea el mute, antes de que React confirme el re-render.
     isMicMutedRef.current = next;
     setIsMicMuted(next);
+    // Gemini: captura continua -> mutear = dejar de enviar chunks (no se corta
+    // la sesion). En Groq es push-to-talk, asi que cancelamos la grabacion.
+    if (IS_GEMINI) {
+      gemini.setMicMuted(next);
+      return;
+    }
     // Si estabas grabando (push-to-talk + mute con la otra mano), cancela la
     // grabacion en curso: libera el mic y descarta el audio (no se envia).
     if (next && isRecording) {
@@ -166,6 +193,10 @@ export function Simulation() {
   }
 
   async function handleVoiceButton() {
+    // En Gemini el mic es continuo: el boton no es push-to-talk (el control de
+    // voz es el de mute). No hacemos nada aqui.
+    if (IS_GEMINI) return;
+
     const now = Date.now();
     if (now - lastButtonRef.current < 250) return;
     lastButtonRef.current = now;
@@ -200,7 +231,8 @@ export function Simulation() {
     setIsEnding(true);
 
     // Intentar terminar sesion normalmente
-    endSession();
+    if (IS_GEMINI) gemini.endSession();
+    else endSession();
 
     // Fallback: si no hay respuesta en 10 segundos, forzar navegacion
     // (el análisis toma ~3-5 segundos, damos margen amplio)
@@ -232,8 +264,10 @@ export function Simulation() {
     selectedAvatar.id === "maria" ? "maria" :
     "roberto";
 
-  const isAvatarActive = status === "thinking" || status === "generating_audio";
-  const isSpeaking = isPlaying;
+  // En Gemini el hook refleja "hablando" via status=generating_audio (no usa el
+  // useAudioPlayer/isPlaying del modo Groq).
+  const isAvatarActive = IS_GEMINI ? false : (status === "thinking" || status === "generating_audio");
+  const isSpeaking = IS_GEMINI ? status === "generating_audio" : isPlaying;
 
   // Obtener último mensaje del chat para mostrar subtítulos
   const lastAssistantMessage = [...messages].reverse().find(m => m.role === "assistant");
@@ -272,6 +306,7 @@ export function Simulation() {
                 isActive={isAvatarActive}
                 modelUrl={avatarModelUrl}
                 gender={avatarGender}
+                externalAnalyser={IS_GEMINI ? gemini.analyser : null}
               />
             ) : (
               <AnimatedAvatar
@@ -395,7 +430,9 @@ export function Simulation() {
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
               {messages.length === 0 ? (
                 <p className="text-white/40 text-xs text-center py-4">
-                  Mantén presionado el micrófono para hablar
+                  {IS_GEMINI
+                    ? "Habla cuando quieras, te escucho"
+                    : "Mantén presionado el micrófono para hablar"}
                 </p>
               ) : (
                 messages.slice(-6).map((msg) => (
@@ -427,11 +464,15 @@ export function Simulation() {
           onMouseUp={handleVoiceButton}
           onTouchStart={handleVoiceButton}
           onTouchEnd={handleVoiceButton}
-          whileTap={{ scale: 0.95 }}
-          disabled={status !== "ready" || isMicMuted}
+          whileTap={{ scale: IS_GEMINI ? 1 : 0.95 }}
+          disabled={IS_GEMINI ? true : status !== "ready" || isMicMuted}
           className={`
             flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all
-            ${isRecording
+            ${IS_GEMINI
+              ? isMicMuted
+                ? "bg-white/5 text-white/40"
+                : "bg-green-500/15 text-green-400"
+              : isRecording
               ? "bg-red-500/20 text-red-400"
               : status !== "ready" || isMicMuted
               ? "bg-white/5 text-white/30 cursor-not-allowed"
@@ -439,11 +480,17 @@ export function Simulation() {
           `}
         >
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-            isRecording ? "bg-red-500" : "bg-white/10"
+            IS_GEMINI
+              ? isMicMuted ? "bg-white/10" : "bg-green-500"
+              : isRecording ? "bg-red-500" : "bg-white/10"
           }`}>
             <Mic className="w-5 h-5" />
           </div>
-          <span className="text-[10px]">{isRecording ? "Suelta" : "Hablar"}</span>
+          <span className="text-[10px]">
+            {IS_GEMINI
+              ? isMicMuted ? "Mic off" : "En vivo"
+              : isRecording ? "Suelta" : "Hablar"}
+          </span>
         </motion.button>
 
         {/* Botón Silenciar mi micrófono */}

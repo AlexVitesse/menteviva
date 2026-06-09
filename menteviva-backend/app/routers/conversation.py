@@ -16,6 +16,7 @@ Flujo diagnostico (avatar "entrevistador"):
 - Al end_session: generate_user_profile() -> bloque "diagnostico" del UserProfile.
 """
 
+import asyncio
 import json
 import base64
 import logging
@@ -23,16 +24,18 @@ import time
 from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from app.config import settings
 from app.models import UserProfile
 from app.models.user_profile import Registro
 from app.services.groq_whisper import transcribe_audio
 from app.services.groq_llm import chat_stream
 from app.services.edge_tts import text_to_speech, text_to_speech_stream
+from app.services.gemini_live import open_session as open_gemini_session
 from app.services.analysis import analyze_conversation, generate_user_profile
 from app.services.user_repo import save_diagnostic, upsert_user
 from app.services.session_repo import save_practice_session
 from app.prompts.scenarios import get_avatar, get_system_prompt
-from app.prompts.entrevistador import pick_greeting
+from app.prompts.entrevistador import pick_greeting, build_gemini_entrevistador_prompt
 
 GREETINGS_DIR = Path(__file__).parent.parent / "static" / "greetings"
 
@@ -136,6 +139,274 @@ async def _stream_tts_over_ws(
     logger.info(f"[TTS] Stream enviado: {chunk_count} chunks, {total_bytes} bytes")
 
 
+# ============================================================
+# Rama Gemini Live (realtime_provider == "gemini")
+# ============================================================
+# Proxy bidireccional: el cliente streamea audio (PCM16 16k) o texto; Gemini
+# responde con audio nativo (PCM24) + transcripts. Reconstruimos el
+# conversation_history desde los transcripts para que el analisis de Groq al
+# final NO cambie. Ver docs/plans/05_gemini_live_voice.md (Fase 2).
+
+
+async def _finalize_and_analyze(
+    websocket: WebSocket,
+    avatar: dict,
+    avatar_id: str,
+    conversation_history: list,
+    session_start_time: float,
+    user_profile: UserProfile | None,
+    session_vars: dict | None,
+    level: str | None,
+) -> None:
+    """Cierre de sesion + analisis. Compartido por la rama Gemini.
+
+    Misma logica que el bloque end_session de la rama Groq (analisis en Groq,
+    persistencia best-effort), extraida para no duplicar. La rama Groq sigue
+    con su bloque inline intacto para no arriesgar el rollback.
+    """
+    duration_seconds = int(time.time() - session_start_time)
+    total_exchanges = len(conversation_history) // 2
+    logger.info(f"[WS-Gemini] Sesion finalizada - Intercambios: {total_exchanges}, Duracion: {duration_seconds}s")
+
+    await websocket.send_json({"type": "status", "status": "analyzing"})
+
+    base_metrics = {
+        "total_exchanges": total_exchanges,
+        "duration_seconds": duration_seconds,
+        "conversation": conversation_history,
+    }
+
+    if avatar.get("kind") == "diagnostico":
+        registro_for_analysis = user_profile.registro if user_profile and user_profile.registro else None
+        used_placeholder = False
+        if registro_for_analysis is None:
+            logger.warning("[WS-Gemini] Diagnostico sin registro valido — usando placeholder")
+            registro_for_analysis = Registro(
+                nombre="Candidato",
+                rol_objetivo="Profesional",
+                industria="General",
+                experience_level="mid",
+            )
+            used_placeholder = True
+
+        diagnostico = await generate_user_profile(
+            conversation=conversation_history,
+            registro=registro_for_analysis,
+            session_vars=session_vars,
+        )
+        if used_placeholder:
+            diagnostico["is_demo"] = True
+        if user_profile and user_profile.user_id:
+            try:
+                await save_diagnostic(
+                    user_id=user_profile.user_id,
+                    diagnostico=diagnostico,
+                    conversation=conversation_history,
+                )
+            except Exception as e:
+                logger.error(f"[WS-Gemini] save_diagnostic fallo: {e}")
+        await websocket.send_json({
+            "type": "session_end",
+            "metrics": {**base_metrics, "user_profile_update": diagnostico},
+        })
+    else:
+        analysis = await analyze_conversation(
+            avatar_id=avatar_id,
+            conversation=conversation_history,
+            duration_seconds=duration_seconds,
+        )
+        logger.info(f"[WS-Gemini] Analisis completado - Score: {analysis.get('overall_score', 'N/A')}")
+        session_id = None
+        if user_profile and user_profile.user_id:
+            try:
+                session_id = await save_practice_session(
+                    user_id=user_profile.user_id,
+                    avatar_id=avatar_id,
+                    level=level,
+                    started_at=datetime.fromtimestamp(session_start_time).isoformat(),
+                    ended_at=datetime.utcnow().isoformat(),
+                    duration_seconds=duration_seconds,
+                    total_exchanges=total_exchanges,
+                    analysis=analysis,
+                    conversation=conversation_history,
+                )
+            except Exception as e:
+                logger.error(f"[WS-Gemini] save_practice_session fallo: {e}")
+        metrics_payload = {**base_metrics, "analysis": analysis}
+        if session_id:
+            metrics_payload["session_id"] = session_id
+        await websocket.send_json({"type": "session_end", "metrics": metrics_payload})
+
+
+async def _gemini_handle_upstream_msg(data: dict, websocket, live, history: list) -> str | None:
+    """Procesa UN mensaje del cliente hacia Gemini. Devuelve 'end' en end_session."""
+    t = data.get("type")
+    if t == "audio_chunk":
+        pcm = base64.b64decode(data.get("pcm", "") or "")
+        if pcm:
+            await live.send_audio_chunk(pcm)
+    elif t == "text":
+        # Modo texto (pruebas / fallback sin mic). El turno de usuario por texto
+        # NO genera input_transcription, asi que lo agregamos al historial aqui.
+        text = (data.get("text") or "").strip()
+        if text:
+            history.append({"role": "user", "content": text})
+            await websocket.send_json({"type": "user_message", "content": text})
+            await live.send_text(text)
+    elif t == "end_session":
+        return "end"
+    # tipos desconocidos se ignoran (init ya se proceso antes de abrir la sesion)
+    return None
+
+
+async def _gemini_upstream(websocket, live, history: list, initial: dict | None) -> str:
+    """Lee mensajes del cliente y los reenvia a Gemini hasta end_session/disconnect."""
+    if initial is not None:
+        if await _gemini_handle_upstream_msg(initial, websocket, live, history) == "end":
+            return "end"
+    while True:
+        data = await websocket.receive_json()
+        if await _gemini_handle_upstream_msg(data, websocket, live, history) == "end":
+            return "end"
+
+
+async def _gemini_downstream(websocket, live, history: list) -> None:
+    """Reenvia los eventos de Gemini al cliente y reconstruye el historial."""
+    cur_user: list[str] = []
+    cur_asst: list[str] = []
+    audio_started = False
+
+    async for ev in live.events():
+        et = ev["type"]
+        if et == "audio":
+            if not audio_started:
+                await websocket.send_json({"type": "assistant_audio_start"})
+                audio_started = True
+            await websocket.send_json({
+                "type": "assistant_audio_chunk",
+                "audio": base64.b64encode(ev["data"]).decode(),
+            })
+        elif et == "input_text":
+            cur_user.append(ev["text"])
+        elif et == "output_text":
+            cur_asst.append(ev["text"])
+            await websocket.send_json({"type": "output_transcript", "content": ev["text"]})
+        elif et == "interrupted":
+            # Barge-in: el cliente debe vaciar su cola de audio y parar el playback.
+            await websocket.send_json({"type": "interrupted"})
+            audio_started = False
+        elif et == "turn_complete":
+            user_text = "".join(cur_user).strip()
+            asst_text = "".join(cur_asst).strip()
+            # user_text solo llega por audio (input_transcription); el modo texto
+            # ya lo agrego en upstream, asi que aqui no se duplica.
+            if user_text:
+                history.append({"role": "user", "content": user_text})
+                await websocket.send_json({"type": "user_message", "content": user_text})
+            if asst_text:
+                history.append({"role": "assistant", "content": asst_text})
+            if audio_started:
+                await websocket.send_json({"type": "assistant_audio_end"})
+            await websocket.send_json({"type": "turn_complete"})
+            cur_user, cur_asst, audio_started = [], [], False
+
+
+async def _run_gemini_conversation(websocket: WebSocket, avatar: dict, avatar_id: str) -> None:
+    """Orquesta una conversacion completa via Gemini Live (rama del proxy)."""
+    user_profile: UserProfile | None = None
+    session_vars: dict | None = None
+    level: str | None = None
+    system_prompt = get_system_prompt(avatar_id)
+    history: list = []
+    session_start_time = time.time()
+
+    # El system_instruction se fija al abrir la sesion, asi que necesitamos el
+    # primer mensaje (init) ANTES del connect. Si el primero no es init, lo
+    # procesamos como primer turno una vez abierta la sesion.
+    first = await websocket.receive_json()
+    initial: dict | None = None
+    if first.get("type") == "init":
+        raw_profile = first.get("user_profile")
+        session_vars = first.get("session_vars")
+        level = first.get("level")
+        if raw_profile:
+            try:
+                user_profile = UserProfile(**raw_profile)
+                try:
+                    await upsert_user(user_profile)
+                except Exception as e:
+                    logger.error(f"[WS-Gemini] upsert_user fallo: {e}")
+            except Exception as e:
+                logger.warning(f"[WS-Gemini] user_profile invalido en init: {e}")
+                user_profile = None
+        system_prompt = get_system_prompt(
+            avatar_id, user_profile=user_profile, session_vars=session_vars, level=level,
+        )
+    else:
+        initial = first
+
+    # Diagnostico (Sofia) en voz: usar el prompt CONCISO de Gemini en vez del
+    # maestro de 26k chars (que con native-audio produce eco — repetir lo que
+    # dice el usuario — y habla acartonada). Ver entrevistador.py.
+    if avatar.get("kind") == "diagnostico":
+        system_prompt = build_gemini_entrevistador_prompt(user_profile, session_vars)
+
+    logger.info(f"[WS-Gemini] Abriendo sesion Live - avatar={avatar_id}, prompt={len(system_prompt)} chars")
+    result = "disconnect"
+    async with open_gemini_session(avatar_id, system_prompt) as live:
+        await websocket.send_json({"type": "status", "status": "ready"})
+        # El downstream debe estar corriendo antes del saludo para reenviar su audio.
+        down = asyncio.create_task(_gemini_downstream(websocket, live, history))
+
+        # Saludo proactivo: el avatar inicia la conversacion (Sofia saluda). Se
+        # manda como turno de usuario a Gemini para gatillar su primer turno,
+        # pero NO se agrega al conversation_history (no es del usuario real, y el
+        # texto-trigger no genera input_transcription -> no aparece como mensaje).
+        # Solo si el cliente no mando ya un primer turno propio.
+        if initial is None:
+            try:
+                await live.send_text(
+                    "[El usuario se acaba de conectar y aun no ha dicho nada. "
+                    "Inicia tu la conversacion: saluda brevemente y comienza segun tu rol.]"
+                )
+            except Exception as e:
+                logger.warning(f"[WS-Gemini] saludo inicial fallo: {e}")
+
+        up = asyncio.create_task(_gemini_upstream(websocket, live, history, initial))
+        done, pending = await asyncio.wait({up, down}, return_when=asyncio.FIRST_COMPLETED)
+
+        for task in pending:
+            task.cancel()
+        if up in done:
+            try:
+                result = up.result()  # "end"
+            except WebSocketDisconnect:
+                result = "disconnect"
+            except Exception as e:
+                logger.error(f"[WS-Gemini] upstream fallo: {e}", exc_info=True)
+                result = "error"
+        else:
+            # downstream termino/fallo primero (inesperado): cerramos.
+            try:
+                down.result()
+            except Exception as e:
+                logger.error(f"[WS-Gemini] downstream fallo: {e}", exc_info=True)
+            result = "error"
+        for task in pending:
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    if result == "end":
+        await _finalize_and_analyze(
+            websocket, avatar, avatar_id, history,
+            session_start_time, user_profile, session_vars, level,
+        )
+    else:
+        logger.info(f"[WS-Gemini] Sesion terminada sin analisis (motivo={result})")
+
+
 @router.websocket("/conversation/{avatar_id}")
 async def conversation_websocket(websocket: WebSocket, avatar_id: str):
     """
@@ -162,6 +433,22 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
         logger.warning(f"[WS] Avatar no encontrado: {avatar_id}")
         await websocket.send_json({"error": "Avatar not found"})
         await websocket.close()
+        return
+
+    # Rama Gemini Live (audio nativo). Aislada bajo el flag para poder volver a
+    # Groq+ElevenLabs sin tocar este path. Ver docs/plans/05_gemini_live_voice.md.
+    if settings.realtime_provider == "gemini":
+        logger.info(f"[WS] Provider=gemini - Avatar: {avatar_id}")
+        try:
+            await _run_gemini_conversation(websocket, avatar, avatar_id)
+        except WebSocketDisconnect:
+            logger.info(f"[WS-Gemini] Cliente desconectado - Avatar: {avatar_id}")
+        except Exception as e:
+            logger.error(f"[WS-Gemini] Error con {avatar_id}: {e}", exc_info=True)
+            try:
+                await websocket.send_json({"type": "error", "error": str(e)})
+            except Exception:
+                pass
         return
 
     user_profile: UserProfile | None = None

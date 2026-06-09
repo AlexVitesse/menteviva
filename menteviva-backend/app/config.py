@@ -38,6 +38,29 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_model: str = "eleven_multilingual_v2"
 
+    # ============ Gemini Live API (audio nativo en tiempo real) ============
+    # PoC (Fase 1) para reemplazar el pipeline Whisper+gpt-oss+ElevenLabs por
+    # una sola sesion bidireccional. Ver docs/plans/05_gemini_live_voice.md.
+    gemini_api_key: str = ""
+    # Audio nativo (decision de producto). Modelos Live disponibles en la cuenta
+    # (client.models.list filtrando bidiGenerateContent):
+    #   - gemini-2.5-flash-native-audio-latest   <- default (auto-sigue el mas nuevo)
+    #   - gemini-2.5-flash-native-audio-preview-09-2025 / -12-2025
+    #   - gemini-3.1-flash-live-preview           <- el marcado "free" en pricing
+    # OJO: gemini-2.0-flash-live-001 NO existe en v1beta para esta cuenta.
+    gemini_model_live: str = "gemini-2.5-flash-native-audio-latest"
+    # Flag para volver al pipeline Groq+ElevenLabs sin borrar codigo (rollback
+    # barato durante el piloto). Lo consume el router cuando exista la rama WS.
+    realtime_provider: str = "groq"  # "groq" | "gemini"
+
+    # ============ Simli (avatar fotorrealista en video) ============
+    # API key de https://app.simli.com. La usa el backend para emitir session
+    # tokens efimeros (routers/simli.py); la key NUNCA viaja al navegador.
+    simli_api_key: str = ""
+    # Limite duro de cada sesion WebRTC de Simli (factura por minuto de
+    # streaming). 1800s = 30 min: cubre el diagnostico de ~25 min con colchon.
+    simli_max_session_seconds: int = 1800
+
     # Firebase Admin SDK. Dos formas de configurar — usa una:
     #  (1) FIREBASE_SERVICE_ACCOUNT_PATH: ruta absoluta o relativa a un JSON
     #      descargado de Firebase Console > Project Settings > Service Accounts.

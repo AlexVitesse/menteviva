@@ -40,10 +40,10 @@ Tareas ordenadas por urgencia para shipear el piloto. Convención: `[x]` hecho, 
 - [ ] Default branch = `dev`
 
 ### 0.4 Setup Neon prod (~30 min)
-- [ ] Crear Neon project `menteviva-piloto` (región us-east-2, Pg 16)
-- [ ] Copiar Pooled connection string
-- [ ] Correr migración contra Neon desde local
-- [ ] Smoke: `psql "$NEON_URL" -c '\d'` muestra todas las tablas
+- [x] Neon project creado (DB `neondb`, región us-east-1, endpoint `ep-billowing-firefly-aqjh2gk2`)
+- [x] Pooled connection string obtenida (va en el `.env` del server — NO commitear)
+- [x] Migración corrida contra Neon: schema_version v0/v1/v2 + tablas users/diagnostics/practice_sessions
+- [x] Smoke: `inspect_users` conecta OK contra Neon (users count: 0)
 
 ### 0.5 Deploy en servidor empresa (~2-3h)
 - [ ] Aprovisionar VM / acceso al server

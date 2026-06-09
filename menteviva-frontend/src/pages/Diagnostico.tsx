@@ -19,16 +19,25 @@ import { useMicVAD, utils as vadUtils } from "@ricky0123/vad-react";
 
 import { AnimatedAvatar } from "../components/avatar/AnimatedAvatar";
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
+import { SimliAvatar } from "../components/avatar/SimliAvatar";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { useGeminiLive } from "../hooks/useGeminiLive";
+import { useSimliAvatar } from "../hooks/useSimliAvatar";
+import { getSimliFlag } from "../utils/simliFlag";
 import { useSessionStore } from "../stores/sessionStore";
 import { ENTREVISTADOR_AVATAR } from "../utils/entrevistador";
 import { formatDuration, isSecureOriginForMic } from "../utils/audio";
 import { buildMockDiagnostico } from "../utils/mockDiagnostico";
 import { getAvatar3DFlag } from "../utils/avatar3dFlag";
 
+// "gemini" = audio nativo continuo (sin VAD: Gemini trae su propio VAD del lado
+// servidor). Cualquier otro valor = flujo Groq con VAD + push-to-talk WAV.
+const IS_GEMINI = (import.meta.env.VITE_REALTIME_PROVIDER || "groq") === "gemini";
+
 type IndicatorState =
   | "loading"
+  | "preparing"
   | "listening"
   | "userSpeaking"
   | "processing"
@@ -45,6 +54,7 @@ export function Diagnostico() {
     metrics,
     serverError,
     setServerError,
+    setStatus,
     setSelectedAvatar,
     updateDiagnostico,
     resetSession,
@@ -131,6 +141,35 @@ export function Diagnostico() {
     initPayload,
   });
 
+  // Avatar fotorrealista Simli (video WebRTC, solo modo Gemini). Su sink
+  // recibe el PCM del avatar y devuelve video+voz lip-synced; los eventos
+  // speaking/silent de Simli reemplazan al onSpeakingChange del player local
+  // para el indicador "Sofia esta hablando".
+  const simliEnabled = useMemo(() => IS_GEMINI && getSimliFlag(), []);
+  const handleSimliSpeaking = useCallback(
+    (speaking: boolean) => setStatus(speaking ? "generating_audio" : "ready"),
+    [setStatus]
+  );
+  const simli = useSimliAvatar({ onSpeakingChange: handleSimliSpeaking });
+
+  // Modo Gemini Live (audio nativo continuo). Se instancia siempre (reglas de
+  // hooks); solo se conecta cuando IS_GEMINI. Sofia saluda sola al abrir la
+  // sesion (el modelo native-audio arranca con el system prompt).
+  const gemini = useGeminiLive({
+    avatarId: "entrevistador",
+    initPayload,
+    audioSink: simliEnabled ? simli.sink : undefined,
+  });
+  const [micMuted, setMicMuted] = useState(false);
+  // En Gemini el "hablando" de Sofia se refleja en el status del store
+  // (generating_audio), no en isPlaying del useAudioPlayer (que aqui no se usa).
+  const geminiSpeaking = IS_GEMINI && status === "generating_audio";
+
+  const doEndSession = useCallback(() => {
+    if (IS_GEMINI) gemini.endSession();
+    else endSession();
+  }, [gemini, endSession]);
+
   // VAD: detecta voz, auto-encodea WAV y manda al WS. Sin botones.
   // Los assets (worklet, modelo ONNX, WASM) se sirven desde /vad/ para evitar
   // fetch a CDN externo que rompe en movil (Audio Worklets tienen CORS estricto).
@@ -165,6 +204,7 @@ export function Diagnostico() {
   // Pausar VAD cuando Sofia habla o estamos procesando — evita feedback loop
   // y descartamos el audio del propio TTS volviendo por el mic.
   useEffect(() => {
+    if (IS_GEMINI) return; // Gemini hace su propia captura continua; sin VAD local.
     if (!sessionStarted) return;
     if (vad.loading || vad.errored) return;
     const shouldListen = status === "ready" && !isPlaying;
@@ -180,6 +220,29 @@ export function Diagnostico() {
     if (!sessionStarted) return;
     if (!userProfile?.registro || !diagnosticoVars) return;
     startRef.current = Date.now();
+    if (IS_GEMINI) {
+      (async () => {
+        // Simli primero: asi el video ya esta arriba cuando llegue el saludo
+        // de Sofia. Si falla, seguimos con el avatar 3D + player local (el
+        // sink queda inactivo y useGeminiLive cae solo al fallback).
+        if (simliEnabled && !simli.failed) {
+          try {
+            await simli.connect("entrevistador");
+          } catch (e) {
+            console.error("[Diagnostico] Simli fallo, fallback a avatar 3D:", e);
+          }
+        }
+        await gemini.connect();
+        await gemini.startMic();
+      })().catch((e) => {
+        console.error("[Diagnostico] inicio Gemini fallo:", e);
+        setServerError("No se pudo iniciar el micrófono. Revisa los permisos del navegador.");
+      });
+      return () => {
+        gemini.disconnect();
+        simli.disconnect();
+      };
+    }
     connect();
     return () => disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -304,7 +367,7 @@ export function Diagnostico() {
       if (status === "disconnected") {
         applyDemoAndGoToPerfil();
       } else {
-        endSession();
+        doEndSession();
         scheduleMockFailsafe(10000);
       }
       setClosingCountdown(null);
@@ -318,7 +381,7 @@ export function Diagnostico() {
         window.clearTimeout(closingTimerRef.current);
       }
     };
-  }, [closingCountdown, endSession, status, applyDemoAndGoToPerfil, scheduleMockFailsafe]);
+  }, [closingCountdown, doEndSession, status, applyDemoAndGoToPerfil, scheduleMockFailsafe]);
 
   function cancelClosing() {
     if (closingTimerRef.current !== null) {
@@ -336,12 +399,23 @@ export function Diagnostico() {
       applyDemoAndGoToPerfil();
       return;
     }
-    endSession();
+    doEndSession();
     scheduleMockFailsafe(10000);
   }
 
   const indicatorState: IndicatorState = useMemo(() => {
     if (!sessionStarted) return "paused";
+    if (IS_GEMINI) {
+      // Gemini: sin VAD local. Sofia hablando = status generating_audio.
+      if (micMuted) return "paused";
+      if (geminiSpeaking) return "sofiaSpeaking";
+      if (status === "thinking" || status === "analyzing") return "processing";
+      if (status === "disconnected") return "paused";
+      // Aún no llega el saludo inicial: pide esperar (no "te escucho"), así el
+      // usuario no habla en el vacío durante la latencia del primer turno.
+      if (!gemini.hasGreeted) return "preparing";
+      return "listening";
+    }
     if (vad.loading) return "loading";
     if (isPlaying) return "sofiaSpeaking";
     if (
@@ -354,11 +428,15 @@ export function Diagnostico() {
     if (vad.userSpeaking) return "userSpeaking";
     if (vad.listening && status === "ready") return "listening";
     return "paused";
-  }, [sessionStarted, vad.loading, vad.userSpeaking, vad.listening, isPlaying, status]);
+  }, [sessionStarted, vad.loading, vad.userSpeaking, vad.listening, isPlaying, status, micMuted, geminiSpeaking, gemini.hasGreeted]);
 
   // Estilo del boton Mic en el footer: refleja estado del VAD (es display, no
   // push-to-talk como en Simulation — la captura es automatica).
-  const micStyle = vad.userSpeaking
+  const micStyle = IS_GEMINI
+    ? micMuted
+      ? "bg-white/5 text-white/30"
+      : "bg-green-500/15 text-green-400"
+    : vad.userSpeaking
     ? "bg-red-500/20 text-red-400"
     : !vad.listening
     ? "bg-white/5 text-white/30"
@@ -419,17 +497,24 @@ export function Diagnostico() {
         {/* Panel principal con avatar 3D */}
         <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[#2a2a3a] to-[#1a1a2e] h-[40vh] md:h-auto md:flex-1">
           <div className="absolute inset-0 flex items-center justify-center">
-            {use3DAvatar ? (
+            {simliEnabled && !simli.failed ? (
+              <SimliAvatar
+                videoRef={simli.videoRef}
+                audioRef={simli.audioRef}
+                connected={simli.connected}
+              />
+            ) : use3DAvatar ? (
               <TalkingHeadAvatar
                 audioRef={audioRef}
-                isActive={status === "thinking" || status === "generating_audio"}
-                isSpeaking={isPlaying}
+                isActive={IS_GEMINI ? false : status === "thinking" || status === "generating_audio"}
+                isSpeaking={IS_GEMINI ? geminiSpeaking : isPlaying}
+                externalAnalyser={IS_GEMINI ? gemini.analyser : null}
               />
             ) : (
               <AnimatedAvatar
                 character="maria"
-                isActive={status === "thinking" || status === "generating_audio"}
-                isSpeaking={isPlaying}
+                isActive={IS_GEMINI ? false : status === "thinking" || status === "generating_audio"}
+                isSpeaking={IS_GEMINI ? geminiSpeaking : isPlaying}
                 size={typeof window !== "undefined" ? Math.min(280, window.innerWidth * 0.6) : 280}
               />
             )}
@@ -523,12 +608,18 @@ export function Diagnostico() {
           aria-label="Estado del microfono"
         >
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-            vad.userSpeaking ? "bg-red-500" : "bg-white/10"
+            IS_GEMINI
+              ? micMuted ? "bg-white/10" : "bg-green-500"
+              : vad.userSpeaking ? "bg-red-500" : "bg-white/10"
           }`}>
-            {vad.userSpeaking ? <Mic className="w-5 h-5 text-white" /> : !vad.listening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            {IS_GEMINI
+              ? micMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5 text-white" />
+              : vad.userSpeaking ? <Mic className="w-5 h-5 text-white" /> : !vad.listening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
           </div>
           <span className="text-[10px]">
-            {vad.userSpeaking ? "Hablando" : !vad.listening ? "Pausado" : "Escuchando"}
+            {IS_GEMINI
+              ? micMuted ? "Mic off" : "En vivo"
+              : vad.userSpeaking ? "Hablando" : !vad.listening ? "Pausado" : "Escuchando"}
           </span>
         </div>
 
@@ -547,18 +638,32 @@ export function Diagnostico() {
           <span className="text-[10px]">Video</span>
         </button>
 
-        {/* Mute — silencia el audio TTS del avatar (no afecta tu mic) */}
+        {/* Mute — Groq: silencia el audio del avatar. Gemini: silencia TU mic
+            (deja de enviar audio sin cortar la sesion; el reproductor PCM no usa
+            el toggleMute del player viejo). */}
         <button
-          onClick={toggleMute}
+          onClick={() => {
+            if (IS_GEMINI) {
+              const next = !micMuted;
+              setMicMuted(next);
+              gemini.setMicMuted(next);
+            } else {
+              toggleMute();
+            }
+          }}
           className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all"
-          aria-label={isMuted ? "Activar audio del avatar" : "Silenciar audio del avatar"}
+          aria-label={IS_GEMINI ? "Silenciar microfono" : isMuted ? "Activar audio del avatar" : "Silenciar audio del avatar"}
         >
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-            isMuted ? "bg-red-500/30" : "bg-white/10"
+            (IS_GEMINI ? micMuted : isMuted) ? "bg-red-500/30" : "bg-white/10"
           }`}>
-            {isMuted ? <VolumeX className="w-5 h-5 text-red-400" /> : <Volume2 className="w-5 h-5" />}
+            {IS_GEMINI
+              ? micMuted ? <MicOff className="w-5 h-5 text-red-400" /> : <Mic className="w-5 h-5" />
+              : isMuted ? <VolumeX className="w-5 h-5 text-red-400" /> : <Volume2 className="w-5 h-5" />}
           </div>
-          <span className="text-[10px]">{isMuted ? "Activar" : "Silenciar"}</span>
+          <span className="text-[10px]">
+            {IS_GEMINI ? (micMuted ? "Mic on" : "Silenciar mic") : isMuted ? "Activar" : "Silenciar"}
+          </span>
         </button>
 
         {/* Terminar */}
@@ -681,6 +786,13 @@ const INDICATOR_CONFIG: Record<
     color: "text-muted bg-white/5 border-white/10",
     pulse: false,
   },
+  preparing: {
+    label: "Conectando con Sofia",
+    sublabel: "Ella te va a saludar, escucha un momento...",
+    icon: Loader2,
+    color: "text-violet-light bg-violet/10 border-violet/30",
+    pulse: false,
+  },
   listening: {
     label: "Te escucho",
     sublabel: "Habla cuando quieras, sin presionar nada",
@@ -721,7 +833,7 @@ const INDICATOR_CONFIG: Record<
 function ConversationIndicator({ state }: { state: IndicatorState }) {
   const cfg = INDICATOR_CONFIG[state];
   const Icon = cfg.icon;
-  const isLoading = state === "loading";
+  const isLoading = state === "loading" || state === "preparing";
   return (
     <div className={`shrink-0 rounded-2xl border p-3 flex items-center gap-3 backdrop-blur-md ${cfg.color} transition-colors`}>
       <div className="relative shrink-0">

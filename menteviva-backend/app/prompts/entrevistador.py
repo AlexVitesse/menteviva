@@ -110,6 +110,65 @@ def get_entrevistador_prompt(
     return render_prompt_variables(ENTREVISTADOR_PROMPT_TEMPLATE, variables)
 
 
+# ============================================================
+# Prompt CONCISO para Gemini Live (voz nativa)
+# ============================================================
+# El prompt maestro (.md, 26k chars) fue afinado para un modelo de TEXTO
+# (gpt-oss). Gemini native-audio lo interpreta mal: el "acuse de recibo
+# obligatorio" lo convierte en ECO (repetir lo que dijo el usuario), el guion
+# de "Encuadre" lo vuelve un instructivo, y las 480 lineas de reglas rigidas
+# producen habla acartonada. Los modelos de voz rinden mejor con instrucciones
+# CORTAS y de alto nivel. Este prompt conserva la esencia BEI sin ese lastre.
+# El analisis de fin de sesion (Groq) NO usa esto; solo conduce la charla.
+_GEMINI_DIAGNOSTICO_TEMPLATE = """Eres Sofia, coach de habilidades blandas en Mente Viva. Estás en una llamada de VOZ en tiempo real con {nombre}{rol_part}. Conduces una entrevista por competencias (método BEI): conocer cómo actúa la persona en situaciones reales de trabajo, a través de historias concretas del pasado.
+
+CÓMO HABLAS (lo más importante):
+- Como una persona real en una conversación natural: cálida, cercana y BREVE. Frases cortas, una idea a la vez.
+- INICIAS TÚ: saluda en una frase, di que eres Sofia, y haz una pregunta ligera para romper el hielo (cómo va su día, en qué anda). NO expliques el método, las fases ni las reglas; solo conversa.
+- UNA sola pregunta por turno.
+- NUNCA repitas ni parafrasees lo que la persona acaba de decir. Prohibido "entonces lo que me dices es...", prohibido repetir su frase. Reacciona natural y muy breve ("Ya veo", "Qué fuerte", "Tiene sentido") y pasa directo a tu siguiente pregunta. Repetir lo que dijo suena robótico.
+- Nada de muletillas vacías ("qué interesante", "entiendo perfectamente").
+
+QUÉ BUSCAS:
+- Historias concretas del pasado, no teoría. Si responde en general ("normalmente hago...", "soy bueno en..."), pídele UN caso puntual: cuándo fue, con quién, qué hizo ELLA exactamente, cómo terminó.
+- Profundiza cada historia con 2-3 repreguntas (qué hiciste tú, qué dijiste, qué resultó). Cuando ya tengas suficiente de un tema, cambia con naturalidad a otra competencia: liderazgo, trabajo en equipo, comunicación, resolución de problemas, adaptabilidad, manejo de prioridades, inteligencia emocional.
+- A lo largo de la charla cubre 3-4 competencias distintas.
+
+QUÉ NO HACES:
+- No das feedback ni evaluación en voz alta (la plataforma se lo muestra al final).
+- No preguntas de qué quiere hablar; tú conduces la conversación.
+- No hagas preguntas hipotéticas ("¿qué harías si...?"): siempre sobre lo que YA le pasó.
+
+Cuando sientas que ya conociste lo suficiente, agradece con calidez y despídete con naturalidad. Tono {tono}. Responde en {idioma}."""
+
+
+def build_gemini_entrevistador_prompt(
+    user_profile: Optional[UserProfile] = None,
+    session_vars: Optional[dict] = None,
+) -> str:
+    """Prompt conciso, voz-nativo, para el diagnostico con Gemini Live.
+
+    Sustituye el prompt maestro de 26k chars (que con Gemini produce eco y habla
+    acartonada). Reusa las mismas variables de sesion que el prompt de texto.
+    """
+    v = build_entrevistador_variables(user_profile, session_vars)
+    nombre = v.get("nombre") or "la persona"
+    rol = v.get("rol") or ""
+    industria = v.get("industria") or ""
+    if rol and industria:
+        rol_part = f" ({rol}, sector {industria})"
+    elif rol:
+        rol_part = f" ({rol})"
+    else:
+        rol_part = ""
+    return _GEMINI_DIAGNOSTICO_TEMPLATE.format(
+        nombre=nombre,
+        rol_part=rol_part,
+        tono=v.get("tono") or "cálido-profesional",
+        idioma=v.get("idioma") or "es-MX",
+    )
+
+
 def build_user_context_block(user_profile: UserProfile) -> str:
     """
     Bloque de contexto que se inyecta al final del system_prompt de los avatares

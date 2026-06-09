@@ -1,0 +1,35 @@
+# Corre el piloto de Mente Viva en un contenedor LOCAL para probar Simli.
+#
+#   docker compose -f docker/docker-compose.yml up --build
+#   -> abre http://localhost:8001
+#
+# El Postgres sigue siendo el contenedor de docker-compose.dev.yml (menteviva-pg-dev,
+# puerto host 5433). Este backend lo alcanza via host.docker.internal:5433.
+#
+# Detener:  docker compose -f docker/docker-compose.yml down
+
+services:
+  backend:
+    build:
+      # Context = raiz del repo para que el Dockerfile vea ambos sub-apps.
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: menteviva-app
+    ports:
+      # Host 8001 (8000 esta ocupado por otro proyecto) -> 8000 del contenedor.
+      - "8001:8000"
+    env_file:
+      # Trae GROQ/GEMINI/ELEVENLABS/SIMLI/FIREBASE_* desde el .env real.
+      - ../menteviva-backend/.env
+    environment:
+      # Overrides para el contenedor (ganan sobre env_file):
+      MENTEVIVA_HOST: "0.0.0.0"
+      MENTEVIVA_PORT: "8000"
+      MENTEVIVA_RELOAD: "false"
+      # El Postgres corre en el HOST (puerto 5433), no en este contenedor.
+      DATABASE_URL: "postgresql://menteviva:dev@host.docker.internal:5433/menteviva"
+    extra_hosts:
+      # Permite resolver el host desde Linux containers (Docker Desktop ya lo da,
+      # esto lo hace explicito y portable).
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

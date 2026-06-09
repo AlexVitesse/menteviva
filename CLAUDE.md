@@ -57,7 +57,14 @@ npm run preview        # serve the production build
 ```
 
 ### Tests
-Backend has `pytest` + `pytest-asyncio` + `httpx` declared as dev deps, **but no test suite exists yet** (no `tests/` directory). If you add tests, put them under `menteviva-backend/tests/` and run with `poetry run pytest`. Frontend has no test runner configured.
+Backend has `pytest` + `pytest-asyncio` + `httpx` declared as dev deps, **but there is no `pytest` suite** (no `tests/` directory). Instead, `menteviva-backend/scripts/test_*.py` are runnable dev harnesses that call the services directly with synthetic conversations:
+```bash
+cd menteviva-backend
+poetry run python -m scripts.test_repetition       # repetición de Sofia (Jaccard turno-a-turno)
+poetry run python -m scripts.test_roberto_condor   # escenario Roberto, 3 casos calibrados
+poetry run python -m scripts.test_llm_latency      # TTFT/total por modelo
+```
+**Convention** (see also `~/.claude` memory): for any change to a prompt or the LLM, write/extend a script that exercises the service with a synthetic conversation rather than asking a human to click through the UI. These hit the **live Groq API**, so re-running them quickly can exhaust the free-tier TPM (HTTP 429) — that's environmental, not a bug. Frontend has no test runner; `npm run build` (tsc) is the type-check.
 
 ### Required env vars (`menteviva-backend/.env`)
 | Var | Notes |
@@ -76,7 +83,7 @@ A single WebSocket at **`/api/conversation/{avatar_id}`** (`app/routers/conversa
 
 1. Client sends `{type: "audio", audio: <base64>}` (webm from MediaRecorder) or `{type: "text", text: ...}`.
 2. **STT** — `services/groq_whisper.py` → Groq `whisper-large-v3-turbo`, Spanish.
-3. **LLM (streaming)** — `services/groq_llm.py` → Groq `llama-3.1-8b-instant`. Tokens stream back as `assistant_token` events.
+3. **LLM (streaming)** — `services/groq_llm.py` → Groq `openai/gpt-oss-20b` (model id read from `settings.groq_model_llm`, **not** hardcoded). Tokens stream back as `assistant_token` events. See the resilience gotcha below.
 4. **TTS** — `services/edge_tts.py` → **ElevenLabs** (see gotcha below). Full audio arrives in one `assistant_audio` event.
 5. When the client sends `{type: "end_session"}`, the server runs **analysis** (`services/analysis.py` → Groq `openai/gpt-oss-120b`) and returns `session_end` with a scored skills report.
 
@@ -87,6 +94,12 @@ The file `app/services/edge_tts.py` is named after an earlier Microsoft Edge TTS
 
 ### Groq key rotation (`services/groq_pool.py`)
 A module-level `GroqPool` round-robins across all non-empty keys in `settings.groq_api_keys`. Every call to `get_groq_client()` returns the next client — thread-safe via a `Lock`. All Groq services (LLM, Whisper, analysis) go through this pool. Never instantiate `Groq(...)` directly in new code; use `get_groq_client()` so rotation keeps working.
+
+### Key gotcha: LLM resilience & no llama fallback (`services/groq_llm.py`)
+The LLM is `openai/gpt-oss-20b` (a reasoning model, via `settings.groq_model_llm`). It occasionally (a) emits a tool-use glitch before the first token, or (b) returns **empty** content on low-signal turns (evasive user). `chat_stream` handles both by retrying the **same** model once at a higher temperature; if it's still empty it yields a rotating re-engage question (`_REENGAGE_FALLBACKS`) so the avatar never goes mute. A genuine error (401/429/…) on the retry **propagates** so the WS surfaces it.
+- **Do NOT reintroduce a `llama-3.1-8b-instant` fallback.** llama's free-tier ceiling (6k TPM) is smaller than the entrevistador system prompt (~8.5k tokens), so any llama call with that prompt returns HTTP 413. That's why every retry stays on the primary model.
+- Streaming calls use `frequency_penalty`/`presence_penalty` + `temperature=0.6` to stop the model from **parroting prompt examples verbatim** between turns. Don't drop these or revert temp to 0.4 without re-checking repetition (`scripts/test_repetition.py`).
+- When editing a system prompt, keep the note that its examples are *illustrative, never copy verbatim* — without it the model copies literal example phrasing.
 
 ### Avatars & scenarios are config, not classes
 `app/prompts/scenarios.py::AVATARS` is the single source of truth for each persona:

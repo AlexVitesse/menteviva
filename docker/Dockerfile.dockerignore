@@ -1,0 +1,17 @@
+# Ignore para el build de docker/Dockerfile (BuildKit lo asocia por nombre).
+# Mantiene el context liviano y evita copiar node_modules de OneDrive.
+
+**/node_modules
+**/dist
+**/.git
+**/__pycache__
+**/*.pyc
+menteviva-backend/logs
+menteviva-backend/.venv
+interview-simulator
+
+# Secretos: el backend recibe su config por env_file en runtime, NO la horneamos
+# en la imagen. Excepcion: el .env del frontend (claves Firebase web, que son
+# publicas por diseno) SI se necesita en build para que Vite lo hornee.
+**/.env
+!menteviva-frontend/.env
