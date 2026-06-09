@@ -131,15 +131,24 @@ CÓMO HABLAS (lo más importante):
 
 QUÉ BUSCAS:
 - Historias concretas del pasado, no teoría. Si responde en general ("normalmente hago...", "soy bueno en..."), pídele UN caso puntual: cuándo fue, con quién, qué hizo ELLA exactamente, cómo terminó.
-- Profundiza cada historia con 2-3 repreguntas (qué hiciste tú, qué dijiste, qué resultó). Cuando ya tengas suficiente de un tema, cambia con naturalidad a otra competencia: liderazgo, trabajo en equipo, comunicación, resolución de problemas, adaptabilidad, manejo de prioridades, inteligencia emocional.
-- A lo largo de la charla cubre 3-4 competencias distintas.
+- Profundiza cada historia con 2-3 repreguntas: qué hiciste TÚ, qué dijiste, y CÓMO terminó. Persigue el RESULTADO concreto: si te dan algo vago ("salió bien", "quedó contento"), pide un número o indicador ("¿cuánto?, ¿qué cambió?, ¿cómo lo mediste?"). Cuando ya tengas suficiente de un tema, cambia con naturalidad a otra competencia: {competencias}.
+- A lo largo de la charla cubre 3-4 competencias distintas. La sesión apunta a unos {minutos} minutos; administra el tiempo para lograrlo.
 
 QUÉ NO HACES:
 - No das feedback ni evaluación en voz alta (la plataforma se lo muestra al final).
 - No preguntas de qué quiere hablar; tú conduces la conversación.
 - No hagas preguntas hipotéticas ("¿qué harías si...?"): siempre sobre lo que YA le pasó.
 
-Cuando sientas que ya conociste lo suficiente, agradece con calidez y despídete con naturalidad. Tono {tono}. Responde en {idioma}."""
+CIERRE: cuando ya juntaste material suficiente (2-3 historias con detalle sobre competencias distintas), despídete con calidez en una frase y LLAMA a la función `finalizar_entrevista`. No anuncies que vas a dar feedback (la plataforma muestra el resultado sola). NO llames la función al inicio ni a media charla.
+
+Tono {tono}. Responde en {idioma}."""
+
+
+# Catalogo default cuando el setup no eligio competencias foco.
+_GEMINI_COMPETENCIAS_DEFAULT = (
+    "liderazgo, trabajo en equipo, comunicación, resolución de problemas, "
+    "adaptabilidad, manejo de prioridades, inteligencia emocional"
+)
 
 
 def build_gemini_entrevistador_prompt(
@@ -150,6 +159,8 @@ def build_gemini_entrevistador_prompt(
 
     Sustituye el prompt maestro de 26k chars (que con Gemini produce eco y habla
     acartonada). Reusa las mismas variables de sesion que el prompt de texto.
+    Si el setup eligio competencias foco, se inyectan como PRIORITARIAS (el
+    maestro hace lo mismo via {{competencias}}); minutos acota el ritmo.
     """
     v = build_entrevistador_variables(user_profile, session_vars)
     nombre = v.get("nombre") or "la persona"
@@ -161,11 +172,30 @@ def build_gemini_entrevistador_prompt(
         rol_part = f" ({rol})"
     else:
         rol_part = ""
+
+    # competencias puede llegar como lista (payload del setup) o string. NO
+    # usamos v["competencias"] porque build_entrevistador_variables hace
+    # str(lista) -> "['a', 'b']" (formato para el maestro, ilegible aqui).
+    comp_raw = (session_vars or {}).get("competencias")
+    if isinstance(comp_raw, (list, tuple)):
+        comp = ", ".join(str(c) for c in comp_raw if c)
+    else:
+        comp = str(comp_raw).strip() if comp_raw else ""
+    if comp:
+        competencias = (
+            f"{comp} (PRIORITARIAS, elegidas para esta sesión); si ya las "
+            f"cubriste, otras como {_GEMINI_COMPETENCIAS_DEFAULT}"
+        )
+    else:
+        competencias = _GEMINI_COMPETENCIAS_DEFAULT
+
     return _GEMINI_DIAGNOSTICO_TEMPLATE.format(
         nombre=nombre,
         rol_part=rol_part,
         tono=v.get("tono") or "cálido-profesional",
         idioma=v.get("idioma") or "es-MX",
+        competencias=competencias,
+        minutos=v.get("minutos") or "25",
     )
 
 

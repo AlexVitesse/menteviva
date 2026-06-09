@@ -25,8 +25,11 @@ avatar **Simli** (cara fotorrealista en video, lip-synced) como capa visual opci
 | Re-tuning de prompt para voz (Sofia) | ✅ prompt conciso (~2k vs 26k) |
 | Saludo proactivo + UX de espera | ✅ |
 | Avatar Simli (video fotorrealista) | ✅ funcionando (fix livekit) |
-| Reconexión para sesiones largas (~25 min) | ⬜ pendiente |
-| Cierre por function-calling (reemplazo de `[CIERRE]`) | ⬜ pendiente |
+| Reconexión para sesiones largas (~25 min) | ✅ resumption + compresión de contexto |
+| Cierre por function-calling (reemplazo de `[CIERRE]`) | ✅ tool `finalizar_entrevista` |
+| VAD responsivo + configurable por `.env` | ✅ HIGH/HIGH/500 default |
+| Echo-gate local (anti-eco sin detección de hardware) | ✅ implementado (tunear en altavoz) |
+| Evaluación de calidad del diagnóstico (tests de texto) | 🟡 parcial — ver §10 |
 
 **Decisiones de producto tomadas:** audio 100% nativo de Gemini · proxy vía FastAPI ·
 análisis se queda en Groq · voces aprobadas Sofia=`Kore`, Roberto=`Charon`,
@@ -75,6 +78,10 @@ El navegador **nunca** ve la `SIMLI_API_KEY`: pide un token efímero a
 | `scripts/test_gemini_live_smoke.py` | Smoke test Fase 1: conversación sintética de texto → audio nativo + transcripts, guarda WAV en `scripts/_out/` |
 | `scripts/test_gemini_ws.py` | Test de integración del proxy WS (cliente WS sintético → audio + análisis) |
 | `scripts/test_simli_token.py` | Test del endpoint de token de Simli |
+| `scripts/test_diagnostico_texto.py` | Eval de calidad del diagnóstico en texto (Sofia=Gemini, candidato sintético, análisis Groq) |
+| `scripts/test_diagnostico_escenarios.py` | Eval dirigida: 3 candidatos, cada uno con una brecha dominante (acepta `GEMINI_TEXT_MODEL` por env para esquivar la cuota por-modelo) |
+| `scripts/test_diagnostico_replay.py` | Re-juega un transcript GUARDADO contra el análisis (Groq) — valida cambios al prompt de análisis SIN gastar cuota de Gemini |
+| `scripts/probe_gemini_quota.py` | Sonda mínima: ¿hay cuota de Gemini hoy? (escribe a `logs/probe_gemini.txt`) |
 
 ### Nuevos (frontend)
 | Archivo | Rol |
@@ -191,10 +198,15 @@ Para depurar Simli en aislamiento se usó una página temporal `/__simli-test`
 
 - **Privacidad:** el free tier de Gemini **entrena con los datos**. Para usuarios reales
   → activar billing (paid). Lo mismo aplica a la calidad/cuota.
-- **Sesiones largas:** audio-only de Gemini ~15 min (free tier vimos ~5). El diagnóstico
-  apunta a ~25 min → falta **session resumption / reconexión** (código).
-- **Cierre:** `[CIERRE]` (marcador de texto) no aplica en voz (lo diría en voz alta).
-  Migrar a **function-calling** (`finalizar_entrevista`) → `closing_intent`.
+- **Sesiones largas (✅ implementado):** `context_window_compression` (sliding window) +
+  `session_resumption` + bucle de reconexión en el proxy (al recibir `go_away` reabre la
+  sesión Gemini con el handle, **transparente** para el navegador — solo un micro-hueco de
+  audio). El reader del cliente persiste a través de reconexiones. *Pendiente de validar en
+  una sesión real >15 min (el go_away solo dispara cerca del límite).*
+- **Cierre (✅ implementado):** tool `finalizar_entrevista` declarada para el diagnóstico;
+  el `tool_call` se mapea a `closing_intent` (frontend ya tiene el countdown). Reemplaza el
+  marcador `[CIERRE]` (que en voz se pronunciaría). *Pendiente de ver al modelo llamarla en
+  una entrevista completa.*
 - **Calidad de transcripción:** el input_transcription se fragmenta con audio pobre;
   afecta el análisis de Groq. Mitiga con audífonos y hablar claro.
 - **Costo Simli:** factura por minuto (free tier ~$10 + 50 min/mes). El avatar 3D es el
@@ -211,3 +223,75 @@ Para depurar Simli en aislamiento se usó una página temporal `/__simli-test`
 Gemini Live ≈ **5–8x más barato** por sesión que el pipeline de pago (Groq+ElevenLabs),
 porque elimina ElevenLabs (la voz nativa de Gemini cuesta ~12x menos por minuto). Groq
 es casi gratis a este volumen. Simli añade costo por minuto de video (opcional, apagable).
+
+---
+
+## 10. Avances 2026-06-09 (tarde): audio fino + calidad del diagnóstico
+
+### 10.1 Afinado de audio
+- **VAD configurable por `.env`** (`config.py`: `gemini_vad_start_sensitivity` / `end` /
+  `silence_ms`). Tradeoff: `start HIGH` capta tu voz y responde rápido pero el eco puede
+  cortar (audífonos); `start LOW` resiste el eco pero "se queda callada esperando".
+  Default responsivo **HIGH/HIGH/500** (antes LOW/LOW/800 dejaba a Sofia muy paciente).
+- **Echo-gate local** (`useGeminiLive.ts` + `pcm.ts::pcm16Rms`): mientras el avatar habla,
+  gatea el mic por energía contra un "piso de eco" adaptativo — filtra el eco y conserva el
+  barge-in real, **sin detectar hardware**. Con audífonos el piso queda ~0 (no estorba); en
+  altavoz filtra. Razón: detectar "¿hay audífonos?" en el browser es poco fiable. *Constantes
+  empíricas — tunear probando en altavoz.*
+
+### 10.2 Evaluación de calidad del diagnóstico (tests de PURO TEXTO)
+Scripts nuevos (Sofia = **Gemini texto** `gemini-2.5-flash` + prompt conciso real; candidato
+sintético = Groq; análisis = Groq — sin tocar Live ni Simli):
+- `scripts/test_diagnostico_texto.py` — un candidato con brechas conocidas, conversación + diagnóstico.
+- `scripts/test_diagnostico_escenarios.py` — 3 candidatos, cada uno con UNA brecha dominante.
+
+**Hallazgos:**
+- ✅ **La entrevista (Gemini + prompt conciso) conduce BEI muy bien**: inicia sola, drilla
+  *"¿qué hiciste TÚ?"* ante el "nosotros", pivota al agotar la historia, sin eco.
+- ✅ **El análisis caza la externalización** (we/I "alta" + gap liderazgo + blind_spot +
+  micro-práctica) y **no alucina** brechas sin evidencia.
+- 🔧 **Fix aplicado:** el prompt conciso drillaba la *acción* (A de STAR) pero se saltó el
+  *resultado/métrica* (R) → no cazaba candidatos "sin métricas". Se añadió el probe
+  *"persigue el resultado: ¿cuánto?, ¿qué cambió?, ¿cómo lo mediste?"* en
+  `build_gemini_entrevistador_prompt`.
+- 🟡 **Pendiente:** validar las brechas "evita conflicto" y "salta a la solución", y
+  re-correr "sin métricas" con el fix. **Bloqueado por cuota de Gemini free-tier agotada**
+  (`429 RESOURCE_EXHAUSTED`) tras los tests del día → esperar reset diario o activar billing.
+
+### 10.3 Pendientes vivos
+- Re-correr `test_diagnostico_escenarios.py` cuando haya cuota (valida el fix de métricas + las
+  2 brechas que faltaron).
+- Validar reconexión (>15 min) y el tool de cierre en una sesión real.
+- Activar billing de Gemini para el piloto (cuota + privacidad).
+
+---
+
+## 11. Auditoría 2026-06-09 (noche): texto, imagen, audio/voz y fidelidad de la evaluación
+
+Se auditaron las 4 áreas pedidas por producto. **Hallazgos completos y plan priorizado en
+[`docs/plans/06_mejoras_voz_video_eval.md`](plans/06_mejoras_voz_video_eval.md).** Resumen:
+
+- 🔴 **Evaluación (E1/E2):** el análisis trunca la conversación a 8k chars (una entrevista de
+  25 min son ~15-20k → se pierde la mitad central) y la regla "prohibido evidencia de
+  ausencia" + `_drop_absence_gaps` chocan con las brechas de la §10 que SON ausencias
+  ("procesos sin métrica") → explica el `gaps: []` del escenario `sin_metricas`.
+- 🔴 **Toma de texto (T1/T2):** el último turno del usuario se PIERDE si presiona Terminar
+  antes de la respuesta de Sofia (buffers locales del downstream se descartan), y el
+  `user_message` aparece en el chat después de la respuesta de Sofia.
+- 🟡 **Imagen Simli (V1):** video 512×512 con `object-cover` en panel ~2x → upscaling + crop
+  (la "borrosidad"). Fix: `object-contain` con aspecto nativo + fondo blur.
+- 🟡 **Audio (C1/C2):** resampler 24k→16k sin anti-alias (voz áspera en Simli) y caption de
+  Sofia adelantado a su voz (se materializa al fin de generación, no de reproducción).
+- ✓ Lo alineado: `SOFT_SKILLS_CATALOG` = §10 fiel; reglas 11.2 reforzadas en el prompt.
+
+Orden de ejecución: Fase 1 (evaluación, solo backend, verificable con los scripts de texto en
+cuanto haya cuota) → Fase 2 (no perder texto) → Fase 3 (video nítido + anti-alias + caption).
+
+**Estado (misma noche): las 4 fases del plan 06 IMPLEMENTADAS** (solo E4a "resumen
+ejecutivo" queda como decisión de producto). Verificación que falta:
+1. Sesión de voz manual (texto a tiempo, video nítido, voz menos áspera, último turno
+   entra al análisis, barge-in con pre-roll).
+2. `GEMINI_TEXT_MODEL=gemini-2.0-flash poetry run python -m scripts.test_diagnostico_escenarios`
+   tras el reset de cuota (valida fix de métricas + E3 + las 2 brechas pendientes).
+   El fix del análisis ya quedó verificado sin Gemini con `scripts/test_diagnostico_replay.py`
+   (pre-fix `gaps: []` → post-fix caza `orientacion_resultados` con cita).

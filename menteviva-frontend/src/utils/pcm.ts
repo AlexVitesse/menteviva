@@ -21,6 +21,19 @@ export function int16BufferToBase64(buf: ArrayBuffer): string {
   return btoa(binary);
 }
 
+/** RMS normalizado [0,1] de un buffer PCM16. Usado por el echo-gate del mic. */
+export function pcm16Rms(buf: ArrayBuffer): number {
+  const int16 = new Int16Array(buf);
+  const n = int16.length;
+  if (n === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const v = int16[i] / 0x8000;
+    sum += v * v;
+  }
+  return Math.sqrt(sum / n);
+}
+
 /** string base64 (PCM16) -> Int16Array. */
 export function base64ToInt16(b64: string): Int16Array {
   const binary = atob(b64);
@@ -32,10 +45,65 @@ export function base64ToInt16(b64: string): Int16Array {
 }
 
 /**
+ * Biquad low-pass (RBJ cookbook) con estado persistente entre chunks.
+ * Usado como filtro anti-alias antes de decimar 24k -> 16k.
+ */
+class BiquadLowPass {
+  private readonly b0: number;
+  private readonly b1: number;
+  private readonly b2: number;
+  private readonly a1: number;
+  private readonly a2: number;
+  private x1 = 0;
+  private x2 = 0;
+  private y1 = 0;
+  private y2 = 0;
+
+  constructor(fc: number, fs: number, q = Math.SQRT1_2) {
+    const w0 = (2 * Math.PI * fc) / fs;
+    const cosW0 = Math.cos(w0);
+    const alpha = Math.sin(w0) / (2 * q);
+    const a0 = 1 + alpha;
+    this.b0 = (1 - cosW0) / 2 / a0;
+    this.b1 = (1 - cosW0) / a0;
+    this.b2 = (1 - cosW0) / 2 / a0;
+    this.a1 = (-2 * cosW0) / a0;
+    this.a2 = (1 - alpha) / a0;
+  }
+
+  /** Filtra in-place un Float64Array. */
+  process(buf: Float64Array): void {
+    let { x1, x2, y1, y2 } = this;
+    for (let i = 0; i < buf.length; i++) {
+      const x0 = buf[i];
+      const y0 = this.b0 * x0 + this.b1 * x1 + this.b2 * x2 - this.a1 * y1 - this.a2 * y2;
+      buf[i] = y0;
+      x2 = x1;
+      x1 = x0;
+      y2 = y1;
+      y1 = y0;
+    }
+    this.x1 = x1;
+    this.x2 = x2;
+    this.y1 = y1;
+    this.y2 = y2;
+  }
+
+  reset(): void {
+    this.x1 = this.x2 = this.y1 = this.y2 = 0;
+  }
+}
+
+/**
  * Remuestreador PCM16 24 kHz -> 16 kHz (interpolacion lineal) para alimentar
  * a Simli, que solo acepta 16 kHz (ver useSimliAvatar). Mantiene estado entre
  * chunks (posicion fraccional + ultima muestra del chunk anterior) para que
  * el stream se remuestree continuo, sin clicks en las costuras.
+ *
+ * Anti-alias: antes de decimar se aplica un low-pass a ~7.2 kHz (2 biquads en
+ * cascada, ~24 dB/oct). Sin esto, el contenido de 8-12 kHz de la voz de Gemini
+ * se "alias-ea" dentro de la banda de 16 kHz y la voz por Simli suena aspera
+ * y metalica. Los filtros guardan estado entre chunks (stream continuo).
  */
 export class Pcm24to16Resampler {
   // 24000/16000 = 1.5 muestras de entrada por muestra de salida.
@@ -45,11 +113,21 @@ export class Pcm24to16Resampler {
   // anterior (this.last) y la primera del nuevo".
   private pos = 0;
   private last = 0;
+  // Cascada anti-alias: corte bajo Nyquist destino (8 kHz) con margen.
+  private lp1 = new BiquadLowPass(7200, 24000);
+  private lp2 = new BiquadLowPass(7200, 24000);
 
   resample(input: Int16Array): Int16Array {
     const n = input.length;
     if (n === 0) return new Int16Array(0);
 
+    // 1) Low-pass anti-alias (en float, con estado entre chunks).
+    const f = new Float64Array(n);
+    for (let i = 0; i < n; i++) f[i] = input[i];
+    this.lp1.process(f);
+    this.lp2.process(f);
+
+    // 2) Decimacion por interpolacion lineal sobre la senal ya filtrada.
     const out = new Int16Array(Math.ceil((n + 1) / Pcm24to16Resampler.STEP) + 1);
     let count = 0;
     let p = this.pos;
@@ -59,19 +137,21 @@ export class Pcm24to16Resampler {
       if (p < 0) {
         // Interpolar entre el final del chunk anterior y el inicio de este.
         const frac = p + 1;
-        sample = this.last * (1 - frac) + input[0] * frac;
+        sample = this.last * (1 - frac) + f[0] * frac;
       } else {
         const i = Math.floor(p);
         const frac = p - i;
-        const next = i + 1 < n ? input[i + 1] : input[i];
-        sample = input[i] * (1 - frac) + next * frac;
+        const next = i + 1 < n ? f[i + 1] : f[i];
+        sample = f[i] * (1 - frac) + next * frac;
       }
-      out[count++] = Math.round(sample);
+      // Clampear: el filtro puede sobrepasar levemente el rango int16.
+      sample = Math.round(sample);
+      out[count++] = sample > 32767 ? 32767 : sample < -32768 ? -32768 : sample;
       p += Pcm24to16Resampler.STEP;
     }
 
     this.pos = p - n; // queda en (-1, 0.5]; si es negativo cruza al proximo chunk
-    this.last = input[n - 1];
+    this.last = f[n - 1];
     return out.subarray(0, count) as Int16Array;
   }
 
@@ -79,6 +159,8 @@ export class Pcm24to16Resampler {
   reset(): void {
     this.pos = 0;
     this.last = 0;
+    this.lp1.reset();
+    this.lp2.reset();
   }
 }
 

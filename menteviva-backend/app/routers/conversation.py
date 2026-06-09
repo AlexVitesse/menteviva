@@ -238,18 +238,24 @@ async def _finalize_and_analyze(
         await websocket.send_json({"type": "session_end", "metrics": metrics_payload})
 
 
-async def _gemini_handle_upstream_msg(data: dict, websocket, live, history: list) -> str | None:
-    """Procesa UN mensaje del cliente hacia Gemini. Devuelve 'end' en end_session."""
+async def _gemini_handle_upstream_msg(data: dict, websocket, state: dict, history: list) -> str | None:
+    """Procesa UN mensaje del cliente hacia Gemini. Devuelve 'end' en end_session.
+
+    Forwardea a state["live"] (la sesion Gemini ACTUAL), que cambia en cada
+    reconexion. Durante el breve hueco de reconexion state["live"] es None y el
+    audio se descarta (sub-segundo, inaudible).
+    """
     t = data.get("type")
+    live = state.get("live")
     if t == "audio_chunk":
         pcm = base64.b64decode(data.get("pcm", "") or "")
-        if pcm:
+        if pcm and live:
             await live.send_audio_chunk(pcm)
     elif t == "text":
         # Modo texto (pruebas / fallback sin mic). El turno de usuario por texto
         # NO genera input_transcription, asi que lo agregamos al historial aqui.
         text = (data.get("text") or "").strip()
-        if text:
+        if text and live:
             history.append({"role": "user", "content": text})
             await websocket.send_json({"type": "user_message", "content": text})
             await live.send_text(text)
@@ -259,27 +265,74 @@ async def _gemini_handle_upstream_msg(data: dict, websocket, live, history: list
     return None
 
 
-async def _gemini_upstream(websocket, live, history: list, initial: dict | None) -> str:
-    """Lee mensajes del cliente y los reenvia a Gemini hasta end_session/disconnect."""
+async def _gemini_upstream(websocket, state: dict, history: list, initial: dict | None) -> str:
+    """Lee mensajes del cliente y los reenvia a la sesion Gemini actual.
+
+    PERSISTE a traves de reconexiones (no se reinicia cuando se reabre la sesion
+    Gemini); devuelve 'end' en end_session.
+    """
     if initial is not None:
-        if await _gemini_handle_upstream_msg(initial, websocket, live, history) == "end":
+        if await _gemini_handle_upstream_msg(initial, websocket, state, history) == "end":
             return "end"
     while True:
         data = await websocket.receive_json()
-        if await _gemini_handle_upstream_msg(data, websocket, live, history) == "end":
+        if await _gemini_handle_upstream_msg(data, websocket, state, history) == "end":
             return "end"
 
 
-async def _gemini_downstream(websocket, live, history: list) -> None:
-    """Reenvia los eventos de Gemini al cliente y reconstruye el historial."""
-    cur_user: list[str] = []
-    cur_asst: list[str] = []
+def _flush_partial_transcripts(state: dict, history: list) -> None:
+    """Vuelca al historial los transcripts PARCIALES que quedaron en el state.
+
+    Sin esto, si el usuario habla y presiona Terminar (o se cae el WS) antes de
+    que Sofia responda, su ultimo turno vive solo en los buffers del downstream
+    y se pierde del analisis. Se llama antes de finalizar la sesion; en las
+    reconexiones por go_away no hace falta (los buffers persisten en state y el
+    siguiente downstream continua acumulando sobre ellos).
+    """
+    user_text = "".join(state.get("cur_user") or []).strip()
+    if user_text:
+        history.append({"role": "user", "content": user_text})
+        state["cur_user"].clear()
+    asst_text = "".join(state.get("cur_asst") or []).strip()
+    if asst_text:
+        history.append({"role": "assistant", "content": asst_text})
+        state["cur_asst"].clear()
+
+
+async def _gemini_downstream(websocket, live, state: dict, history: list) -> str:
+    """Reenvia los eventos de Gemini al cliente y reconstruye el historial.
+
+    Los buffers de transcript viven en `state` (no en locales) para que
+    sobrevivan reconexiones y se puedan volcar al historial en el cierre
+    (_flush_partial_transcripts) — sin eso el ultimo turno del usuario se
+    perdia si terminaba la sesion antes de la respuesta de Sofia.
+
+    Devuelve el motivo por el que termino la sesion Gemini:
+      - "go_away": el servidor avisa corte (limite de sesion) -> reconectar.
+      - "closed":  la sesion se cerro (events() se agoto).
+    """
+    cur_user: list[str] = state.setdefault("cur_user", [])
+    cur_asst: list[str] = state.setdefault("cur_asst", [])
     audio_started = False
+    turn_interrupted = False
+
+    async def _flush_user() -> None:
+        # Materializa el turno del usuario apenas el modelo empieza a responder
+        # (= fin real de su habla), en vez de esperar al turn_complete de Sofia.
+        # Asi el mensaje aparece en el chat ANTES de la respuesta, no despues.
+        # user_text solo llega por audio (input_transcription); el modo texto
+        # ya lo agrego en upstream, asi que aqui no se duplica.
+        user_text = "".join(cur_user).strip()
+        cur_user.clear()
+        if user_text:
+            history.append({"role": "user", "content": user_text})
+            await websocket.send_json({"type": "user_message", "content": user_text})
 
     async for ev in live.events():
         et = ev["type"]
         if et == "audio":
             if not audio_started:
+                await _flush_user()
                 await websocket.send_json({"type": "assistant_audio_start"})
                 audio_started = True
             await websocket.send_json({
@@ -289,26 +342,47 @@ async def _gemini_downstream(websocket, live, history: list) -> None:
         elif et == "input_text":
             cur_user.append(ev["text"])
         elif et == "output_text":
+            if not audio_started and not cur_asst:
+                await _flush_user()  # por si el texto llega antes que el audio
             cur_asst.append(ev["text"])
             await websocket.send_json({"type": "output_transcript", "content": ev["text"]})
         elif et == "interrupted":
             # Barge-in: el cliente debe vaciar su cola de audio y parar el playback.
             await websocket.send_json({"type": "interrupted"})
             audio_started = False
+            turn_interrupted = True
         elif et == "turn_complete":
-            user_text = "".join(cur_user).strip()
+            await _flush_user()  # restos tardios de input_transcription (raro)
             asst_text = "".join(cur_asst).strip()
-            # user_text solo llega por audio (input_transcription); el modo texto
-            # ya lo agrego en upstream, asi que aqui no se duplica.
-            if user_text:
-                history.append({"role": "user", "content": user_text})
-                await websocket.send_json({"type": "user_message", "content": user_text})
+            cur_asst.clear()
             if asst_text:
+                # Turno cortado por barge-in: el transcript incluye texto que el
+                # usuario NO escucho (el cliente vacio su cola de audio). Lo
+                # marcamos para que el analisis no asuma que Sofia dijo todo eso.
+                if turn_interrupted:
+                    asst_text += " [...el usuario interrumpio y no escucho el final]"
                 history.append({"role": "assistant", "content": asst_text})
             if audio_started:
                 await websocket.send_json({"type": "assistant_audio_end"})
             await websocket.send_json({"type": "turn_complete"})
-            cur_user, cur_asst, audio_started = [], [], False
+            audio_started = False
+            turn_interrupted = False
+        elif et == "tool_call":
+            # Cierre del diagnostico: Sofia llamo finalizar_entrevista. Avisamos al
+            # cliente (dispara su countdown de cierre) y respondemos el tool-call
+            # para que el modelo pueda rematar su despedida.
+            if ev.get("name") == "finalizar_entrevista":
+                logger.info("[WS-Gemini] tool finalizar_entrevista -> closing_intent")
+                await websocket.send_json({"type": "closing_intent"})
+            try:
+                await live.send_tool_response(ev["call"])
+            except Exception as e:
+                logger.warning(f"[WS-Gemini] send_tool_response fallo: {e}")
+        elif et == "go_away":
+            logger.info("[WS-Gemini] go_away (limite de sesion) -> reconectar")
+            return "go_away"
+
+    return "closed"
 
 
 async def _run_gemini_conversation(websocket: WebSocket, avatar: dict, avatar_id: str) -> None:
@@ -351,54 +425,116 @@ async def _run_gemini_conversation(websocket: WebSocket, avatar: dict, avatar_id
     if avatar.get("kind") == "diagnostico":
         system_prompt = build_gemini_entrevistador_prompt(user_profile, session_vars)
 
-    logger.info(f"[WS-Gemini] Abriendo sesion Live - avatar={avatar_id}, prompt={len(system_prompt)} chars")
+    enable_closing = avatar.get("kind") == "diagnostico"
+    logger.info(
+        f"[WS-Gemini] Abriendo sesion Live - avatar={avatar_id}, "
+        f"prompt={len(system_prompt)} chars, closing_tool={enable_closing}"
+    )
+
+    # Holder mutable de la sesion Gemini ACTUAL. El upstream (reader del cliente)
+    # forwardea a state["live"] y persiste a traves de reconexiones; la sesion
+    # Gemini se re-crea en el bucle de abajo (sesiones largas via resumption).
+    state: dict = {"live": None}
+    # El reader NO procesa `initial`: si lo hiciera ahora, state["live"] aun seria
+    # None (la sesion no abre hasta el bucle) y se perderia el primer turno. Se
+    # procesa abajo, en la 1a iteracion, ya con la sesion abierta.
+    reader = asyncio.create_task(_gemini_upstream(websocket, state, history, None))
     result = "disconnect"
-    async with open_gemini_session(avatar_id, system_prompt) as live:
-        await websocket.send_json({"type": "status", "status": "ready"})
-        # El downstream debe estar corriendo antes del saludo para reenviar su audio.
-        down = asyncio.create_task(_gemini_downstream(websocket, live, history))
+    resume_handle: str | None = None
+    greeted = False
+    initial_pending = initial
 
-        # Saludo proactivo: el avatar inicia la conversacion (Sofia saluda). Se
-        # manda como turno de usuario a Gemini para gatillar su primer turno,
-        # pero NO se agrega al conversation_history (no es del usuario real, y el
-        # texto-trigger no genera input_transcription -> no aparece como mensaje).
-        # Solo si el cliente no mando ya un primer turno propio.
-        if initial is None:
-            try:
-                await live.send_text(
-                    "[El usuario se acaba de conectar y aun no ha dicho nada. "
-                    "Inicia tu la conversacion: saluda brevemente y comienza segun tu rol.]"
-                )
-            except Exception as e:
-                logger.warning(f"[WS-Gemini] saludo inicial fallo: {e}")
+    try:
+        while True:
+            async with open_gemini_session(
+                avatar_id,
+                system_prompt,
+                enable_closing_tool=enable_closing,
+                resume_handle=resume_handle,
+            ) as live:
+                state["live"] = live
+                if resume_handle is None:
+                    await websocket.send_json({"type": "status", "status": "ready"})
 
-        up = asyncio.create_task(_gemini_upstream(websocket, live, history, initial))
-        done, pending = await asyncio.wait({up, down}, return_when=asyncio.FIRST_COMPLETED)
+                down = asyncio.create_task(_gemini_downstream(websocket, live, state, history))
 
-        for task in pending:
-            task.cancel()
-        if up in done:
+                # Primer turno del cliente (cuando el 1er mensaje no fue init),
+                # ahora que la sesion ya esta abierta.
+                if initial_pending is not None:
+                    ip, initial_pending = initial_pending, None
+                    if await _gemini_handle_upstream_msg(ip, websocket, state, history) == "end":
+                        down.cancel()
+                        try:
+                            await down
+                        except (asyncio.CancelledError, Exception):
+                            pass
+                        result = "end"
+                        break
+
+                # Saludo proactivo SOLO en la primera sesion (no en reconexiones).
+                # Se manda como turno de usuario para gatillar el primer turno del
+                # avatar, pero NO entra al conversation_history (el texto-trigger
+                # no genera input_transcription -> no aparece como mensaje).
+                if not greeted and initial is None:
+                    greeted = True
+                    try:
+                        await live.send_text(
+                            "[El usuario se acaba de conectar y aun no ha dicho nada. "
+                            "Inicia tu la conversacion: saluda brevemente y comienza segun tu rol.]"
+                        )
+                    except Exception as e:
+                        logger.warning(f"[WS-Gemini] saludo inicial fallo: {e}")
+
+                done, _ = await asyncio.wait({reader, down}, return_when=asyncio.FIRST_COMPLETED)
+                # Guardar el handle mas reciente por si toca reconectar.
+                resume_handle = live.resume_handle or resume_handle
+                state["live"] = None
+
+                if reader in done:
+                    # El cliente termino (end_session) o se desconecto.
+                    down.cancel()
+                    try:
+                        await down
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                    try:
+                        result = reader.result()  # "end"
+                    except WebSocketDisconnect:
+                        result = "disconnect"
+                    except Exception as e:
+                        logger.error(f"[WS-Gemini] upstream fallo: {e}", exc_info=True)
+                        result = "error"
+                    break
+
+                # El downstream termino: la sesion Gemini se cerro (go_away/limite).
+                try:
+                    reason = down.result()
+                except Exception as e:
+                    logger.error(f"[WS-Gemini] downstream fallo: {e}", exc_info=True)
+                    reason = "closed"
+
+                if resume_handle:
+                    # Reconectar con el handle: el reader sigue vivo, el cliente
+                    # solo percibe (si acaso) un micro-hueco de audio.
+                    logger.info(f"[WS-Gemini] reconectando sesion (motivo={reason})")
+                    continue
+
+                logger.info(f"[WS-Gemini] sesion Gemini cerro sin handle (motivo={reason})")
+                result = "gemini_closed"
+                break
+    finally:
+        if not reader.done():
+            reader.cancel()
             try:
-                result = up.result()  # "end"
-            except WebSocketDisconnect:
-                result = "disconnect"
-            except Exception as e:
-                logger.error(f"[WS-Gemini] upstream fallo: {e}", exc_info=True)
-                result = "error"
-        else:
-            # downstream termino/fallo primero (inesperado): cerramos.
-            try:
-                down.result()
-            except Exception as e:
-                logger.error(f"[WS-Gemini] downstream fallo: {e}", exc_info=True)
-            result = "error"
-        for task in pending:
-            try:
-                await task
+                await reader
             except (asyncio.CancelledError, Exception):
                 pass
 
     if result == "end":
+        # Ultimo turno hablado sin respuesta de Sofia (el usuario presiono
+        # Terminar de inmediato): volcar los transcripts parciales al historial
+        # para que SI entren al analisis.
+        _flush_partial_transcripts(state, history)
         await _finalize_and_analyze(
             websocket, avatar, avatar_id, history,
             session_start_time, user_profile, session_vars, level,

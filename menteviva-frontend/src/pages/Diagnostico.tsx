@@ -159,6 +159,7 @@ export function Diagnostico() {
     avatarId: "entrevistador",
     initPayload,
     audioSink: simliEnabled ? simli.sink : undefined,
+    onClosingIntent: handleClosingIntent,
   });
   const [micMuted, setMicMuted] = useState(false);
   // En Gemini el "hablando" de Sofia se refleja en el status del store
@@ -260,6 +261,17 @@ export function Diagnostico() {
     setRequestingPermission(true);
     setPermissionError(null);
     setShowEscape(false);
+
+    // Pre-conexion de Simli EN PARALELO al permiso de mic: el WebRTC tarda
+    // unos segundos y asi el video ya esta arriba cuando arranca la sesion.
+    // connect() es idempotente (guard interno), el connect del effect de
+    // sessionStarted se vuelve no-op. No se pre-conecta al montar para no
+    // quemar maxIdleTime si el usuario se queda leyendo el overlay.
+    if (IS_GEMINI && simliEnabled && !simli.failed) {
+      simli
+        .connect("entrevistador")
+        .catch((e) => console.warn("[Diagnostico] pre-conexion Simli fallo:", e));
+    }
 
     // Bloqueo preventivo: en Chrome movil sobre HTTP (LAN IP), mediaDevices es
     // undefined y getUserMedia tira TypeError. Mostramos un mensaje util antes.

@@ -1,7 +1,25 @@
 import { useCallback, useRef, useEffect, useState } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import type { WsInitPayload } from "./useWebSocket";
-import { PCMStreamPlayer, int16BufferToBase64 } from "../utils/pcm";
+import { PCMStreamPlayer, int16BufferToBase64, pcm16Rms } from "../utils/pcm";
+
+// Echo-gate: mientras el avatar habla, solo dejamos pasar el mic si su energia
+// supera el "piso de eco" * margen. El piso se adapta al eco real (en audifonos
+// queda ~0 -> gate permisivo; en altavoces sube -> filtra el eco). Conserva el
+// barge-in real (voz fuerte). Constantes empiricas — tunear probando en altavoz.
+const ECHO_MARGIN = 3.0; // la voz debe superar el piso * esto para pasar
+const FLOOR_FAST = 0.08; // EMA del piso sobre chunks bajo el gate (eco)
+const FLOOR_SLOW = 0.008; // EMA lento sobre chunks sobre el gate (por si es eco fuerte sostenido)
+const ECHO_FLOOR_INIT = 0.003;
+// Hold-over: el gate sigue activo este tiempo despues de que el avatar "callo"
+// (status del store) y se enciende desde el PRIMER audio chunk recibido — los
+// eventos speaking/silent (player local o Simli) llegan con latencia y dejaban
+// ventanas donde el eco pasaba sin filtrar.
+const ECHO_HOLDOVER_MS = 300;
+// Pre-roll: cuantos chunks (~100 ms c/u) descartados por el gate se retienen
+// por si el siguiente chunk resulta ser voz real — sin esto el arranque de la
+// frase del barge-in (baja energia) se perdia y la transcripcion quedaba coja.
+const PREROLL_CHUNKS = 2;
 
 /**
  * useGeminiLive: sesion de voz en tiempo real contra el proxy de Gemini Live.
@@ -39,11 +57,14 @@ interface UseGeminiLiveOptions {
   avatarId: string | undefined;
   initPayload?: WsInitPayload;
   audioSink?: GeminiAudioSink | null;
+  // El avatar llamó la tool de cierre (finalizar_entrevista) -> el backend manda
+  // closing_intent. El consumer decide qué hacer (countdown + endSession).
+  onClosingIntent?: () => void;
 }
 
 type AudioCtxCtor = typeof AudioContext;
 
-export function useGeminiLive({ avatarId, initPayload, audioSink }: UseGeminiLiveOptions) {
+export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingIntent }: UseGeminiLiveOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const playerRef = useRef<PCMStreamPlayer | null>(null);
   // Ref para que el handler del WS siempre vea el sink actual sin re-conectar.
@@ -58,6 +79,24 @@ export function useGeminiLive({ avatarId, initPayload, audioSink }: UseGeminiLiv
   // Texto del avatar en curso (se acumula desde output_transcript hasta turn_complete)
   const assistantTextRef = useRef("");
   const initPayloadRef = useRef(initPayload);
+  const onClosingIntentRef = useRef(onClosingIntent);
+
+  // Echo-gate: estado del piso de eco + si el avatar esta hablando ahora. El
+  // "hablando" se toma del status del store (lo setea tanto el player local como
+  // los eventos de Simli), asi funciona en ambos modos.
+  const echoFloorRef = useRef(ECHO_FLOOR_INIT);
+  const avatarSpeakingRef = useRef(false);
+  // C3: timestamp hasta el cual el gate sigue activo (hold-over / primer chunk).
+  const echoHoldUntilRef = useRef(0);
+  // T4: ultimos chunks descartados por el gate (pre-roll del barge-in).
+  const gatePrerollRef = useRef<ArrayBuffer[]>([]);
+
+  // Mensajes de Sofia COMPLETADOS (turn_complete) pero cuya voz sigue SONANDO.
+  // turn_complete marca el fin de la GENERACION; el playback (cola PCM o Simli)
+  // dura varios segundos mas. Sin esta cola, el texto aparece en el chat antes
+  // de que Sofia termine de hablar (desync texto/voz). Se vacian cuando el
+  // avatar deja de sonar (o en cierre/desconexion para no perder mensajes).
+  const pendingAssistantMsgsRef = useRef<string[]>([]);
 
   // Compuerta de envio de audio. Arranca CERRADA: si enviamos audio del mic de
   // inmediato, Gemini cree que el usuario esta tomando el turno y no saluda.
@@ -84,12 +123,51 @@ export function useGeminiLive({ avatarId, initPayload, audioSink }: UseGeminiLiv
     audioSinkRef.current = audioSink;
   }, [audioSink]);
 
+  useEffect(() => {
+    onClosingIntentRef.current = onClosingIntent;
+  }, [onClosingIntent]);
+
+  // Vacia la cola de mensajes de Sofia retenidos hasta que su voz termine.
+  const flushPendingAssistant = useCallback(() => {
+    for (const content of pendingAssistantMsgsRef.current) {
+      addMessage({
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content,
+        timestamp: new Date(),
+      });
+    }
+    pendingAssistantMsgsRef.current = [];
+  }, [addMessage]);
+
+  // El avatar esta "hablando" cuando status === generating_audio (lo setea el
+  // player local y/o los eventos speaking/silent de Simli). Lo espejamos a un ref
+  // para el echo-gate del worklet sin re-render. En la transicion hablando ->
+  // silencio se materializan los mensajes retenidos (sync texto/voz).
+  useEffect(() => {
+    const unsub = useSessionStore.subscribe((s) => {
+      const speaking = s.status === "generating_audio";
+      const wasSpeaking = avatarSpeakingRef.current;
+      avatarSpeakingRef.current = speaking;
+      if (wasSpeaking && !speaking) {
+        flushPendingAssistant();
+        // C3: hold-over — el eco de cola sigue llegando un instante despues
+        // de que el playback reporto silencio.
+        echoHoldUntilRef.current = performance.now() + ECHO_HOLDOVER_MS;
+      }
+    });
+    return unsub;
+  }, [flushPendingAssistant]);
+
   const connect = useCallback(async () => {
     if (!avatarId) return;
 
     // Compuerta cerrada hasta que Sofia salude (1er turn_complete). Respaldo:
     // si el saludo no llega en 6s, la abrimos para no dejar al usuario mudo.
     audioGateOpenRef.current = false;
+    echoFloorRef.current = ECHO_FLOOR_INIT;
+    echoHoldUntilRef.current = 0;
+    gatePrerollRef.current = [];
     setHasGreeted(false);
     if (gateTimerRef.current) window.clearTimeout(gateTimerRef.current);
     gateTimerRef.current = window.setTimeout(() => {
@@ -143,6 +221,9 @@ export function useGeminiLive({ avatarId, initPayload, audioSink }: UseGeminiLiv
           break;
 
         case "assistant_audio_chunk": {
+          // C3: encender el echo-gate desde el PRIMER chunk — el evento
+          // speaking (player/Simli) llega con latencia y el eco no espera.
+          echoHoldUntilRef.current = performance.now() + ECHO_HOLDOVER_MS;
           // Con sink activo (Simli conectado) el audio va al video lip-synced;
           // si no (sin Simli o Simli caido), suena por el player local.
           const sink = audioSinkRef.current;
@@ -157,14 +238,21 @@ export function useGeminiLive({ avatarId, initPayload, audioSink }: UseGeminiLiv
           audioSinkRef.current?.interrupt();
           break;
 
-        case "turn_complete":
-          if (assistantTextRef.current.trim()) {
-            addMessage({
-              id: crypto.randomUUID(),
-              role: "assistant",
-              content: assistantTextRef.current.trim(),
-              timestamp: new Date(),
-            });
+        case "turn_complete": {
+          const text = assistantTextRef.current.trim();
+          if (text) {
+            // Si la voz sigue sonando (player local o Simli), retener el
+            // mensaje hasta el silencio para que texto y voz lleguen juntos.
+            if (avatarSpeakingRef.current) {
+              pendingAssistantMsgsRef.current.push(text);
+            } else {
+              addMessage({
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content: text,
+                timestamp: new Date(),
+              });
+            }
           }
           assistantTextRef.current = "";
           // Sofia termino su turno (el saludo, la 1a vez): ya podemos enviar
@@ -172,8 +260,16 @@ export function useGeminiLive({ avatarId, initPayload, audioSink }: UseGeminiLiv
           audioGateOpenRef.current = true;
           setHasGreeted(true);
           break;
+        }
+
+        case "closing_intent":
+          // Sofia llamó finalizar_entrevista: el consumer arranca el countdown.
+          onClosingIntentRef.current?.();
+          break;
 
         case "session_end":
+          // Materializar lo retenido antes de navegar al reporte.
+          flushPendingAssistant();
           setMetrics(data.metrics);
           break;
 
@@ -186,13 +282,14 @@ export function useGeminiLive({ avatarId, initPayload, audioSink }: UseGeminiLiv
 
     ws.onclose = (e) => {
       console.log("[GeminiLive] Closed:", e.code, e.reason || "(no reason)");
+      flushPendingAssistant(); // no perder mensajes retenidos al caerse el WS
       setStatus("disconnected");
     };
     ws.onerror = (e) => {
       console.error("[GeminiLive] WS error:", e);
       setStatus("disconnected");
     };
-  }, [avatarId, setStatus, addMessage, setMetrics, setServerError]);
+  }, [avatarId, setStatus, addMessage, setMetrics, setServerError, flushPendingAssistant]);
 
   /** Arranca la captura continua del microfono. */
   const startMic = useCallback(async () => {
@@ -217,18 +314,52 @@ export function useGeminiLive({ avatarId, initPayload, audioSink }: UseGeminiLiv
     await ctx.audioWorklet.addModule("/pcm-capture-worklet.js");
     const source = ctx.createMediaStreamSource(stream);
     const node = new AudioWorkletNode(ctx, "pcm-capture");
-    node.port.onmessage = (e: MessageEvent) => {
-      if (micMutedRef.current) return; // mute = dejar de enviar chunks
-      if (!audioGateOpenRef.current) return; // aun no termina el saludo de Sofia
+    const sendChunk = (b: ArrayBuffer) => {
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(
-          JSON.stringify({
-            type: "audio_chunk",
-            pcm: int16BufferToBase64(e.data as ArrayBuffer),
-          })
+          JSON.stringify({ type: "audio_chunk", pcm: int16BufferToBase64(b) })
         );
       }
+    };
+
+    node.port.onmessage = (e: MessageEvent) => {
+      if (micMutedRef.current) return; // mute = dejar de enviar chunks
+      if (!audioGateOpenRef.current) return; // aun no termina el saludo de Sofia
+      const buf = e.data as ArrayBuffer;
+
+      // Echo-gate: mientras el avatar habla (o acaba de hablar — hold-over C3),
+      // filtra lo que parece eco (energia por debajo del piso adaptativo *
+      // margen) y deja pasar el barge-in real. En audifonos el piso queda ~0,
+      // asi que esto no estorba.
+      const gateActive =
+        avatarSpeakingRef.current || performance.now() < echoHoldUntilRef.current;
+      if (gateActive) {
+        const rms = pcm16Rms(buf);
+        const gate = echoFloorRef.current * ECHO_MARGIN;
+        if (rms < gate) {
+          // Probable eco: adaptar el piso (rapido) y NO enviar. Retener el
+          // chunk en el pre-roll (T4) por si el siguiente es voz real — asi
+          // no se pierde el arranque (baja energia) de la frase del barge-in.
+          echoFloorRef.current += (rms - echoFloorRef.current) * FLOOR_FAST;
+          gatePrerollRef.current.push(buf);
+          if (gatePrerollRef.current.length > PREROLL_CHUNKS) {
+            gatePrerollRef.current.shift();
+          }
+          return;
+        }
+        // Sobre el gate: probable voz real. Subimos el piso MUY lento hacia rms
+        // por si fuera eco fuerte sostenido (que el gate acabe capturandolo).
+        echoFloorRef.current += (rms - echoFloorRef.current) * FLOOR_SLOW;
+        // T4: voz real tras chunks gateados -> primero el pre-roll retenido.
+        for (const pre of gatePrerollRef.current) sendChunk(pre);
+        gatePrerollRef.current = [];
+      } else if (gatePrerollRef.current.length) {
+        // El avatar ya callo (y paso el hold-over): lo retenido era eco.
+        gatePrerollRef.current = [];
+      }
+
+      sendChunk(buf);
     };
     source.connect(node);
     // Conectar a un gain en silencio para mantener el nodo en el grafo de
@@ -271,6 +402,7 @@ export function useGeminiLive({ avatarId, initPayload, audioSink }: UseGeminiLiv
       window.clearTimeout(gateTimerRef.current);
       gateTimerRef.current = null;
     }
+    flushPendingAssistant();
     stopMic();
     playerRef.current?.close();
     playerRef.current = null;
@@ -278,7 +410,7 @@ export function useGeminiLive({ avatarId, initPayload, audioSink }: UseGeminiLiv
     setHasGreeted(false);
     wsRef.current?.close();
     wsRef.current = null;
-  }, [stopMic]);
+  }, [stopMic, flushPendingAssistant]);
 
   useEffect(() => {
     return () => disconnect();

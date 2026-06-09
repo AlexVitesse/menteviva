@@ -369,10 +369,16 @@ async def analyze_conversation(
         return _empty_analysis(f"Error: {str(e)}")
 
 
-def _format_conversation(conversation: list[dict], max_chars: int = 8000) -> str:
+def _format_conversation(conversation: list[dict], max_chars: int = 24000) -> str:
     """
     Formatea la conversacion para incluir en el prompt.
     Si es muy larga, la trunca manteniendo inicio y fin.
+
+    max_chars=24000 (~6k tokens): una entrevista de voz de 25 min produce
+    ~15-20k chars; el limite anterior (8000) descartaba la mitad CENTRAL de la
+    conversacion — justo las historias profundizadas — y empobrecia el
+    diagnostico. gpt-oss-120b tiene 131k de contexto, asi que el limite es solo
+    para no quemar TPM del free tier, no del modelo.
     """
     lines = []
     for msg in conversation:
@@ -617,6 +623,24 @@ fortalezas si no las hay — mejor menos strengths que strengths sin evidencia.
    encuentras una frase real del candidato que respalde el gap, NO incluyas
    ese gap. Si solo detectas 1 gap con evidencia real, devuelve solo 1 gap.
 
+   EVIDENCIA POR CITA VAGA (importante — no lo confundas con la prohibicion
+   anterior): muchas brechas del catalogo consisten en lo que el candidato NO
+   hace (orientacion_resultados: cierra historias sin metrica;
+   inteligencia_emocional: minimiza el conflicto; resolucion_problemas /
+   pensamiento_critico: salta a la solucion sin analisis). Para esas, la
+   evidencia correcta es CITAR la frase vaga literal del candidato:
+   - "salio muy bien" / "el cliente quedo contento" / "se noto la diferencia"
+     -> evidencia citable de orientacion_resultados (resultado sin metrica).
+   - "lo deje pasar" / "no fue para tanto" / "se resolvio solo"
+     -> evidencia citable de inteligencia_emocional (evita el conflicto).
+   - "era lo logico" / "no lo pense mucho" / "vi que fallaba y lo arregle"
+     -> evidencia citable de pensamiento_critico (sin analisis explicito).
+   Una cita asi SI es evidencia textual valida: son palabras literales del
+   candidato mostrando el patron. Lo prohibido es describir la ausencia SIN
+   cita; citar la frase vaga es exactamente lo que se espera. Si el candidato
+   repitio el patron en varias historias (ej. NINGUN resultado con numero en
+   toda la entrevista), eso refuerza el gap: cita la frase mas representativa.
+
    STRENGTHS REQUIEREN EJEMPLO CONCRETO (no solo afirmacion). Una habilidad se
    marca como strength SOLO si el candidato dio un momento especifico con
    situacion + accion + resultado. Si solo afirmo la habilidad en abstracto
@@ -663,6 +687,10 @@ fortalezas si no las hay — mejor menos strengths que strengths sin evidencia.
 
 9. RECOMMENDED_NEXT_LEVEL: "facil" | "intermedio" | "dificil" segun la madurez
    conductual observada. Si las brechas son grandes o basicas, empezar "facil".
+
+   SIN COMPARACIONES: nunca compares al candidato con otros ("otros candidatos
+   suelen...", "lo normal seria...", "la mayoria de la gente..."). El feedback
+   es un espejo de SU conducta, no un ranking.
 
 10. PATRONES VERBALES observables en la conversacion. Analiza literalmente los
     mensajes del candidato (rol=user):
@@ -776,15 +804,26 @@ _ABSENCE_EVIDENCE_PREFIXES = (
 )
 
 
+# Marcas de cita textual: si el evidence CONTIENE una cita del candidato,
+# es evidencia valida aunque la frase envolvente describa una ausencia
+# (ej. 'No cuantifico resultados: dijo "quedo muy satisfecho"'). Las brechas
+# de la seccion 10 del prompt maestro que SON ausencias (procesos sin metrica,
+# minimiza el conflicto) se evidencian justamente citando la frase vaga.
+_QUOTE_MARKERS = ('"', "'", "“", "”", "«", "»")
+
+
 def _drop_absence_gaps(gaps: list[dict]) -> list[dict]:
     """
-    Elimina gaps cuyo 'evidence' describe ausencia en vez de una observacion.
-    El prompt ya lo prohibe pero el LLM es terco; aqui filtramos por seguridad.
+    Elimina gaps cuyo 'evidence' describe ausencia SIN cita textual que la
+    respalde. El prompt ya lo prohibe pero el LLM es terco; aqui filtramos por
+    seguridad. Un evidence con cita literal del candidato siempre pasa.
     """
     filtered: list[dict] = []
     for g in gaps:
-        ev = g.get("evidence", "").strip().lower()
-        if any(ev.startswith(p) for p in _ABSENCE_EVIDENCE_PREFIXES):
+        ev_raw = g.get("evidence", "").strip()
+        ev = ev_raw.lower()
+        has_quote = any(q in ev_raw for q in _QUOTE_MARKERS)
+        if not has_quote and any(ev.startswith(p) for p in _ABSENCE_EVIDENCE_PREFIXES):
             logger.info(
                 f"[UserProfile] Descartado gap '{g.get('skill')}' por evidencia "
                 f"de ausencia: \"{ev[:80]}\""

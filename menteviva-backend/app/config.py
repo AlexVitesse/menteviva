@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     # Flag para volver al pipeline Groq+ElevenLabs sin borrar codigo (rollback
     # barato durante el piloto). Lo consume el router cuando exista la rama WS.
     realtime_provider: str = "groq"  # "groq" | "gemini"
+    # Sensibilidad del VAD de Gemini (tunable por .env sin redeploy). Tradeoff:
+    #   start HIGH = capta bien tu voz pero el eco la puede cortar (usa audifonos);
+    #   start LOW  = resiste el eco pero a veces no registra que hablaste.
+    #   end HIGH + silence bajo = responde rapido; end LOW + silence alto = paciente.
+    # Defaults responsivos (HIGH/HIGH/500) para que no "se quede callada esperando".
+    gemini_vad_start_sensitivity: str = "HIGH"  # HIGH | LOW
+    gemini_vad_end_sensitivity: str = "HIGH"    # HIGH | LOW
+    gemini_vad_silence_ms: int = 500
 
     # ============ Simli (avatar fotorrealista en video) ============
     # API key de https://app.simli.com. La usa el backend para emitir session

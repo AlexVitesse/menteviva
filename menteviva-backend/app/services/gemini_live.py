@@ -104,6 +104,9 @@ class GeminiLiveSession:
     def __init__(self, session, avatar_id: str):
         self._session = session
         self.avatar_id = avatar_id
+        # Handle de resumption mas reciente (lo emite el servidor). El proxy lo
+        # usa para reconectar sin perder el hilo cuando llega un go_away.
+        self.resume_handle: str | None = None
 
     async def send_text(self, text: str) -> None:
         """Envia un turno de usuario como TEXTO (util para el smoke test).
@@ -121,6 +124,18 @@ class GeminiLiveSession:
         """Envia un chunk de audio del microfono (PCM16 mono 16 kHz)."""
         await self._session.send_realtime_input(
             audio=types.Blob(data=pcm16_16k, mime_type="audio/pcm;rate=16000")
+        )
+
+    async def send_tool_response(self, function_call) -> None:
+        """Responde a un tool-call para que el modelo continue su turno."""
+        await self._session.send_tool_response(
+            function_responses=[
+                types.FunctionResponse(
+                    id=getattr(function_call, "id", None),
+                    name=getattr(function_call, "name", None),
+                    response={"status": "ok"},
+                )
+            ]
         )
 
     async def events(self):
@@ -144,7 +159,10 @@ class GeminiLiveSession:
           - {"type": "output_text", "text": str}         transcripcion del avatar
           - {"type": "interrupted"}                       barge-in detectado
           - {"type": "turn_complete"}                     fin del turno del modelo
+          - {"type": "tool_call", "name": str, "call": fc} el modelo llamo una funcion
+          - {"type": "go_away"}                            el servidor va a cortar la sesion
 
+        Ademas actualiza self.resume_handle con cada session_resumption_update.
         Se cancela desde afuera (el proxy cancela esta task en end_session).
         """
         while True:
@@ -152,6 +170,22 @@ class GeminiLiveSession:
             explicit_complete = False
             async for response in self._session.receive():
                 produced = True
+
+                # Tool call (cierre): el modelo llamo finalizar_entrevista.
+                tc = getattr(response, "tool_call", None)
+                if tc and getattr(tc, "function_calls", None):
+                    for fc in tc.function_calls:
+                        yield {"type": "tool_call", "name": fc.name, "call": fc}
+
+                # Handle de resumption para reconectar sesiones largas.
+                sru = getattr(response, "session_resumption_update", None)
+                if sru and getattr(sru, "new_handle", None):
+                    self.resume_handle = sru.new_handle
+
+                # El servidor avisa que va a cerrar la conexion (limite de sesion).
+                if getattr(response, "go_away", None) is not None:
+                    yield {"type": "go_away"}
+
                 if getattr(response, "data", None):
                     yield {"type": "audio", "data": response.data}
 
@@ -215,8 +249,34 @@ class GeminiLiveSession:
         return result
 
 
-def _build_config(system_prompt: str, voice: str) -> types.LiveConnectConfig:
-    return types.LiveConnectConfig(
+# Tool de cierre para el diagnostico. Reemplaza el marcador de texto [CIERRE] del
+# pipeline Groq (que en voz nativa el modelo pronunciaria en voz alta). El modelo
+# llama esta funcion cuando junto material suficiente; el proxy la mapea a un
+# evento closing_intent hacia el cliente (que dispara el countdown de cierre).
+CLOSING_TOOL = types.Tool(
+    function_declarations=[
+        types.FunctionDeclaration(
+            name="finalizar_entrevista",
+            description=(
+                "Llama esta funcion UNA sola vez cuando ya juntaste material "
+                "suficiente (2-3 historias con detalle sobre competencias distintas) "
+                "y la entrevista debe terminar. Despidete con calidez ANTES de "
+                "llamarla. NUNCA la llames al inicio ni a mitad de la conversacion."
+            ),
+            parameters=types.Schema(type=types.Type.OBJECT, properties={}),
+        )
+    ]
+)
+
+
+def _build_config(
+    system_prompt: str,
+    voice: str,
+    *,
+    enable_closing_tool: bool = False,
+    resume_handle: str | None = None,
+) -> types.LiveConnectConfig:
+    config = types.LiveConnectConfig(
         response_modalities=["AUDIO"],
         system_instruction=types.Content(parts=[types.Part(text=system_prompt)]),
         speech_config=types.SpeechConfig(
@@ -229,23 +289,54 @@ def _build_config(system_prompt: str, voice: str) -> types.LiveConnectConfig:
         # de Groq al final de la sesion (que NO migramos).
         input_audio_transcription=types.AudioTranscriptionConfig(),
         output_audio_transcription=types.AudioTranscriptionConfig(),
-        # VAD menos sensible: sin audifonos el mic capta a Sofia y el VAD lo toma
-        # como barge-in y le corta el audio (incluido el saludo). Baja sensibilidad
-        # de inicio + mas silencio antes de cerrar turno reduce esos falsos cortes.
+        # VAD configurable por .env (ver config.py). Tradeoff eco vs "se queda
+        # callada": start HIGH capta mejor tu voz (responde, no se queda esperando)
+        # pero el eco puede cortarla -> audifonos. Defaults HIGH/HIGH/500.
         realtime_input_config=types.RealtimeInputConfig(
             automatic_activity_detection=types.AutomaticActivityDetection(
-                start_of_speech_sensitivity=types.StartSensitivity.START_SENSITIVITY_LOW,
-                end_of_speech_sensitivity=types.EndSensitivity.END_SENSITIVITY_LOW,
+                start_of_speech_sensitivity=(
+                    types.StartSensitivity.START_SENSITIVITY_LOW
+                    if settings.gemini_vad_start_sensitivity.upper() == "LOW"
+                    else types.StartSensitivity.START_SENSITIVITY_HIGH
+                ),
+                end_of_speech_sensitivity=(
+                    types.EndSensitivity.END_SENSITIVITY_LOW
+                    if settings.gemini_vad_end_sensitivity.upper() == "LOW"
+                    else types.EndSensitivity.END_SENSITIVITY_HIGH
+                ),
                 prefix_padding_ms=300,
-                silence_duration_ms=800,
+                silence_duration_ms=settings.gemini_vad_silence_ms,
             )
         ),
+        # Sesiones largas (el diagnostico apunta a ~25 min):
+        # - context_window_compression (sliding window): la sesion NO muere al
+        #   llenar la ventana de contexto; comprime los turnos viejos.
+        # - session_resumption: el servidor emite handles periodicos; al recibir
+        #   un go_away (aviso de corte ~cada pocos minutos) el proxy reconecta con
+        #   el ultimo handle sin que el usuario lo note. resume_handle != None en
+        #   las reconexiones.
+        context_window_compression=types.ContextWindowCompressionConfig(
+            sliding_window=types.SlidingWindow(),
+        ),
+        session_resumption=types.SessionResumptionConfig(handle=resume_handle),
     )
+    if enable_closing_tool:
+        config.tools = [CLOSING_TOOL]
+    return config
 
 
 @asynccontextmanager
-async def open_session(avatar_id: str, system_prompt: str):
+async def open_session(
+    avatar_id: str,
+    system_prompt: str,
+    *,
+    enable_closing_tool: bool = False,
+    resume_handle: str | None = None,
+):
     """Abre una sesion Gemini Live y la cede como `GeminiLiveSession`.
+
+    enable_closing_tool: declara finalizar_entrevista (cierre del diagnostico).
+    resume_handle: si se pasa, reanuda una sesion previa (reconexion transparente).
 
     Uso:
         async with open_session("entrevistador", prompt) as live:
@@ -262,9 +353,15 @@ async def open_session(avatar_id: str, system_prompt: str):
     voice = get_voice(avatar_id)
     model = settings.gemini_model_live
     # Anexamos las reglas de voz al final (mas peso para el modelo native-audio).
-    config = _build_config(system_prompt + GEMINI_VOICE_ADDENDUM, voice)
+    config = _build_config(
+        system_prompt + GEMINI_VOICE_ADDENDUM,
+        voice,
+        enable_closing_tool=enable_closing_tool,
+        resume_handle=resume_handle,
+    )
 
-    logger.info(f"[GeminiLive] Abriendo sesion - avatar={avatar_id} voz={voice} modelo={model}")
+    tag = " (resume)" if resume_handle else ""
+    logger.info(f"[GeminiLive] Abriendo sesion{tag} - avatar={avatar_id} voz={voice} modelo={model}")
     async with client.aio.live.connect(model=model, config=config) as session:
         yield GeminiLiveSession(session, avatar_id)
     logger.info(f"[GeminiLive] Sesion cerrada - avatar={avatar_id}")
