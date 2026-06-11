@@ -612,6 +612,29 @@ se mantuvo en abstracto", "evito dar ejemplos personales", etc.) y los gaps debe
 incluir "claridad narrativa" o "autoconciencia" segun corresponda. No inventes
 fortalezas si no las hay — mejor menos strengths que strengths sin evidencia.
 
+## RESUMEN EJECUTIVO (la pieza mas importante del reporte)
+
+Abre el diagnostico con un 'resumen_ejecutivo': una narrativa-espejo de 3 a 5
+frases, escrita en SEGUNDA persona ("te presentaste...", "tu fortaleza...").
+NO es una lista; es prosa que la persona lee como un espejo honesto de si misma.
+Debe lograr tres cosas, en este orden:
+  1. Caracterizar a la persona segun lo que MOSTRO (perfil, dominio donde se
+     mueve con soltura), no segun su titulo. Ej: "Te presentaste como una
+     profesional senior que se mueve con soltura en contextos de cambio
+     organizacional."
+  2. NOMBRAR EL PATRON DOMINANTE que se repitio a lo largo de la charla — el
+     hilo conductor real, idealmente un contraste revelador. Ej: "Aparecio un
+     patron consistente: tu fuerza no esta en la tecnica en si, sino en como
+     lees el contexto humano antes de actuar."
+  3. Nombrar el TEMA DOMINANTE de la conversacion (la competencia o situacion
+     que mas aparecio). Ej: "El tema que mas volvio fue la comunicacion en
+     escenarios de resistencia."
+Reglas del resumen: solo afirma lo que el transcript respalda; sin etiquetas de
+personalidad ("eres introvertido"); sin comparaciones con otros; calido, no juez.
+Si la sesion fue pobre o evasiva, el resumen lo dice con honestidad y suavidad
+("En esta sesion te quedaste mas en lo general que en historias concretas, asi
+que lo que sigue es preliminar") en vez de inventar un perfil.
+
 ## REGLAS INVIOLABLES (seccion 11 del prompt maestro)
 
 1. EVIDENCIA TEXTUAL OBLIGATORIA. Cada strength y gap DEBE citar una frase real
@@ -718,6 +741,7 @@ Responde UNICAMENTE con un JSON valido con esta estructura exacta:
 
 {{
   "completed_at": "<ISO8601 ahora>",
+  "resumen_ejecutivo": "<narrativa-espejo de 3-5 frases en segunda persona: caracteriza a la persona, nombra el patron dominante y el tema que mas aparecio>",
   "competencias_foco": ["id_catalogo", "..."],
   "strengths": [
     {{

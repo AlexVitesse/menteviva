@@ -68,6 +68,7 @@ async def main() -> str:
         ensure_ascii=False,
     ).lower()
     hit = any(h in blob for h in EXPECTED_HINTS)
+    resumen = (diag.get("resumen_ejecutivo") or "").strip()
     lines = [
         "--- DIAGNÓSTICO (replay sin_metricas, post-fix E1/E2) ---",
         json.dumps(diag, ensure_ascii=False, indent=2),
@@ -76,6 +77,9 @@ async def main() -> str:
         f"{'APARECE' if hit else 'NO aparece (revisar a mano)'}",
         f">>> gaps devueltos: {len(diag.get('gaps') or [])} "
         f"(la corrida pre-fix devolvió 0)",
+        f">>> resumen_ejecutivo: {'PRESENTE' if resumen else 'VACÍO (revisar)'} "
+        f"({len(resumen)} chars)",
+        f"    \"{resumen}\"" if resumen else "",
     ]
     return "\n".join(lines)
 

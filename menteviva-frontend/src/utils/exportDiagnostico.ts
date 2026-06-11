@@ -24,6 +24,11 @@ export function diagnosticoToMarkdown(profile: UserProfile): string {
     lines.push("> ⚠️ Diagnóstico preliminar (sesión corta). Para resultados más precisos, completa una entrevista más larga.");
     lines.push("");
   }
+  if (d.resumen_ejecutivo) {
+    lines.push("## Resumen ejecutivo");
+    lines.push(d.resumen_ejecutivo);
+    lines.push("");
+  }
   lines.push("## Competencias foco");
   d.competencias_foco.forEach((c) => lines.push(`- ${c.replace(/_/g, " ")}`));
   lines.push("");

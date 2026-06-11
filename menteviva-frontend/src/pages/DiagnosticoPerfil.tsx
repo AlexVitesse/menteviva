@@ -83,6 +83,14 @@ export function DiagnosticoPerfil() {
           </p>
         </header>
 
+        {d.resumen_ejecutivo && (
+          <div className="bg-card/50 border-l-2 border-teal rounded-xl p-5">
+            <p className="text-base leading-relaxed text-cream">
+              {d.resumen_ejecutivo}
+            </p>
+          </div>
+        )}
+
         {isDemo && (
           <div className="bg-warning/10 border border-warning/40 rounded-xl p-4 flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-warning shrink-0 mt-0.5" />

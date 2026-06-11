@@ -52,6 +52,12 @@ class VerbalPatterns(BaseModel):
 class Diagnostico(BaseModel):
     """Resultado del diagnostico BEI. Generado por el LLM al cerrar /diagnostico."""
     completed_at: str  # ISO8601
+    # Narrativa-espejo de apertura (2-5 frases): caracteriza a la persona y
+    # NOMBRA el patron dominante que emergio en la entrevista. Es la pieza que
+    # el dueño de producto destaco del GPT de referencia ("el resumen
+    # diagnostico me parecio genial"). Optional con default "" por
+    # retrocompatibilidad con perfiles ya guardados antes de existir el campo.
+    resumen_ejecutivo: str = ""
     competencias_foco: list[str]
     strengths: list[Strength]
     gaps: list[Gap]

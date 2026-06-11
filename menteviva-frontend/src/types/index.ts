@@ -132,6 +132,9 @@ export interface VerbalPatterns {
 
 export interface Diagnostico {
   completed_at: string; // ISO8601
+  // Narrativa-espejo de apertura: caracteriza a la persona y nombra el patron
+  // dominante de la entrevista. Optional por retrocompat con perfiles viejos.
+  resumen_ejecutivo?: string;
   competencias_foco: string[];
   strengths: Strength[];
   gaps: Gap[];

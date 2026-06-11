@@ -11,6 +11,8 @@ export function buildMockDiagnostico(userProfile?: UserProfile | null): Diagnost
   const rol = userProfile?.registro?.rol_objetivo ?? "tu rol";
   return {
     completed_at: new Date().toISOString(),
+    resumen_ejecutivo:
+      `Te presentaste, ${nombre}, como alguien que toma la iniciativa y se mueve con soltura cuando hay un problema concreto que resolver. Aparecio un patron consistente: tu fuerza esta en ejecutar y desbloquear, mas que en frenar a validar antes de actuar. El tema que mas volvio fue como comunicas decisiones tecnicas a quienes no comparten tu contexto.`,
     competencias_foco: ["comunicacion", "resolucion_de_problemas", "adaptabilidad"],
     strengths: [
       {
