@@ -12,6 +12,7 @@ import { DiagnosticoRecomendacion } from "./pages/DiagnosticoRecomendacion";
 import { Landing } from "./pages/Landing";
 import { MiPlan } from "./pages/MiPlan";
 import { AvatarSnapshot } from "./pages/__AvatarSnapshot";
+import { ChatLab } from "./pages/ChatLab";
 import { useSessionStore } from "./stores/sessionStore";
 import { useFirebaseAuth } from "./hooks/useFirebaseAuth";
 
@@ -101,6 +102,8 @@ function App() {
         <Route path="/simulation" element={<OnboardingGuard><Simulation /></OnboardingGuard>} />
         <Route path="/report" element={<OnboardingGuard><Report /></OnboardingGuard>} />
         <Route path="/mi-plan" element={<OnboardingGuard><MiPlan /></OnboardingGuard>} />
+        {/* Banco de pruebas de prompts (solo texto), sin guard de onboarding */}
+        <Route path="/chat-lab" element={<ChatLab />} />
         {/* Ruta interna sin guard — solo para generar snapshots PNG de los GLBs */}
         <Route path="/__snapshot/:model" element={<AvatarSnapshot />} />
       </Routes>

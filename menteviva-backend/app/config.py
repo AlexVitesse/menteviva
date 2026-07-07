@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     #   - gemini-3.1-flash-live-preview           <- el marcado "free" en pricing
     # OJO: gemini-2.0-flash-live-001 NO existe en v1beta para esta cuenta.
     gemini_model_live: str = "gemini-2.5-flash-native-audio-latest"
+    # Modelo Gemini de TEXTO (no audio) para el banco de pruebas de prompts
+    # (chat_text.py, provider="gemini"). Es el hermano de texto del native-audio:
+    # mismo prompt conciso + addendum que en voz, pero via generate_content, para
+    # evaluar el prompt "como si fuera Gemini" sin abrir sesion Live ni TTS.
+    gemini_model_text: str = "gemini-2.5-flash"
     # Flag para volver al pipeline Groq+ElevenLabs sin borrar codigo (rollback
     # barato durante el piloto). Lo consume el router cuando exista la rama WS.
     realtime_provider: str = "groq"  # "groq" | "gemini"

@@ -21,6 +21,7 @@ Formato de audio:
 - Salida (lo que genera Gemini): PCM16 mono 24 kHz (raw, sin contenedor).
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -365,3 +366,71 @@ async def open_session(
     async with client.aio.live.connect(model=model, config=config) as session:
         yield GeminiLiveSession(session, avatar_id)
     logger.info(f"[GeminiLive] Sesion cerrada - avatar={avatar_id}")
+
+
+async def generate_text(
+    messages: list[dict],
+    system_prompt: str,
+    *,
+    enable_closing_tool: bool = False,
+) -> tuple[str, bool]:
+    """Genera UNA respuesta de Gemini en modo TEXTO (sin voz).
+
+    Reproduce el MODELO Gemini que se usa en voz nativa pero por texto: mismo
+    proveedor y (si el caller pasa el prompt conciso + GEMINI_VOICE_ADDENDUM) el
+    mismo system_prompt que en la llamada Live, solo que via `generate_content`
+    (stateless, response=TEXT). No abre sesion Live ni produce audio. Pensado
+    para el banco de pruebas de prompts (chat_text.py, provider="gemini").
+
+    NOTA: usa `gemini_model_text` (flash de texto), NO el modelo native-audio de
+    voz; el prompt se evalua igual pero el modelo no es byte-a-byte el de la voz.
+
+    Devuelve (texto, closing) donde closing=True si el modelo llamo a
+    `finalizar_entrevista` (equivalente al marcador [CIERRE] del pipeline Groq).
+    """
+    if not settings.gemini_api_key:
+        raise RuntimeError(
+            "GEMINI_API_KEY no esta configurada. Obten una gratis en "
+            "https://aistudio.google.com y ponla en menteviva-backend/.env"
+        )
+
+    client = genai.Client(api_key=settings.gemini_api_key)
+
+    # Gemini usa el rol "model" para el asistente (no "assistant" como OpenAI/Groq).
+    contents = [
+        types.Content(
+            role="model" if m["role"] == "assistant" else "user",
+            parts=[types.Part(text=m["content"])],
+        )
+        for m in messages
+    ]
+
+    config = types.GenerateContentConfig(
+        system_instruction=types.Content(parts=[types.Part(text=system_prompt)]),
+    )
+    if enable_closing_tool:
+        config.tools = [CLOSING_TOOL]
+
+    def _call():
+        return client.models.generate_content(
+            model=settings.gemini_model_text,
+            contents=contents,
+            config=config,
+        )
+
+    # generate_content es sincrono en el SDK; a un hilo para no bloquear el loop.
+    resp = await asyncio.to_thread(_call)
+
+    text_parts: list[str] = []
+    closing = False
+    candidates = resp.candidates or []
+    cand = candidates[0] if candidates else None
+    if cand and cand.content and cand.content.parts:
+        for part in cand.content.parts:
+            if getattr(part, "text", None):
+                text_parts.append(part.text)
+            fc = getattr(part, "function_call", None)
+            if fc and getattr(fc, "name", "") == "finalizar_entrevista":
+                closing = True
+
+    return "".join(text_parts).strip(), closing
