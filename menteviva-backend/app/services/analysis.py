@@ -697,6 +697,14 @@ que lo que sigue es preliminar") en vez de inventar un perfil.
 5. PREGUNTA PARA LLEVARSE. Una pregunta abierta que invite a reflexionar
    despues. No una pregunta cerrada de si/no.
 
+5b. COACH_NOTE (nota final calida). Cierra con una observacion humana, tipo
+   coach que cree en la persona: retoma UNA frase textual que dijo (citala entre
+   comillas) y dale una perspectiva alentadora y concreta de por que eso es
+   valioso o hacia donde apunta. 2-4 frases, tono de acompañamiento (no
+   evaluacion, no repetir el resumen). Si la sesion fue corta o no hay una frase
+   citable que sostenga una nota honesta, deja coach_note en "" (vacio) — NUNCA
+   inventes calidez generica ("sigue asi", "vas por buen camino").
+
 6. LIMITES: maximo 3 strengths, maximo 3 gaps. Calidad sobre cantidad.
 
 7. COMPETENCIAS_FOCO (3-6 ids del catalogo): las habilidades que este usuario
@@ -760,6 +768,7 @@ Responde UNICAMENTE con un JSON valido con esta estructura exacta:
   ],
   "blind_spot": "<observacion conductual con cuidado>",
   "reflection_question": "<pregunta abierta>",
+  "coach_note": "<observacion final calida 'como coach': retoma UNA frase concreta que dijo la persona (citala) y dale una perspectiva alentadora y humana; 2-4 frases, tono de acompañamiento, no de evaluacion. Si no hay material para una nota honesta, deja \"\">",
   "verbal_patterns": {{
     "vague_verbs_detected": ["verbo1", "verbo2"],
     "we_vs_i_tendency": "alta|media|baja",

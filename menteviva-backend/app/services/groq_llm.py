@@ -31,6 +31,7 @@ import groq
 
 from app.config import settings
 from app.services.groq_pool import get_groq_client
+from app.services.llm_costs import log_llm_cost
 
 logger = logging.getLogger("menteviva")
 
@@ -166,12 +167,19 @@ async def chat_stream(
 
 async def chat_complete(
     messages: list[dict],
-    system_prompt: str
-) -> str:
+    system_prompt: str,
+    model: str | None = None,
+    return_usage: bool = False,
+) -> str | tuple[str, dict | None]:
     """
     Genera respuesta completa del LLM (sin streaming).
 
     Mismo fallback automatico que chat_stream.
+
+    Con return_usage=True devuelve (texto, usage) donde usage es
+    {"input_tokens": int, "output_tokens": int} ACUMULADO entre reintentos (el
+    usuario paga todos los intentos), o None si el proveedor no lo reporto.
+    El default (False) mantiene la firma clasica -> str (scripts existentes).
     """
     full_messages = [
         {"role": "system", "content": system_prompt},
@@ -179,11 +187,13 @@ async def chat_complete(
     ]
 
     client = get_groq_client()
-    primary = settings.groq_model_llm
+    primary = model or settings.groq_model_llm
+    total_usage: dict | None = None
 
-    def _call(model: str, temperature: float) -> str:
+    def _call(model_name: str, temperature: float) -> str:
+        nonlocal total_usage
         response = client.chat.completions.create(
-            model=model,
+            model=model_name,
             messages=full_messages,
             temperature=temperature,
             max_tokens=500,
@@ -191,6 +201,17 @@ async def chat_complete(
             presence_penalty=PRESENCE_PENALTY,
             stream=False,
         )
+        # Costo estimado del turno a los logs (los tokens de razonamiento de
+        # gpt-oss se facturan como output y ya vienen en completion_tokens).
+        usage = getattr(response, "usage", None)
+        if usage:
+            in_tok = getattr(usage, "prompt_tokens", 0) or 0
+            out_tok = getattr(usage, "completion_tokens", 0) or 0
+            log_llm_cost("groq", model_name, in_tok, out_tok)
+            if total_usage is None:
+                total_usage = {"input_tokens": 0, "output_tokens": 0}
+            total_usage["input_tokens"] += in_tok
+            total_usage["output_tokens"] += out_tok
         # gpt-oss-20b a veces "razona" y devuelve content None/"" sin excepcion.
         # Normalizamos a str para que ningun caller reviente con .strip().
         return (response.choices[0].message.content or "").strip()
@@ -209,21 +230,21 @@ async def chat_complete(
         # el mismo modelo casi siempre resuelve (igual que chat_stream).
         text = ""
 
-    if text:
-        return text
+    if not text:
+        # Vacio (content None/"" sin excepcion) o glitch en el primer intento:
+        # UN reintento a temperatura mas alta, igual que chat_stream. Un error
+        # real aqui se propaga; si vuelve vacio, re-enganche para no devolver "".
+        logger.warning(f"[LLM] {primary} sin texto en chat_complete; reintentando")
+        try:
+            text = _call(primary, 0.85)
+        except Exception as e:
+            if not _is_tool_use_glitch(e):
+                raise
+            logger.warning(f"[LLM] glitch tambien en reintento de chat_complete: {e}")
+            text = ""
 
-    # Vacio (content None/"" sin excepcion) o glitch en el primer intento:
-    # UN reintento a temperatura mas alta, igual que chat_stream. Un error real
-    # aqui se propaga; si vuelve vacio, re-enganche para no devolver "".
-    logger.warning(f"[LLM] {primary} sin texto en chat_complete; reintentando")
-    try:
-        text = _call(primary, 0.85)
-    except Exception as e:
-        if not _is_tool_use_glitch(e):
-            raise
-        logger.warning(f"[LLM] glitch tambien en reintento de chat_complete: {e}")
-        text = ""
-    return text or _next_reengage()
+    text = text or _next_reengage()
+    return (text, total_usage) if return_usage else text
 
 
 async def get_conversation_starter(system_prompt: str, avatar_name: str) -> str:

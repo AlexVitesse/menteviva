@@ -23,6 +23,7 @@ firebase-admin = "^6.0"
 # Gemini Live API (audio nativo en tiempo real). Reemplaza el pipeline
 # STT+LLM+TTS por una sola sesion bidireccional. Ver docs/plans/05_gemini_live_voice.md
 google-genai = "^2.8.0"
+openai = "^2.44.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

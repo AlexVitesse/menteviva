@@ -120,6 +120,33 @@ MIGRATIONS: list[tuple[int, str, list[str]]] = [
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_firebase_uid ON users(firebase_uid)",
         ],
     ),
+    (
+        3,
+        "chatlab: persistir conversaciones del banco (con ratings) aunque se reinicien",
+        [
+            # session_id lo genera el frontend (localStorage, ej. 'session-<ts>').
+            # Sin FK a users: el banco usa ids sinteticos 'chatlab:*' que pueden no
+            # existir aun en la tabla users. conversation_json incluye el feedback
+            # (like/dislike) por mensaje, asi la calificacion tambien queda en BD.
+            """
+            CREATE TABLE IF NOT EXISTS chatlab_conversations (
+                session_id         TEXT PRIMARY KEY,
+                user_id            TEXT,
+                name               TEXT,
+                avatar_id          TEXT,
+                provider           TEXT,
+                model              TEXT,
+                minutos            INTEGER,
+                conversation_json  TEXT NOT NULL,
+                closed             BOOLEAN NOT NULL DEFAULT FALSE,
+                created_at         TEXT NOT NULL,
+                updated_at         TEXT NOT NULL
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_chatlab_conv_user ON chatlab_conversations(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_chatlab_conv_updated ON chatlab_conversations(updated_at)",
+        ],
+    ),
 ]
 
 

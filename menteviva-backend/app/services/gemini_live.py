@@ -25,13 +25,71 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from threading import Lock
 
 from google import genai
 from google.genai import types
 
 from app.config import settings
+from app.services.llm_costs import log_llm_cost
 
 logger = logging.getLogger("menteviva")
+
+# ============================================================
+# Rotacion de API keys de Gemini (round-robin, thread-safe)
+# ============================================================
+# El free tier de Gemini es 20 req/dia POR KEY POR MODELO. Con varias keys en
+# .env (GEMINI_API_KEY, GEMINI_API_KEY2/3/4) repartimos las llamadas y estiramos
+# la cuota, igual que GroqPool. La lista se lee de settings en cada llamada para
+# no cachear un estado viejo si cambian las keys.
+_gemini_key_index = 0
+_gemini_key_lock = Lock()
+
+
+def _next_gemini_key() -> str:
+    """Siguiente API key de Gemini en round-robin. Lanza si no hay ninguna."""
+    global _gemini_key_index
+    keys = settings.gemini_api_keys
+    if not keys:
+        raise RuntimeError(
+            "GEMINI_API_KEY no esta configurada. Obten una gratis en "
+            "https://aistudio.google.com y ponla en menteviva-backend/.env"
+        )
+    with _gemini_key_lock:
+        key = keys[_gemini_key_index % len(keys)]
+        _gemini_key_index += 1
+    return key
+
+
+def _gemini_client() -> genai.Client:
+    """Cliente Gemini con la siguiente key del pool de rotacion."""
+    return genai.Client(api_key=_next_gemini_key())
+
+
+def _num_gemini_keys() -> int:
+    return len(settings.gemini_api_keys)
+
+
+def _should_try_next_key(e: Exception) -> bool:
+    """¿El error justifica reintentar con OTRA key del pool?
+
+    Sí para cuota/rate-limit (429), auth (key inválida/sin permisos) y caídas
+    transitorias del servidor: otra key (p.ej. una de pago con cupo) puede
+    resolverlo. NO para bloqueos de contenido, modelo inexistente o request
+    inválido: darían el mismo resultado con cualquier key -> no gastamos cuota.
+    """
+    s = str(e).lower()
+    return any(
+        k in s
+        for k in (
+            "resource_exhausted", "rate limit", "rate-limit", "ratelimit",
+            "quota", "too many requests", "429",
+            "api key", "api_key", "unauthorized", "401", "permission_denied",
+            "permission denied", "invalid authentication",
+            "503", "500", "unavailable", "overloaded", "internal server",
+            "timeout", "timed out",
+        )
+    )
 
 # Sample rate del audio que emite Gemini Live (PCM16 mono). Lo necesita el
 # consumidor para envolver los bytes en un WAV o reproducirlos correctamente.
@@ -81,6 +139,11 @@ REGLAS PARA ESTA LLAMADA DE VOZ EN TIEMPO REAL (máxima prioridad)
 3. Habla natural, cálido y BREVE, como en una conversación real — no leas un guion
    ni expliques la metodología como un instructivo largo. Intégrala con naturalidad.
 4. Una sola pregunta por turno. Frases cortas.
+5. TEXTO PLANO: esto es voz. Nada de markdown (asteriscos **, viñetas, títulos)
+   ni emojis. Para enfatizar, entónalo — no lo marques con símbolos.
+6. SOLO DIÁLOGO: todo lo que emites se DICE en voz alta. Nada de acotaciones ni
+   narración ("Silencio.", "(pausa)", "El candidato necesita procesar", "*asiente*").
+   Si quieres dar espacio, di una frase breve o termina tu turno — no lo describas.
 """
 
 
@@ -344,13 +407,7 @@ async def open_session(
             await live.send_text("Hola")
             turn = await live.collect_turn()
     """
-    if not settings.gemini_api_key:
-        raise RuntimeError(
-            "GEMINI_API_KEY no esta configurada. Obten una gratis en "
-            "https://aistudio.google.com y ponla en menteviva-backend/.env"
-        )
-
-    client = genai.Client(api_key=settings.gemini_api_key)
+    client = _gemini_client()  # rota entre las keys configuradas
     voice = get_voice(avatar_id)
     model = settings.gemini_model_live
     # Anexamos las reglas de voz al final (mas peso para el modelo native-audio).
@@ -373,7 +430,9 @@ async def generate_text(
     system_prompt: str,
     *,
     enable_closing_tool: bool = False,
-) -> tuple[str, bool]:
+    model: str | None = None,
+    return_usage: bool = False,
+) -> tuple[str, bool] | tuple[str, bool, dict | None]:
     """Genera UNA respuesta de Gemini en modo TEXTO (sin voz).
 
     Reproduce el MODELO Gemini que se usa en voz nativa pero por texto: mismo
@@ -387,15 +446,10 @@ async def generate_text(
 
     Devuelve (texto, closing) donde closing=True si el modelo llamo a
     `finalizar_entrevista` (equivalente al marcador [CIERRE] del pipeline Groq).
+    Con return_usage=True devuelve (texto, closing, usage) donde usage es
+    {"input_tokens": int, "output_tokens": int} (thinking contado como output,
+    que es como factura Google) o None si el SDK no reporto usage_metadata.
     """
-    if not settings.gemini_api_key:
-        raise RuntimeError(
-            "GEMINI_API_KEY no esta configurada. Obten una gratis en "
-            "https://aistudio.google.com y ponla en menteviva-backend/.env"
-        )
-
-    client = genai.Client(api_key=settings.gemini_api_key)
-
     # Gemini usa el rol "model" para el asistente (no "assistant" como OpenAI/Groq).
     contents = [
         types.Content(
@@ -411,15 +465,52 @@ async def generate_text(
     if enable_closing_tool:
         config.tools = [CLOSING_TOOL]
 
-    def _call():
-        return client.models.generate_content(
-            model=settings.gemini_model_text,
-            contents=contents,
-            config=config,
-        )
+    model_to_use = model or settings.gemini_model_text
 
-    # generate_content es sincrono en el SDK; a un hilo para no bloquear el loop.
-    resp = await asyncio.to_thread(_call)
+    # Failover entre keys: si una da 429/cuota/auth/5xx, reintenta con la
+    # siguiente del pool (round-robin). Cada _gemini_client() avanza el indice,
+    # asi que N intentos prueban N keys distintas. La ultima excepcion propaga.
+    attempts = max(1, _num_gemini_keys())
+    last_err: Exception | None = None
+    resp = None
+    for i in range(attempts):
+        client = _gemini_client()
+
+        def _call():
+            return client.models.generate_content(
+                model=model_to_use,
+                contents=contents,
+                config=config,
+            )
+
+        try:
+            # generate_content es sincrono en el SDK; a un hilo para no bloquear.
+            resp = await asyncio.to_thread(_call)
+            break
+        except Exception as e:  # noqa: BLE001 - clasificamos abajo
+            last_err = e
+            if i < attempts - 1 and _should_try_next_key(e):
+                logger.warning(
+                    f"[GeminiText] key {i + 1}/{attempts} fallo ({str(e)[:120]}); "
+                    f"reintentando con la siguiente key"
+                )
+                continue
+            raise
+
+    if resp is None:  # defensivo: no deberia pasar (el bucle propaga antes)
+        raise last_err or RuntimeError("Gemini no devolvio respuesta")
+
+    # Costo estimado del turno a los logs. Gemini factura los tokens de "thinking"
+    # como output, asi que los sumamos a candidates_token_count.
+    usage = getattr(resp, "usage_metadata", None)
+    usage_out: dict | None = None
+    if usage:
+        in_tok = getattr(usage, "prompt_token_count", 0) or 0
+        out_tok = (getattr(usage, "candidates_token_count", 0) or 0) + (
+            getattr(usage, "thoughts_token_count", 0) or 0
+        )
+        log_llm_cost("gemini", model_to_use, in_tok, out_tok)
+        usage_out = {"input_tokens": in_tok, "output_tokens": out_tok}
 
     text_parts: list[str] = []
     closing = False
@@ -433,4 +524,7 @@ async def generate_text(
             if fc and getattr(fc, "name", "") == "finalizar_entrevista":
                 closing = True
 
-    return "".join(text_parts).strip(), closing
+    text = "".join(text_parts).strip()
+    if return_usage:
+        return text, closing, usage_out
+    return text, closing

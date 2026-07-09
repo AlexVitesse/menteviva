@@ -153,6 +153,66 @@ async def save_diagnostic(
     return diag_id
 
 
+async def save_chatlab_conversation(
+    session_id: str,
+    conversation: list[dict],
+    *,
+    user_id: str | None = None,
+    name: str | None = None,
+    avatar_id: str | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+    minutos: int | None = None,
+    closed: bool = False,
+) -> None:
+    """Upsert de una conversacion del ChatLab (keyed por session_id del frontend).
+
+    Se llama tras cada turno y cada cambio de rating, asi la conversacion (con su
+    feedback like/dislike incrustado en conversation_json) queda en BD y NO se
+    pierde aunque el usuario reinicie/limpie o cambie de dispositivo. Idempotente:
+    la misma session_id sobrescribe su fila (siempre refleja el estado actual).
+    """
+    now = _now_iso()
+    async with get_db() as db:
+        async with db.cursor() as cur:
+            await cur.execute(
+                """
+                INSERT INTO chatlab_conversations (
+                    session_id, user_id, name, avatar_id, provider, model,
+                    minutos, conversation_json, closed, created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (session_id) DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    name = EXCLUDED.name,
+                    avatar_id = EXCLUDED.avatar_id,
+                    provider = EXCLUDED.provider,
+                    model = EXCLUDED.model,
+                    minutos = EXCLUDED.minutos,
+                    conversation_json = EXCLUDED.conversation_json,
+                    closed = EXCLUDED.closed,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (
+                    session_id,
+                    user_id,
+                    name,
+                    avatar_id,
+                    provider,
+                    model,
+                    minutos,
+                    json.dumps(conversation, ensure_ascii=False),
+                    closed,
+                    now,
+                    now,
+                ),
+            )
+        await db.commit()
+    logger.info(
+        f"[DB] chatlab conversation upsert session={session_id} "
+        f"turnos={len(conversation)} user={user_id}"
+    )
+
+
 async def get_user_profile(user_id: str) -> Optional[UserProfile]:
     """
     Devuelve el UserProfile completo (registro + diagnostico mas reciente).

@@ -1,3 +1,4 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -34,6 +35,9 @@ class Settings(BaseSettings):
             if k and k.startswith("gsk_") and len(k) >= 50 and "xxxx" not in k
         ]
 
+    # ChatGPT / OpenAI API Key
+    chatgpt_api_key: str = ""
+
     # ElevenLabs TTS
     elevenlabs_api_key: str = ""
     elevenlabs_model: str = "eleven_multilingual_v2"
@@ -42,6 +46,19 @@ class Settings(BaseSettings):
     # PoC (Fase 1) para reemplazar el pipeline Whisper+gpt-oss+ElevenLabs por
     # una sola sesion bidireccional. Ver docs/plans/05_gemini_live_voice.md.
     gemini_api_key: str = ""
+    # Keys extra para ROTACION round-robin (igual que Groq): reparte las llamadas
+    # y estira el free tier (20 req/dia POR KEY POR MODELO). Aceptamos las dos
+    # convenciones de nombre por si ya la pusiste sin guion: GEMINI_API_KEY2 y
+    # GEMINI_API_KEY_2 apuntan al mismo campo.
+    gemini_api_key_2: str = Field(
+        "", validation_alias=AliasChoices("GEMINI_API_KEY_2", "GEMINI_API_KEY2")
+    )
+    gemini_api_key_3: str = Field(
+        "", validation_alias=AliasChoices("GEMINI_API_KEY_3", "GEMINI_API_KEY3")
+    )
+    gemini_api_key_4: str = Field(
+        "", validation_alias=AliasChoices("GEMINI_API_KEY_4", "GEMINI_API_KEY4")
+    )
     # Audio nativo (decision de producto). Modelos Live disponibles en la cuenta
     # (client.models.list filtrando bidiGenerateContent):
     #   - gemini-2.5-flash-native-audio-latest   <- default (auto-sigue el mas nuevo)
@@ -53,7 +70,7 @@ class Settings(BaseSettings):
     # (chat_text.py, provider="gemini"). Es el hermano de texto del native-audio:
     # mismo prompt conciso + addendum que en voz, pero via generate_content, para
     # evaluar el prompt "como si fuera Gemini" sin abrir sesion Live ni TTS.
-    gemini_model_text: str = "gemini-2.5-flash"
+    gemini_model_text: str = "gemini-3.5-flash"
     # Flag para volver al pipeline Groq+ElevenLabs sin borrar codigo (rollback
     # barato durante el piloto). Lo consume el router cuando exista la rama WS.
     realtime_provider: str = "groq"  # "groq" | "gemini"
@@ -65,6 +82,25 @@ class Settings(BaseSettings):
     gemini_vad_start_sensitivity: str = "HIGH"  # HIGH | LOW
     gemini_vad_end_sensitivity: str = "HIGH"    # HIGH | LOW
     gemini_vad_silence_ms: int = 500
+
+    @property
+    def gemini_api_keys(self) -> list[str]:
+        """API keys de Gemini validas para rotacion round-robin.
+
+        Filtra vacias y placeholders. Las keys de Google empiezan con 'AIza';
+        no exigimos el prefijo por si cambian el formato, solo descartamos
+        vacias y el placeholder tipico ('xxxx' / 'your').
+        """
+        keys = [
+            self.gemini_api_key,
+            self.gemini_api_key_2,
+            self.gemini_api_key_3,
+            self.gemini_api_key_4,
+        ]
+        return [
+            k for k in keys
+            if k and "xxxx" not in k.lower() and not k.lower().startswith("your")
+        ]
 
     # ============ Simli (avatar fotorrealista en video) ============
     # API key de https://app.simli.com. La usa el backend para emitir session

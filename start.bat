@@ -36,6 +36,14 @@ if not exist "menteviva-backend\.env" (
     pause
 )
 
+:: Levantar Postgres dev (Docker) si esta detenido; sin el, el backend se
+:: queda colgado abriendo el pool y nunca escucha en :8000.
+docker start menteviva-pg-dev >nul 2>&1
+if errorlevel 1 (
+    echo [AVISO] No se pudo iniciar menteviva-pg-dev. ^(Docker Desktop apagado?^)
+    echo         El backend no arrancara sin Postgres en :5433.
+)
+
 echo [1/2] Iniciando Backend (FastAPI - Puerto 8000)...
 start "Mente Viva - Backend" cmd /k "cd /d "%~dp0menteviva-backend" && poetry run python -m app"
 

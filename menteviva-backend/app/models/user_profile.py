@@ -63,6 +63,12 @@ class Diagnostico(BaseModel):
     gaps: list[Gap]
     blind_spot: str
     reflection_question: str
+    # Nota final cálida "como coach" (analoga a la "Observacion adicional como
+    # coach" del GPT de referencia): retoma una frase concreta que dijo la
+    # persona y le da una perspectiva alentadora y humana. Cierra el diagnostico
+    # en tono de acompañamiento, no de evaluacion. Optional (default "") por
+    # retrocompatibilidad con perfiles guardados antes de existir el campo.
+    coach_note: str = ""
     verbal_patterns: VerbalPatterns
     recommended_next_scenario: RecommendedScenario
     recommended_next_level: RecommendedLevel

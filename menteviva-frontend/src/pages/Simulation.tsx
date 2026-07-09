@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff, Clock, Loader2, Pause, Play } from "lucide-react";
 import { AnimatedAvatar, AvatarCharacter } from "../components/avatar/AnimatedAvatar";
+import { MicLevelMeter } from "../components/voice/MicLevelMeter";
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
 import { useSessionStore } from "../stores/sessionStore";
 import { useWebSocket, type WsInitPayload } from "../hooks/useWebSocket";
@@ -87,7 +88,28 @@ export function Simulation() {
   // hooks) pero solo se conecta cuando IS_GEMINI; en modo Groq queda inerte.
   const gemini = useGeminiLive({ avatarId: selectedAvatar?.id, initPayload });
 
-  const { isRecording, error: audioError, startRecording, stopRecording } = useAudioRecorder();
+  // Si la grabacion llega al tope de duracion se corta sola: enviamos el audio
+  // igual que si el usuario hubiera soltado, para no perder lo que dijo.
+  const handleAutoStop = useCallback(
+    (audioBase64: string) => {
+      playSound("messageSent");
+      sendAudio(audioBase64);
+    },
+    [playSound, sendAudio]
+  );
+
+  const {
+    isRecording,
+    recordingSeconds,
+    error: audioError,
+    analyser,
+    initMic,
+    releaseMic,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+    clearError,
+  } = useAudioRecorder({ onAutoStop: handleAutoStop });
 
   useEffect(() => {
     if (!selectedAvatar) {
@@ -107,6 +129,9 @@ export function Simulation() {
       return () => gemini.disconnect();
     }
     connect();
+    // Pre-calentar el mic: el permiso se pide una sola vez al entrar y cada
+    // pulsacion de "hablar" arranca al instante (sin perder primeras palabras).
+    initMic();
     return () => disconnect();
   }, [selectedAvatar]);
 
@@ -154,9 +179,6 @@ export function Simulation() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Debounce para evitar doble-trigger en mobile (touch + click sintetico)
-  const lastButtonRef = useRef(0);
-
   // Pausa/reanuda la voz del avatar. isPaused distingue "pausado por el usuario"
   // de "termino de hablar" (ambos dejan isPlaying en false).
   function handleTogglePause() {
@@ -183,48 +205,106 @@ export function Simulation() {
       gemini.setMicMuted(next);
       return;
     }
-    // Si estabas grabando (push-to-talk + mute con la otra mano), cancela la
-    // grabacion en curso: libera el mic y descarta el audio (no se envia).
-    if (next && isRecording) {
-      await stopRecording();
+    if (next) {
+      // Si estabas grabando (push-to-talk + mute con la otra mano), descarta
+      // el audio en curso y suelta el mic por completo: el indicador de
+      // grabacion del navegador se apaga (señal de confianza real de mute).
+      if (isRecording) cancelRecording();
+      pressActiveRef.current = false;
+      releaseMic();
+    } else {
+      // Al desmutear, re-calentar el mic para que la proxima pulsacion
+      // arranque al instante.
+      initMic();
     }
     // Aprovechamos el gesto del usuario para desbloquear el playback en iOS.
     await unlockAudio();
   }
 
-  async function handleVoiceButton() {
-    // En Gemini el mic es continuo: el boton no es push-to-talk (el control de
-    // voz es el de mute). No hacemos nada aqui.
+  // Push-to-talk real: presionar = grabar, soltar = enviar. pressActiveRef es
+  // la fuente de verdad sincrona (el estado isRecording puede llegar un render
+  // tarde si el usuario presiona y suelta muy rapido).
+  const pressActiveRef = useRef(false);
+
+  async function startTalking() {
+    // En Gemini el mic es continuo: no hay push-to-talk (el control es mute).
     if (IS_GEMINI) return;
-
-    const now = Date.now();
-    if (now - lastButtonRef.current < 250) return;
-    lastButtonRef.current = now;
-
-    // Desbloquea audio en iOS Safari en el primer toque
-    await unlockAudio();
+    // Desbloquea el playback en iOS aprovechando el gesto. Sin await: el
+    // unlock puede tardar segundos la primera vez y no debe retrasar el
+    // arranque de la grabacion (recorta las primeras palabras).
+    void unlockAudio();
 
     // Mic silenciado: no grabamos ni enviamos nada. El avatar no te oye.
     // Leemos el ref (no el estado del closure) para no perder un muteo recien
     // hecho con la otra mano en el mismo frame.
-    if (isMicMutedRef.current) return;
+    if (isMicMutedRef.current || pressActiveRef.current) return;
+    if (status !== "ready") return;
 
-    if (isRecording) {
-      playSound("recordStop");
-      const audioBase64 = await stopRecording();
-      if (audioBase64) {
-        playSound("messageSent");
-        sendAudio(audioBase64);
-      }
-    } else {
-      // El usuario pasa a hablar: si habia pausado la voz del avatar, ese clip
-      // ya quedo atras. Limpiamos isPaused para no dejar el subtitulo anterior
-      // clavado en pantalla durante el resto de la sesion.
-      setIsPaused(false);
-      playSound("recordStart");
-      startRecording();
+    pressActiveRef.current = true;
+    // El usuario pasa a hablar: si habia pausado la voz del avatar, ese clip
+    // ya quedo atras. Limpiamos isPaused para no dejar el subtitulo anterior
+    // clavado en pantalla durante el resto de la sesion.
+    setIsPaused(false);
+    playSound("recordStart");
+    await startRecording();
+  }
+
+  async function stopTalking() {
+    if (IS_GEMINI) return;
+    if (!pressActiveRef.current) return;
+    pressActiveRef.current = false;
+
+    playSound("recordStop");
+    const audioBase64 = await stopRecording();
+    if (audioBase64) {
+      playSound("messageSent");
+      sendAudio(audioBase64);
     }
   }
+
+  function cancelTalking() {
+    if (IS_GEMINI || !pressActiveRef.current) return;
+    pressActiveRef.current = false;
+    cancelRecording();
+  }
+
+  // Refs a los handlers para que los listeners globales (barra espaciadora)
+  // siempre vean la version del render actual.
+  const startTalkingRef = useRef(startTalking);
+  const stopTalkingRef = useRef(stopTalking);
+  startTalkingRef.current = startTalking;
+  stopTalkingRef.current = stopTalking;
+
+  // Barra espaciadora como push-to-talk en desktop (manten presionada).
+  useEffect(() => {
+    if (IS_GEMINI) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || e.repeat) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      e.preventDefault();
+      startTalkingRef.current();
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      e.preventDefault();
+      stopTalkingRef.current();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
+
+  // Los errores de audio (grabacion corta, permiso, etc.) se auto-descartan;
+  // no deben quedarse tapando la vista como los errores de servidor.
+  useEffect(() => {
+    if (!audioError) return;
+    const t = window.setTimeout(() => clearError(), 5000);
+    return () => clearTimeout(t);
+  }, [audioError, clearError]);
 
   function handleEndSession() {
     if (isEnding) return; // Evitar doble click
@@ -432,7 +512,7 @@ export function Simulation() {
                 <p className="text-white/40 text-xs text-center py-4">
                   {IS_GEMINI
                     ? "Habla cuando quieras, te escucho"
-                    : "Mantén presionado el micrófono para hablar"}
+                    : "Mantén presionado el micrófono (o la barra espaciadora) para hablar"}
                 </p>
               ) : (
                 messages.slice(-6).map((msg) => (
@@ -458,15 +538,23 @@ export function Simulation() {
 
       {/* Footer - Controles estilo Zoom */}
       <footer className="bg-[#232323] px-6 py-3 flex items-center justify-center gap-4 border-t border-white/10">
-        {/* Botón Micrófono (Push to Talk) */}
+        {/* Botón Micrófono (Push to Talk). Pointer events unifican mouse y
+            touch sin el "click sintetico" duplicado de mobile; la captura del
+            pointer garantiza que el pointerup llegue al boton aunque el dedo
+            se deslice fuera (la grabacion nunca queda pegada). */}
         <motion.button
-          onMouseDown={handleVoiceButton}
-          onMouseUp={handleVoiceButton}
-          onTouchStart={handleVoiceButton}
-          onTouchEnd={handleVoiceButton}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            startTalking();
+          }}
+          onPointerUp={stopTalking}
+          onPointerCancel={cancelTalking}
+          onContextMenu={(e) => e.preventDefault()}
           whileTap={{ scale: IS_GEMINI ? 1 : 0.95 }}
           disabled={IS_GEMINI ? true : status !== "ready" || isMicMuted}
+          title="Mantén presionado para hablar (o la barra espaciadora)"
           className={`
+            touch-none select-none
             flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all
             ${IS_GEMINI
               ? isMicMuted
@@ -568,6 +656,33 @@ export function Simulation() {
         </button>
       </footer>
 
+      {/* Píldora de grabación: timer + nivel de voz real. Feedback inmediato
+          de "te estoy escuchando" visible también en móvil (donde el tile
+          "Tú" está oculto). */}
+      <AnimatePresence>
+        {isRecording && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2 rounded-full bg-black/80 border border-red-500/40 backdrop-blur-sm shadow-lg"
+          >
+            <motion.span
+              animate={{ opacity: [1, 0.3, 1] }}
+              transition={{ repeat: Infinity, duration: 1.2 }}
+              className="w-2.5 h-2.5 bg-red-500 rounded-full shrink-0"
+            />
+            <span className="text-white font-mono text-sm tabular-nums">
+              {formatTime(recordingSeconds)}
+            </span>
+            <MicLevelMeter analyser={analyser} active={isRecording} className="text-red-400" />
+            <span className="text-white/60 text-xs hidden sm:inline">
+              Suelta para enviar
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Overlay de análisis */}
       <AnimatePresence>
         {isEnding && (
@@ -605,7 +720,10 @@ export function Simulation() {
                   <p className="text-white/80 text-xs mt-1">{serverError}</p>
                 )}
                 <button
-                  onClick={() => setServerError(null)}
+                  onClick={() => {
+                    setServerError(null);
+                    clearError();
+                  }}
                   className="mt-2 text-xs text-white underline hover:no-underline"
                 >
                   Cerrar
