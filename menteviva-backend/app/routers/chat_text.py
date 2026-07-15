@@ -13,6 +13,12 @@ Endpoints:
 - POST /api/chat/diagnostico -> corre el analisis de produccion sobre la charla y
                                 (opcional) lo persiste bajo user_id "chatlab:<nombre>"
 
+Seguridad / Deploy en Producción:
+- En producción, es imperativo setear `CHATLAB_TOKEN` en las variables de entorno (.env)
+  ya que el piloto corre a través de un túnel público de Cloudflare. Si está seteado,
+  los endpoints exigen el header `X-ChatLab-Token` (401 si falta o no coincide).
+  En local, si se deja vacío, actúa en modo passthrough sin fricción.
+
 Notas:
 - El banco corre el prompt MAESTRO para todos los motores (mismo que Groq/ChatGPT)
   -> comparacion justa. `use_voice_prompt=true` es opt-in al prompt conciso de voz.
@@ -25,13 +31,16 @@ import re
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel
 
 from app.config import settings
 from app.models import UserProfile
 from app.models.user_profile import Registro
-from app.prompts.entrevistador import build_gemini_entrevistador_prompt
+from app.prompts.entrevistador import (
+    build_gemini_entrevistador_prompt,
+    build_session_state_note,
+)
 from app.prompts.scenarios import get_all_avatars, get_avatar, get_system_prompt
 from app.services.analysis import generate_user_profile
 from app.services.gemini_live import GEMINI_VOICE_ADDENDUM, generate_text
@@ -41,11 +50,31 @@ from app.services.openai_llm import chat_complete_openai
 from app.services.user_repo import save_chatlab_conversation, save_diagnostic, upsert_user
 
 logger = logging.getLogger("menteviva")
-router = APIRouter()
+
+
+async def verify_chatlab_token(x_chatlab_token: str | None = Header(None, alias="X-ChatLab-Token")):
+    """Verifica el token de acceso si settings.chatlab_token está configurado."""
+    if settings.chatlab_token:
+        if not x_chatlab_token or x_chatlab_token != settings.chatlab_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Token de acceso al ChatLab faltante o inválido."
+            )
+
+
+router = APIRouter(dependencies=[Depends(verify_chatlab_token)])
 
 # Misma marca de cierre que usa el flujo realtime (conversation.py). Aqui solo
 # la limpiamos del texto para que no aparezca cruda en la UI de pruebas.
 CLOSING_MARKER = "[CIERRE]"
+
+
+def _extract_closing(reply: str) -> tuple[str, bool]:
+    """Extrae el marcador [CIERRE] del texto y devuelve (texto_limpio, hay_cierre)."""
+    closing = CLOSING_MARKER in reply
+    if closing:
+        reply = reply.replace(CLOSING_MARKER, "").strip()
+    return reply, closing
 
 
 def _strip_stage_directions(text: str) -> str:
@@ -95,7 +124,7 @@ class ChatRequest(BaseModel):
     #   "groq"   -> prompt MAESTRO (get_system_prompt) + Groq gpt-oss  [produccion texto]
     #   "gemini" -> para el diagnostico: prompt CONCISO + GEMINI_VOICE_ADDENDUM
     #               + modelo Gemini de texto = "como si fuera la voz, pero sin audio".
-    provider: str = "groq"  # "groq" | "gemini"
+    provider: str = "groq"  # "groq" | "gemini" | "chatgpt"
     messages: list[ChatMessage] = []
     # Si True, el avatar inicia la conversacion (util cuando messages esta vacio).
     # Inyecta un "nudge" como turno de usuario SOLO para la llamada al LLM; no se
@@ -114,6 +143,10 @@ class ChatRequest(BaseModel):
     # Pon use_voice_prompt=True SOLO si quieres evaluar el prompt CONCISO de voz
     # (lo que recibe Gemini native-audio en produccion).
     use_voice_prompt: bool = False
+    # Cronometro del frontend: segundos transcurridos desde el primer turno de la
+    # sesion. Solo diagnostico: alimenta la NOTA DEL SISTEMA de ritmo (el modelo
+    # no tiene reloj; con esto sabe en que % de la sesion va y cuando cerrar).
+    elapsed_seconds: int | None = None
 
 
 class ChatResponse(BaseModel):
@@ -280,6 +313,24 @@ async def chat(req: ChatRequest) -> ChatResponse:
     if req.greet:
         # El nudge va como ultimo turno de usuario para gatillar la apertura.
         messages.append({"role": "user", "content": _GREET_NUDGE})
+    elif is_diagnostico and messages and messages[-1]["role"] == "user":
+        # NOTA DEL SISTEMA de ritmo: el modelo no tiene reloj, asi que le
+        # anexamos al ultimo turno del usuario el avance de la sesion (tiempo
+        # real del cronometro del frontend + intercambios respondidos; manda el
+        # mayor). Con eso Sofia señaliza avance ("ultima pregunta...") y cierra
+        # a tiempo en vez de entrevistar sin fin. Solo para la llamada al LLM:
+        # el cliente nunca guarda la nota en su historial.
+        note = build_session_state_note(
+            (req.session_vars or {}).get("minutos"),
+            elapsed_seconds=req.elapsed_seconds,
+            exchanges=sum(1 for m in req.messages if m.role == "user"),
+            cierre_como_tool=serve_voice_prompt,
+        )
+        if note:
+            messages[-1] = {
+                **messages[-1],
+                "content": f"{messages[-1]['content']}\n\n{note}",
+            }
 
     if not messages:
         raise HTTPException(
@@ -312,9 +363,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
                     messages, system_prompt, enable_closing_tool=False,
                     model=model_used, return_usage=True,
                 )
-                closing = CLOSING_MARKER in reply
-                if closing:
-                    reply = reply.replace(CLOSING_MARKER, "").strip()
+                reply, closing = _extract_closing(reply)
         elif provider == "chatgpt":
             # gpt-5.5 para el entrevistador (mejor calidad) y gpt-5.4-mini para el
             # resto (económico) si no se especifica un modelo.
@@ -322,17 +371,13 @@ async def chat(req: ChatRequest) -> ChatResponse:
             reply, usage = await chat_complete_openai(
                 messages, system_prompt, model=model_used, return_usage=True
             )
-            closing = CLOSING_MARKER in reply
-            if closing:
-                reply = reply.replace(CLOSING_MARKER, "").strip()
+            reply, closing = _extract_closing(reply)
         else:
             model_used = req.model or settings.groq_model_llm
             reply, usage = await chat_complete(
                 messages, system_prompt, model=model_used, return_usage=True
             )
-            closing = CLOSING_MARKER in reply
-            if closing:
-                reply = reply.replace(CLOSING_MARKER, "").strip()
+            reply, closing = _extract_closing(reply)
     except HTTPException:
         raise
     except Exception as e:
@@ -517,6 +562,21 @@ class SaveConversationRequest(BaseModel):
     # Feedback like/dislike por mensaje (alineado por indice con `messages`).
     # Se incrusta en conversation_json para que la calificacion quede en BD.
     feedback: list[str | None] = []
+    # Comentario del dislike ("por que no gusto") por mensaje, alineado por indice
+    # con `messages`. Se incrusta junto al feedback en conversation_json.
+    feedback_comments: list[str | None] = []
+    # Encuesta de satisfaccion del diagnostico {rating:1-5, comment, submitted_at}.
+    # Se guarda en su propia columna (satisfaction_json). None hasta que el
+    # usuario la envia.
+    satisfaction: dict | None = None
+    # Cronometro de la sesion: ISO del primer turno y duracion real (segundos)
+    # que llevo realizarla. Para "que quede registrado" el tiempo de la sesion.
+    started_at: str | None = None
+    duration_seconds: int | None = None
+    # Fiabilidad: cuantos errores del proveedor (502, 429…) vio el usuario y su
+    # detalle [{at, status, message}]. Aunque reintente con exito, queda el rastro.
+    error_count: int = 0
+    errors: list[dict] | None = None
     # Registro para derivar un user_id estable (chatlab:<slug>).
     user_profile: dict | None = None
 
@@ -533,13 +593,16 @@ async def save_conversation(req: SaveConversationRequest) -> dict:
     if not req.session_id:
         raise HTTPException(status_code=400, detail="Falta session_id.")
 
-    # Incrustamos el feedback en cada mensaje (alineado por indice).
+    # Incrustamos el feedback (y su comentario) en cada mensaje (alineado por indice).
     conversation: list[dict] = []
     for i, m in enumerate(req.messages):
         item: dict = {"role": m.role, "content": m.content}
         fb = req.feedback[i] if i < len(req.feedback) else None
         if fb:
             item["feedback"] = fb
+        comment = req.feedback_comments[i] if i < len(req.feedback_comments) else None
+        if comment:
+            item["feedback_comment"] = comment
         conversation.append(item)
 
     nombre = ((req.user_profile or {}).get("registro") or {}).get("nombre") or ""
@@ -556,6 +619,11 @@ async def save_conversation(req: SaveConversationRequest) -> dict:
             model=req.model,
             minutos=req.minutos,
             closed=req.closed,
+            satisfaction=req.satisfaction,
+            started_at=req.started_at,
+            duration_seconds=req.duration_seconds,
+            error_count=req.error_count,
+            errors=req.errors,
         )
         return {"saved": True}
     except Exception as e:

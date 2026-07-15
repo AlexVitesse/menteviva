@@ -147,6 +147,31 @@ MIGRATIONS: list[tuple[int, str, list[str]]] = [
             "CREATE INDEX IF NOT EXISTS idx_chatlab_conv_updated ON chatlab_conversations(updated_at)",
         ],
     ),
+    (
+        4,
+        "chatlab: satisfaccion del diagnostico (estrellas + comentario) por sesion",
+        [
+            # JSON serializado {rating:1-5, comment:str, submitted_at:iso}. El
+            # comentario por-mensaje del dislike (el "por que no gusto") ya viaja
+            # dentro de conversation_json (campo feedback_comment por mensaje),
+            # asi que aqui solo hace falta la encuesta de satisfaccion global.
+            "ALTER TABLE chatlab_conversations ADD COLUMN IF NOT EXISTS satisfaction_json TEXT",
+        ],
+    ),
+    (
+        5,
+        "chatlab: telemetria de UX (tiempo de realizacion + errores 502) por sesion",
+        [
+            # started_at: ISO del primer turno. duration_seconds: tiempo real que
+            # llevo la sesion (cronometro del frontend, hasta el cierre/diagnostico).
+            "ALTER TABLE chatlab_conversations ADD COLUMN IF NOT EXISTS started_at TEXT",
+            "ALTER TABLE chatlab_conversations ADD COLUMN IF NOT EXISTS duration_seconds INTEGER",
+            # error_count + errors_json: fallos del proveedor (502, 429, 401…) que
+            # vio el usuario aunque luego reintentara con exito. Para medir fiabilidad.
+            "ALTER TABLE chatlab_conversations ADD COLUMN IF NOT EXISTS error_count INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE chatlab_conversations ADD COLUMN IF NOT EXISTS errors_json TEXT",
+        ],
+    ),
 ]
 
 

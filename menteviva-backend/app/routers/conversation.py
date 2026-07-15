@@ -23,7 +23,7 @@ import logging
 import time
 from datetime import datetime
 from pathlib import Path
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from app.config import settings
 from app.models import UserProfile
 from app.models.user_profile import Registro
@@ -35,7 +35,11 @@ from app.services.analysis import analyze_conversation, generate_user_profile
 from app.services.user_repo import save_diagnostic, upsert_user
 from app.services.session_repo import save_practice_session
 from app.prompts.scenarios import get_avatar, get_system_prompt
-from app.prompts.entrevistador import pick_greeting, build_gemini_entrevistador_prompt
+from app.prompts.entrevistador import (
+    pick_greeting,
+    build_gemini_entrevistador_prompt,
+    build_session_state_note,
+)
 
 GREETINGS_DIR = Path(__file__).parent.parent / "static" / "greetings"
 
@@ -53,6 +57,49 @@ def _detect_closing(text: str) -> tuple[str, bool]:
 
 logger = logging.getLogger("menteviva")
 router = APIRouter()
+
+
+def _parse_minutos(session_vars: dict | None) -> int:
+    """Duracion objetivo (min) de la sesion de diagnostico; fallback 25."""
+    try:
+        m = int(float((session_vars or {}).get("minutos")))
+    except (TypeError, ValueError):
+        m = 25
+    return m if m > 0 else 25
+
+
+def _history_with_pacing_note(
+    conversation_history: list,
+    avatar: dict,
+    session_vars: dict | None,
+    session_start_time: float,
+) -> list:
+    """Copia del historial con la NOTA DEL SISTEMA de ritmo anexada al ultimo
+    turno del usuario (solo diagnostico, rama Groq).
+
+    El LLM no tiene reloj: sin esto, "administra el tiempo" del prompt es
+    inaccionable y Sofia nunca señaliza avance ni cierra. NO muta
+    conversation_history — la nota es para la llamada de ESTE turno, no para el
+    transcript que ve el usuario ni para el analisis final.
+
+    En voz los turnos hablados son cortos y frecuentes, asi que el avance se
+    calcula SOLO por tiempo (exchanges=None); contar turnos aqui empujaria el
+    cierre demasiado pronto.
+    """
+    if avatar.get("kind") != "diagnostico" or not conversation_history:
+        return conversation_history
+    if conversation_history[-1].get("role") != "user":
+        return conversation_history
+    note = build_session_state_note(
+        _parse_minutos(session_vars),
+        elapsed_seconds=int(time.time() - session_start_time),
+        exchanges=None,
+    )
+    if not note:
+        return conversation_history
+    last = dict(conversation_history[-1])
+    last["content"] = f"{last['content']}\n\n{note}"
+    return conversation_history[:-1] + [last]
 
 
 async def _send_sofia_greeting(
@@ -299,6 +346,39 @@ def _flush_partial_transcripts(state: dict, history: list) -> None:
         state["cur_asst"].clear()
 
 
+async def _maybe_send_pacing_note(live, state: dict, history: list) -> None:
+    """Envia la NOTA DEL SISTEMA de ritmo si se cruzo un umbral pendiente del
+    tiempo de sesion (voz, solo diagnostico).
+
+    Se llama al final de cada turno de Sofia — la ventana segura: nadie esta
+    hablando. Va como contexto (send_context_note, turn_complete=False), asi que
+    NO dispara una respuesta; el modelo la ve al procesar el siguiente turno del
+    usuario. Cada umbral se envia una sola vez; si un turno largo salta varios,
+    se consumen todos y se manda solo la nota vigente (la del mayor avance).
+    """
+    pacing = state.get("pacing")
+    if not pacing or not pacing["thresholds"]:
+        return
+    elapsed = time.time() - pacing["start"]
+    pct = elapsed / (pacing["minutos"] * 60)
+    if pct < pacing["thresholds"][0]:
+        return
+    pacing["thresholds"] = [th for th in pacing["thresholds"] if pct < th]
+    note = build_session_state_note(
+        pacing["minutos"],
+        elapsed_seconds=int(elapsed),
+        exchanges=None,  # en voz el reloj manda solo (turnos cortos y frecuentes)
+        cierre_como_tool=True,
+    )
+    if not note:
+        return
+    try:
+        await live.send_context_note(note)
+        logger.info(f"[WS-Gemini] nota de ritmo enviada ({int(pct * 100)}% de la sesion)")
+    except Exception as e:
+        logger.warning(f"[WS-Gemini] nota de ritmo fallo: {e}")
+
+
 async def _gemini_downstream(websocket, live, state: dict, history: list) -> str:
     """Reenvia los eventos de Gemini al cliente y reconstruye el historial.
 
@@ -367,6 +447,9 @@ async def _gemini_downstream(websocket, live, state: dict, history: list) -> str
             await websocket.send_json({"type": "turn_complete"})
             audio_started = False
             turn_interrupted = False
+            # Ritmo del diagnostico: entre turnos (nadie habla) es la ventana
+            # segura para inyectar el avance del tiempo como contexto.
+            await _maybe_send_pacing_note(live, state, history)
         elif et == "tool_call":
             # Cierre del diagnostico: Sofia llamo finalizar_entrevista. Avisamos al
             # cliente (dispara su countdown de cierre) y respondemos el tool-call
@@ -385,8 +468,18 @@ async def _gemini_downstream(websocket, live, state: dict, history: list) -> str
     return "closed"
 
 
-async def _run_gemini_conversation(websocket: WebSocket, avatar: dict, avatar_id: str) -> None:
-    """Orquesta una conversacion completa via Gemini Live (rama del proxy)."""
+async def _run_gemini_conversation(
+    websocket: WebSocket, avatar: dict, avatar_id: str, *, finalize: bool = True
+) -> None:
+    """Orquesta una conversacion completa via Gemini Live (rama del proxy).
+
+    finalize=True (produccion): al terminar corre el analisis + persistencia
+    (_finalize_and_analyze). finalize=False (VoiceLab / banco de pruebas): NO
+    analiza ni persiste server-side — solo cierra la sesion y emite session_end
+    sin metrics. El frontend del lab reconstruye el historial desde los
+    transcripts y dispara el diagnostico + guardado por REST (mismos endpoints
+    que el ChatLab de texto: /api/chat/diagnostico y /api/chat/conversation).
+    """
     user_profile: UserProfile | None = None
     session_vars: dict | None = None
     level: str | None = None
@@ -431,10 +524,25 @@ async def _run_gemini_conversation(websocket: WebSocket, avatar: dict, avatar_id
         f"prompt={len(system_prompt)} chars, closing_tool={enable_closing}"
     )
 
+    # Ritmo del diagnostico: Sofia no tiene reloj, asi que el proxy le inyecta
+    # NOTAS DEL SISTEMA con el avance del tiempo al cruzar estos umbrales de la
+    # sesion (una vez cada uno, en la frontera de turno). El 0.9 dispara la
+    # secuencia de cierre ("ultima pregunta" -> finalizar_entrevista) aunque no
+    # se haya alcanzado el minimo de competencias. Sobrevive reconexiones
+    # (vive en state, no en la sesion Gemini).
+    pacing: dict | None = None
+    if enable_closing:
+        # 1.0/1.15 son recordatorios de cierre por si Sofia ignoro el del 0.9.
+        pacing = {
+            "start": session_start_time,
+            "minutos": _parse_minutos(session_vars),
+            "thresholds": [0.5, 0.75, 0.9, 1.0, 1.15],
+        }
+
     # Holder mutable de la sesion Gemini ACTUAL. El upstream (reader del cliente)
     # forwardea a state["live"] y persiste a traves de reconexiones; la sesion
     # Gemini se re-crea en el bucle de abajo (sesiones largas via resumption).
-    state: dict = {"live": None}
+    state: dict = {"live": None, "pacing": pacing}
     # El reader NO procesa `initial`: si lo hiciera ahora, state["live"] aun seria
     # None (la sesion no abre hasta el bucle) y se perderia el primer turno. Se
     # procesa abajo, en la 1a iteracion, ya con la sesion abierta.
@@ -535,10 +643,23 @@ async def _run_gemini_conversation(websocket: WebSocket, avatar: dict, avatar_id
         # Terminar de inmediato): volcar los transcripts parciales al historial
         # para que SI entren al analisis.
         _flush_partial_transcripts(state, history)
-        await _finalize_and_analyze(
-            websocket, avatar, avatar_id, history,
-            session_start_time, user_profile, session_vars, level,
-        )
+        if finalize:
+            await _finalize_and_analyze(
+                websocket, avatar, avatar_id, history,
+                session_start_time, user_profile, session_vars, level,
+            )
+        else:
+            # Modo lab: el analisis/persistencia lo hace el frontend por REST.
+            # Solo confirmamos el cierre para que el cliente cierre limpio.
+            total_exchanges = len(history) // 2
+            logger.info(
+                f"[WS-Voice] Sesion del lab finalizada sin analisis server-side "
+                f"(intercambios={total_exchanges})"
+            )
+            try:
+                await websocket.send_json({"type": "session_end"})
+            except Exception:
+                pass
     else:
         logger.info(f"[WS-Gemini] Sesion terminada sin analisis (motivo={result})")
 
@@ -598,7 +719,7 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
 
     try:
         while True:
-            # Recibir mensaje del cliente
+            # Recibir mensaje del cliente (rama Groq clasica)
             data = await websocket.receive_json()
             msg_type = data.get("type")
             logger.debug(f"[WS] Mensaje recibido - Tipo: {msg_type}")
@@ -686,7 +807,10 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                     t_start = time.time()
                     full_response = ""
                     token_count = 0
-                    async for token in chat_stream(conversation_history, system_prompt):
+                    llm_history = _history_with_pacing_note(
+                        conversation_history, avatar, session_vars, session_start_time
+                    )
+                    async for token in chat_stream(llm_history, system_prompt):
                         full_response += token
                         token_count += 1
                         await websocket.send_json({"type": "assistant_token", "content": token})
@@ -770,7 +894,10 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                 t_start = time.time()
                 full_response = ""
                 token_count = 0
-                async for token in chat_stream(conversation_history, system_prompt):
+                llm_history = _history_with_pacing_note(
+                    conversation_history, avatar, session_vars, session_start_time
+                )
+                async for token in chat_stream(llm_history, system_prompt):
                     full_response += token
                     token_count += 1
                     await websocket.send_json({
@@ -930,4 +1057,68 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                 "error": str(e)
             })
         except:
+            pass
+
+
+@router.websocket("/chat/voice/{avatar_id}")
+async def voice_lab_websocket(
+    websocket: WebSocket,
+    avatar_id: str,
+    token: str | None = Query(None),
+):
+    """
+    WebSocket del VoiceLab (banco de pruebas de prompts, por VOZ).
+
+    Gemelo por voz del ChatLab de texto (chat_text.py): corre SIEMPRE Gemini Live
+    (no depende del flag global settings.realtime_provider) y NO analiza ni
+    persiste del lado servidor — es un proxy puro de audio + transcripts. El
+    frontend del lab reconstruye el historial desde los transcripts y dispara el
+    diagnostico + guardado por REST (mismos endpoints que el ChatLab de texto),
+    reusando toda su telemetria (feedback, satisfaccion, cronometro, export).
+
+    Autenticacion: como los WebSocket del navegador no pueden mandar headers
+    personalizados, el token del lab viaja como query param (?token=...). Si
+    settings.chatlab_token esta configurado (piloto tras tunel publico), se exige
+    y no coincidir cierra con code 1008 (policy violation). En local, si el token
+    esta vacio, actua en modo passthrough sin friccion (igual que chat_text.py).
+
+    Protocolo (identico a la rama Gemini de /conversation, ver useVoiceLab.ts):
+    - Cliente -> Server: {"type":"init", "user_profile":{...}, "session_vars":{...}}
+    - Cliente -> Server: {"type":"audio_chunk", "pcm":"<base64 PCM16 16k>"}
+    - Cliente -> Server: {"type":"text", "text":"..."}   (fallback sin mic)
+    - Cliente -> Server: {"type":"end_session"}
+    - Server -> Cliente: status | user_message | output_transcript | turn_complete
+                         | assistant_audio_start/chunk/end | interrupted
+                         | closing_intent | session_end (sin metrics) | error
+    """
+    # Token guard antes de aceptar (mismo criterio que verify_chatlab_token de
+    # chat_text.py, pero via query param porque el WS no manda headers).
+    if settings.chatlab_token and token != settings.chatlab_token:
+        logger.warning(f"[WS-Voice] Token invalido/faltante - Avatar: {avatar_id}")
+        # Aceptar y cerrar con 1008 para que el cliente reciba un motivo claro
+        # (un rechazo previo al accept aparece como 403 sin cuerpo en el browser).
+        await websocket.accept()
+        await websocket.close(code=1008, reason="Token de acceso al VoiceLab invalido o faltante.")
+        return
+
+    await websocket.accept()
+    logger.info(f"[WS-Voice] Nueva conexion VoiceLab - Avatar: {avatar_id}")
+
+    avatar = get_avatar(avatar_id)
+    if not avatar:
+        logger.warning(f"[WS-Voice] Avatar no encontrado: {avatar_id}")
+        await websocket.send_json({"type": "error", "error": "Avatar not found"})
+        await websocket.close()
+        return
+
+    try:
+        # finalize=False: proxy puro; el diagnostico lo hace el frontend por REST.
+        await _run_gemini_conversation(websocket, avatar, avatar_id, finalize=False)
+    except WebSocketDisconnect:
+        logger.info(f"[WS-Voice] Cliente desconectado - Avatar: {avatar_id}")
+    except Exception as e:
+        logger.error(f"[WS-Voice] Error con {avatar_id}: {e}", exc_info=True)
+        try:
+            await websocket.send_json({"type": "error", "error": str(e)})
+        except Exception:
             pass

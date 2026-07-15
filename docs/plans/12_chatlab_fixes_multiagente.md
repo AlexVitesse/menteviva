@@ -99,7 +99,7 @@ aserción de que `/api/chat` devuelve `cost_usd > 0` con Groq (el motor barato);
 
 ---
 
-## Bloque C · 🟡 Guard de acceso al banco de pruebas — **GEMINI**
+## Bloque C · 🟡 Guard de acceso al banco de pruebas — **GEMINI** ✅ HECHO (2026-07-08)
 
 `/api/chat`, `/api/chat/diagnostico` y `/api/chat/conversation` no tienen auth,
 y el deploy del piloto va por tunnel público de Cloudflare: cualquiera con la
@@ -120,7 +120,7 @@ telemetría (eso es de Claude, bloque A/B — ya estará commiteado).
 
 ---
 
-## Bloque D · 🟡 Export completo de sesión — **GEMINI**
+## Bloque D · 🟡 Export completo de sesión — **GEMINI** ✅ HECHO (2026-07-08)
 
 `exportSession` (`ChatLab.tsx`) exporta solo el historial: no incluye el
 `registro` (quién era el candidato) ni el **diagnóstico generado**, que es justo
@@ -138,7 +138,7 @@ lo que se comparte con Brandon/Cris al comparar motores.
 
 ---
 
-## Bloque E · 🟢 Pulido mecánico — **OPENCODE**
+## Bloque E · 🟢 Pulido mecánico — **OPENCODE** ✅ HECHO (2026-07-08, revisado por Claude)
 
 Cambios pequeños, autocontenidos y de bajo riesgo. **Ejecutar al final.**
 
@@ -172,3 +172,59 @@ cambios de comportamiento visibles salvo los descritos.
 **Backend:** `app/routers/chat_text.py` (B3, C2, C4, E1-E2), `app/config.py` (C1),
 `.env.example` (C1), `app/services/{groq_llm,gemini_live,openai_llm,llm_costs}.py` (B1-B2)
 **Tests:** `menteviva-backend/scripts/test_chatlab_smoke.py` (B, C)
+
+---
+
+## ✅ Cierre del plan (2026-07-08) — los 5 bloques HECHOS
+
+Ejecución real: **Claude (A+B) → OpenCode (E) → Gemini (C+D)** — E se adelantó a
+C/D sin conflicto porque era pulido independiente. Claude revisó los bloques de
+los otros dos agentes contra el diff real.
+
+### Cómo quedó implementado (decisiones que difieren o precisan el plan)
+
+- **A**: además de lo planeado, `callChat`/`generateDiagnostico` capturan la
+  sesión de ORIGEN completa al despachar; el merge de la respuesta se hace sobre
+  el estado vivo vía `sessionsRef` (espejo en ref), y si la consola se limpió en
+  vuelo la respuesta huérfana se DESCARTA (antes reaparecía). El error de una
+  llamada solo se muestra si su sesión sigue activa. `saveConversation(session,
+  msgs, opts)` recibe la sesión explícita + `model` real de la corrida (esto
+  resolvió E5 de paso).
+- **B**: `return_usage=True` opcional en los 3 servicios (retro-compatible: los
+  scripts que esperan `str` no se tocaron). En Groq el usage se ACUMULA entre
+  reintentos (se pagan todos los intentos). `cost_usd` redondeado a 6 decimales.
+  Provider `chatgpt` mapea a la tabla `openai` de PRICING. Telemetría muestra
+  además «Tokens últ. (in/out)».
+- **C**: la dependencia va en el constructor del router
+  (`APIRouter(dependencies=[Depends(verify_chatlab_token)])`) → cubre los 4
+  endpoints. CORS ya permitía el header (`allow_headers=["*"]`). Test dedicado
+  `scripts/test_chatlab_security.py` (TestClient, sin APIs reales, 4 casos).
+- **D**: el export además mapea `experience_level` a etiqueta legible.
+- **E**: E5 saltado (resuelto por A). E1-E4, E6 como se especificó.
+
+### Hallazgos de la revisión cruzada (corregidos en el momento)
+
+1. Export D1: el mapeo de nivel solo cubría junior/mid/senior — `entry`/`lead`/
+   `executive` exportaban «N/A». → mapa completo con fallback al valor crudo.
+2. `localStorage.setItem` del token sin try/catch (regla E4). → envuelto.
+
+### Verificación (todo re-corrido de forma independiente en la revisión)
+
+- `npm run build` (tsc + vite) limpio tras cada bloque.
+- `py_compile` de los módulos backend tocados: OK.
+- `scripts/test_chatlab_smoke.py`: exit 0, con la nueva aserción `cost_usd > 0`
+  (Groq). Costos reales medidos por turno del entrevistador (~7k tok input):
+  Groq gpt-oss-20b **$0.0002** · gpt-5.4-mini **$0.0056** · Gemini 3.5-flash
+  **$0.0165** — confirma la recomendación del plan 11 (Groq ~30-80× más barato).
+- `scripts/test_chatlab_security.py`: 4 asserts OK (sin header → 401, token
+  malo → 401, token bueno → 200, vacío → passthrough).
+
+### Pendientes que deja este plan
+
+- ⚠️ **Deploy**: setear `CHATLAB_TOKEN` en el `.env` del server Debian del
+  piloto (tunnel público de Cloudflare) — sin eso el guard es passthrough.
+- Nit conocido: el campo «Token de acceso» re-dispara `GET /avatars` por cada
+  tecla (dep del efecto en `chatlabToken`). Inofensivo (endpoint barato, sin
+  LLM) y sirve de auto-retry; debounce si molesta.
+- Los «Fuera de alcance» de arriba siguen vigentes (split de ChatLab.tsx,
+  AbortController, `include_usage` en voz).

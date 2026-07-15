@@ -61,9 +61,29 @@ def _next_gemini_key() -> str:
     return key
 
 
-def _gemini_client() -> genai.Client:
-    """Cliente Gemini con la siguiente key del pool de rotacion."""
-    return genai.Client(api_key=_next_gemini_key())
+# El SDK de google-genai reintenta 503/"high demand" internamente con backoff
+# exponencial ANTES de propagar el error: eso hacia que un turno colgara ~46s en
+# una sola key saturada antes de que nuestro failover saltara a la siguiente.
+# Cortamos ese retry interno (attempts=1) para que el 503 aflore al instante y
+# nuestro loop de rotacion pruebe otra key de inmediato; el timeout duro evita
+# ademas que una conexion colgada monopolice el turno.
+_GEMINI_HTTP_OPTIONS = types.HttpOptions(
+    timeout=20_000,  # ms; cap por intento
+    retry_options=types.HttpRetryOptions(attempts=1),  # sin backoff interno
+)
+
+
+def _gemini_client(http_options: types.HttpOptions | None = None) -> genai.Client:
+    """Cliente Gemini con la siguiente key del pool de rotacion.
+
+    `http_options` se aplica solo al path de TEXTO (generate_content); la sesion
+    Live de audio usa el default para no meterle un timeout HTTP a un websocket
+    persistente.
+    """
+    kwargs = {"api_key": _next_gemini_key()}
+    if http_options is not None:
+        kwargs["http_options"] = http_options
+    return genai.Client(**kwargs)
 
 
 def _num_gemini_keys() -> int:
@@ -182,6 +202,20 @@ class GeminiLiveSession:
         await self._session.send_client_content(
             turns=types.Content(role="user", parts=[types.Part(text=text)]),
             turn_complete=True,
+        )
+
+    async def send_context_note(self, text: str) -> None:
+        """Inyecta una nota de CONTEXTO sin disparar un turno del modelo.
+
+        turn_complete=False => el contenido se agrega a la conversacion y el
+        modelo lo ve al procesar su siguiente turno; NO genera respuesta
+        inmediata (a diferencia de send_text). Lo usa el proxy para el ritmo
+        del diagnostico: la NOTA DEL SISTEMA con el avance del tiempo de sesion
+        (ver entrevistador.build_session_state_note).
+        """
+        await self._session.send_client_content(
+            turns=types.Content(role="user", parts=[types.Part(text=text)]),
+            turn_complete=False,
         )
 
     async def send_audio_chunk(self, pcm16_16k: bytes) -> None:
@@ -474,7 +508,7 @@ async def generate_text(
     last_err: Exception | None = None
     resp = None
     for i in range(attempts):
-        client = _gemini_client()
+        client = _gemini_client(http_options=_GEMINI_HTTP_OPTIONS)
 
         def _call():
             return client.models.generate_content(

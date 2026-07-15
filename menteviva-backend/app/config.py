@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     # (chat_text.py, provider="gemini"). Es el hermano de texto del native-audio:
     # mismo prompt conciso + addendum que en voz, pero via generate_content, para
     # evaluar el prompt "como si fuera Gemini" sin abrir sesion Live ni TTS.
-    gemini_model_text: str = "gemini-3.5-flash"
+    gemini_model_text: str = "gemini-2.5-flash"
     # Flag para volver al pipeline Groq+ElevenLabs sin borrar codigo (rollback
     # barato durante el piloto). Lo consume el router cuando exista la rama WS.
     realtime_provider: str = "groq"  # "groq" | "gemini"
@@ -132,6 +132,7 @@ class Settings(BaseSettings):
     db_pool_max_size: int = 10
 
     # App
+    chatlab_token: str = ""
     app_name: str = "Mente Viva API"
     debug: bool = False
     cors_origins: list[str] = [

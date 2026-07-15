@@ -164,23 +164,39 @@ async def save_chatlab_conversation(
     model: str | None = None,
     minutos: int | None = None,
     closed: bool = False,
+    satisfaction: dict | None = None,
+    started_at: str | None = None,
+    duration_seconds: int | None = None,
+    error_count: int = 0,
+    errors: list[dict] | None = None,
 ) -> None:
     """Upsert de una conversacion del ChatLab (keyed por session_id del frontend).
 
     Se llama tras cada turno y cada cambio de rating, asi la conversacion (con su
-    feedback like/dislike incrustado en conversation_json) queda en BD y NO se
-    pierde aunque el usuario reinicie/limpie o cambie de dispositivo. Idempotente:
-    la misma session_id sobrescribe su fila (siempre refleja el estado actual).
+    feedback like/dislike + el comentario del dislike incrustados en
+    conversation_json) queda en BD y NO se pierde aunque el usuario reinicie/
+    limpie o cambie de dispositivo. Idempotente: la misma session_id sobrescribe
+    su fila (siempre refleja el estado actual).
+
+    `satisfaction` es la encuesta final del diagnostico {rating, comment,
+    submitted_at}; se guarda como JSON aparte (columna satisfaction_json). Es
+    None hasta que el usuario la envia; al enviarla, este mismo upsert la fija.
     """
     now = _now_iso()
+    satisfaction_json = (
+        json.dumps(satisfaction, ensure_ascii=False) if satisfaction else None
+    )
+    errors_json = json.dumps(errors, ensure_ascii=False) if errors else None
     async with get_db() as db:
         async with db.cursor() as cur:
             await cur.execute(
                 """
                 INSERT INTO chatlab_conversations (
                     session_id, user_id, name, avatar_id, provider, model,
-                    minutos, conversation_json, closed, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    minutos, conversation_json, closed, satisfaction_json,
+                    started_at, duration_seconds, error_count, errors_json,
+                    created_at, updated_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (session_id) DO UPDATE SET
                     user_id = EXCLUDED.user_id,
                     name = EXCLUDED.name,
@@ -190,6 +206,22 @@ async def save_chatlab_conversation(
                     minutos = EXCLUDED.minutos,
                     conversation_json = EXCLUDED.conversation_json,
                     closed = EXCLUDED.closed,
+                    -- Preserva una satisfaccion previa si este upsert (p.ej. un
+                    -- turno posterior) no la trae: COALESCE(nuevo, existente).
+                    satisfaction_json = COALESCE(
+                        EXCLUDED.satisfaction_json,
+                        chatlab_conversations.satisfaction_json
+                    ),
+                    -- Cronometro: started_at se fija una vez (COALESCE preserva el
+                    -- primero); duration_seconds/error_count/errors_json siempre
+                    -- reflejan el ultimo estado que manda el frontend (fuente de
+                    -- verdad por sesion, envia el total en cada guardado).
+                    started_at = COALESCE(
+                        chatlab_conversations.started_at, EXCLUDED.started_at
+                    ),
+                    duration_seconds = EXCLUDED.duration_seconds,
+                    error_count = EXCLUDED.error_count,
+                    errors_json = EXCLUDED.errors_json,
                     updated_at = EXCLUDED.updated_at
                 """,
                 (
@@ -202,6 +234,11 @@ async def save_chatlab_conversation(
                     minutos,
                     json.dumps(conversation, ensure_ascii=False),
                     closed,
+                    satisfaction_json,
+                    started_at,
+                    duration_seconds,
+                    error_count,
+                    errors_json,
                     now,
                     now,
                 ),

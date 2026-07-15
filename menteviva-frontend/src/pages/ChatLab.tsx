@@ -9,8 +9,9 @@
  * No forma parte del flujo de producto; es una herramienta de iteracion.
  */
 import { useEffect, useRef, useState } from "react";
-import { Send, RotateCcw, ThumbsUp, ThumbsDown } from "lucide-react";
-import { apiFetch } from "../lib/api";
+import { useNavigate } from "react-router-dom";
+import { Send, RotateCcw, ThumbsUp, ThumbsDown, Info, Star, MessageSquareText } from "lucide-react";
+import { apiFetch, ApiFetchOptions } from "../lib/api";
 
 interface AvatarInfo {
   id: string;
@@ -25,6 +26,9 @@ interface ChatMsg {
   content: string;
   latencyMs?: number; // solo en mensajes del avatar
   feedback?: "like" | "dislike" | null; // valoración manual de la respuesta del avatar
+  // Comentario del usuario al dar 👎: el "por qué no me gustó". Alimenta la
+  // evaluación de prompts. Vive junto al mensaje y se persiste en BD.
+  feedbackComment?: string;
   // Tokens y costo estimado del turno (solo mensajes del avatar; puede faltar
   // si el proveedor no reportó usage o el modelo no está tarifado).
   inputTokens?: number;
@@ -159,6 +163,23 @@ interface SaveInfo {
   error: string | null;
 }
 
+// Encuesta de satisfacción del diagnóstico (estrellas + comentario opcional).
+// Por sesión; se pide al terminar el diagnóstico y se persiste con la conversación.
+interface SatisfactionInfo {
+  rating: number; // 1-5 estrellas
+  comment: string;
+  submittedAt: string; // ISO
+}
+
+// Un error del proveedor/servidor ocurrido durante la sesión (502, 429, 401…).
+// Se registra para medir la fiabilidad de la experiencia: cuántas veces falló el
+// usuario antes de completar el diagnóstico. Se persiste con la conversación.
+interface SessionError {
+  at: number; // epoch ms del fallo
+  status?: number; // HTTP status (502, 429, 401…) si lo trae el ApiError
+  message: string;
+}
+
 interface ChatSession {
   id: string;
   name: string;
@@ -182,6 +203,19 @@ interface ChatSession {
   diagnostico?: Diagnostico | null;
   // Estado del guardado en BD de ese diagnostico.
   saveInfo?: SaveInfo | null;
+  // Encuesta de satisfaccion enviada por el usuario tras ver el diagnostico.
+  // null/undefined = aun no la ha enviado.
+  satisfaction?: SatisfactionInfo | null;
+  // Cronómetro de la sesión: cuándo arrancó la conversación (primer turno) y
+  // cuándo se dio por terminada (cierre del avatar o generación del diagnóstico).
+  // Mientras completedAt sea undefined, el tiempo sigue corriendo. Sirve para
+  // "registrar el tiempo que llevó realizarla" (se persiste en BD y en el export).
+  startedAt?: number;
+  completedAt?: number;
+  // Errores del proveedor/servidor durante la sesión (502, 429, …). Se registran
+  // para la experiencia de usuario: aunque se reintente con éxito, queda el rastro
+  // de cuántas veces falló. Se persiste con la conversación.
+  errorLog?: SessionError[];
 }
 
 // Costo acumulado (USD) de los turnos de una sesión. 0 si no hay datos de costo
@@ -194,6 +228,15 @@ function sessionCostUsd(s: ChatSession): number {
 // del banco rondan $0.0006–$0.04).
 function fmtUsd(c: number): string {
   return `$${c.toFixed(c < 0.01 ? 4 : 3)}`;
+}
+
+// Formatea una duración en milisegundos como mm:ss (cronómetro de la sesión:
+// "cuánto me llevó realizar el diagnóstico").
+function fmtDuration(ms: number): string {
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 function userTurns(msgs: ChatMsg[]): number {
@@ -247,6 +290,7 @@ function CollapsibleSection({
 }
 
 export function ChatLab() {
+  const navigate = useNavigate();
   const [avatars, setAvatars] = useState<AvatarInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -256,6 +300,37 @@ export function ChatLab() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [diagLoading, setDiagLoading] = useState(false);
   const [showDiag, setShowDiag] = useState(false);
+  // Modal "¿por qué no te gustó?": índice del mensaje que se está comentando
+  // (null = cerrado) y borrador del texto mientras se edita.
+  const [feedbackModalIndex, setFeedbackModalIndex] = useState<number | null>(null);
+  const [feedbackDraft, setFeedbackDraft] = useState("");
+  // Modal de satisfacción del diagnóstico (estrellas + comentario opcional).
+  const [showSatisfaction, setShowSatisfaction] = useState(false);
+  const [satRating, setSatRating] = useState(0);
+  const [satHover, setSatHover] = useState(0);
+  const [satComment, setSatComment] = useState("");
+  const [chatlabToken, setChatlabToken] = useState(() => localStorage.getItem("chatlab_token") || "");
+  // Reloj que avanza cada segundo para pintar el cronómetro en vivo mientras la
+  // sesión está activa (arrancada y sin terminar). No dispara re-render si no hay
+  // sesión corriendo (el effect no monta el intervalo).
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  const handleTokenChange = (val: string) => {
+    setChatlabToken(val);
+    try {
+      localStorage.setItem("chatlab_token", val);
+    } catch (e) {
+      console.warn("No se pudo guardar el token en localStorage:", e);
+    }
+  };
+
+  async function chatLabFetch<T = unknown>(path: string, opts: ApiFetchOptions = {}): Promise<T> {
+    const headers = new Headers(opts.headers);
+    if (chatlabToken) {
+      headers.set("X-ChatLab-Token", chatlabToken);
+    }
+    return apiFetch<T>(path, { ...opts, headers });
+  }
   // Sesion para la que el usuario cerro el modal de datos (para poder escribir
   // manualmente sin re-llenar el formulario). Se re-abre al cambiar de sesion.
   const [registroClosedFor, setRegistroClosedFor] = useState<string | null>(null);
@@ -316,7 +391,11 @@ export function ChatLab() {
 
   // Guardar ID activo en localStorage
   useEffect(() => {
-    localStorage.setItem("chatlab_active_session_id", activeSessionId);
+    try {
+      localStorage.setItem("chatlab_active_session_id", activeSessionId);
+    } catch (e) {
+      console.warn("No se pudo guardar activeSessionId en localStorage:", e);
+    }
   }, [activeSessionId]);
 
   // Al cambiar de sesion, el error y su «Reintentar» pertenecen a la sesion
@@ -338,9 +417,10 @@ export function ChatLab() {
 
   // Cargar lista de avatares
   useEffect(() => {
-    apiFetch<{ avatars: AvatarInfo[] }>("/api/chat/avatars")
+    chatLabFetch<{ avatars: AvatarInfo[] }>("/api/chat/avatars")
       .then((data) => {
         setAvatars(data.avatars);
+        setError(null);
         // Si la sesión por defecto no tiene avatarId, asignarle el primero de la lista
         setSessions((prev) => {
           const updated = prev.map((s) => {
@@ -349,15 +429,25 @@ export function ChatLab() {
             }
             return s;
           });
-          localStorage.setItem("chatlab_sessions", JSON.stringify(updated));
+          try {
+            localStorage.setItem("chatlab_sessions", JSON.stringify(updated));
+          } catch (e) {
+            console.warn("No se pudo guardar sesiones en localStorage:", e);
+          }
           return updated;
         });
       })
-      .catch((e) => setError(`No se pudo cargar avatares: ${e.message}`));
-  }, []);
+      .catch((e) => {
+        if (e.status === 401) {
+          setError("Acceso denegado: falta el token de acceso o ha expirado. Por favor, configúralo en la sección técnica (⚙️).");
+        } else {
+          setError(`No se pudo cargar avatares: ${e.message}`);
+        }
+      });
+  }, [chatlabToken]);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
-  const { avatarId, provider, selectedModel, level, messages, promptChars, closed, modelName, registro, diagnostico, saveInfo } = activeSession;
+  const { avatarId, provider, selectedModel, level, messages, promptChars, closed, modelName, registro, diagnostico, saveInfo, satisfaction } = activeSession;
   // Fallback para sesiones viejas cacheadas en localStorage sin durationMin.
   const durationMin = activeSession.durationMin ?? DEFAULT_DURATION;
   const selected = avatars.find((a) => a.id === avatarId);
@@ -371,12 +461,37 @@ export function ChatLab() {
   const LOCKED_HINT = "Limpia la consola o crea una sesión nueva para cambiar esto (no se puede a mitad de una conversación).";
 
   // Progreso hacia el diagnostico: intercambios (respuestas del usuario) contra
-  // la meta derivada de la duracion. El 100% real lo marca el cierre del avatar.
+  // la meta derivada de la duracion. Antes la barra topaba en 95% hasta que Sofia
+  // emitiera [CIERRE] por su cuenta; si no cerraba, el usuario "respondia y
+  // respondia" sin llegar a 100% (barra enganosa). Ahora la completa el ESFUERZO
+  // del usuario: al alcanzar la meta de intercambios la barra llega a 100% y se
+  // ofrece "Terminar y generar diagnostico" (el cierre de Sofia sigue siendo un
+  // camino valido y anticipado).
   const exchanges = messages.filter((m) => m.role === "user").length;
   const progressTarget = targetExchanges(durationMin);
-  const progressPct = closed
+  const reachedTarget = exchanges >= progressTarget;
+  const progressComplete = closed || reachedTarget;
+  const progressPct = progressComplete
     ? 100
-    : Math.min(Math.round((exchanges / progressTarget) * 100), 95);
+    : Math.round((exchanges / progressTarget) * 100);
+
+  // Cronómetro de la sesión activa: tiempo transcurrido desde el primer turno.
+  // Si ya terminó (completedAt), queda congelado; si sigue viva, avanza con nowTick.
+  const elapsedMs = activeSession.startedAt
+    ? (activeSession.completedAt ?? nowTick) - activeSession.startedAt
+    : 0;
+
+  // Errores registrados en la sesión activa (para el indicador de fiabilidad).
+  const errorLog = activeSession.errorLog ?? [];
+  const serverErrorCount = errorLog.filter((e) => (e.status ?? 0) >= 500).length;
+
+  // Mantiene el cronómetro corriendo (1 Hz) solo mientras hay una sesión activa
+  // sin terminar. Se desmonta al cerrar/generar el diagnóstico o si no arrancó.
+  useEffect(() => {
+    if (!activeSession.startedAt || activeSession.completedAt) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [activeSession.startedAt, activeSession.completedAt]);
 
   // Registro efectivo: lo capturado en la sesión, con fallback al cacheado
   // global (para no re-registrarse en cada prueba nueva).
@@ -402,7 +517,11 @@ export function ChatLab() {
   function updateRegistro(patch: Partial<RegistroInput>) {
     const merged = { ...effectiveRegistro, ...patch };
     setSavedRegistro(merged);
-    localStorage.setItem("chatlab_registro", JSON.stringify(merged));
+    try {
+      localStorage.setItem("chatlab_registro", JSON.stringify(merged));
+    } catch (e) {
+      console.warn("No se pudo guardar registro en localStorage:", e);
+    }
     updateActiveSession({ registro: merged });
   }
 
@@ -433,7 +552,11 @@ export function ChatLab() {
         }
         return s;
       });
-      localStorage.setItem("chatlab_sessions", JSON.stringify(next));
+      try {
+        localStorage.setItem("chatlab_sessions", JSON.stringify(next));
+      } catch (e) {
+        console.warn("No se pudo guardar sesiones en localStorage:", e);
+      }
       return next;
     });
   }
@@ -444,10 +567,15 @@ export function ChatLab() {
   }
 
   function reset() {
+    // Limpiar la consola reinicia también el cronómetro y el registro de errores:
+    // es una sesión nueva de facto (la conversación previa se descarta).
     updateActiveSession({
       messages: [],
       promptChars: null,
       closed: false,
+      startedAt: undefined,
+      completedAt: undefined,
+      errorLog: [],
     });
     setError(null);
   }
@@ -462,7 +590,7 @@ export function ChatLab() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiFetch<ChatResponse>("/api/chat", {
+      const res = await chatLabFetch<ChatResponse>("/api/chat", {
         method: "POST",
         json: {
           avatar_id: session.avatarId,
@@ -475,6 +603,14 @@ export function ChatLab() {
           session_vars:
             sessionAvatar?.kind === "diagnostico"
               ? { minutos: session.durationMin ?? DEFAULT_DURATION }
+              : undefined,
+          // Cronómetro real de la sesión: alimenta la NOTA DEL SISTEMA de ritmo
+          // en el backend (Sofia no tiene reloj; con esto señaliza avance y
+          // cierra a tiempo). El backend usa max(tiempo, intercambios), así que
+          // al completarse la barra Sofia también entra en modo cierre.
+          elapsed_seconds:
+            sessionAvatar?.kind === "diagnostico" && session.startedAt
+              ? Math.max(0, Math.round((Date.now() - session.startedAt) / 1000))
               : undefined,
         },
       });
@@ -496,19 +632,42 @@ export function ChatLab() {
         return;
       }
       const merged = [...live.messages, assistantMsg];
+      // Si el avatar cerró, congelamos el cronómetro (fin de la sesión).
+      const completedAt = res.closing ? (live.completedAt ?? Date.now()) : live.completedAt;
       updateSession(session.id, {
         messages: merged,
         promptChars: res.prompt_chars,
         closed: res.closing,
         modelName: res.model_name,
+        completedAt,
       });
-      // Persistir en BD (con model_name real de esta corrida).
-      saveConversation(live, merged, { closed: res.closing, model: res.model_name });
+      // Persistir en BD (con model_name real y el cronómetro de esta corrida).
+      saveConversation({ ...live, completedAt }, merged, {
+        closed: res.closing,
+        model: res.model_name,
+      });
     } catch (e) {
+      const status = (e as any).status as number | undefined;
+      const message =
+        status === 401
+          ? "Acceso denegado: falta el token de acceso o ha expirado. Por favor, configúralo en la sección técnica (⚙️)."
+          : (e as Error).message || "Error llamando al modelo";
+      // Registrar el fallo en la sesión de ORIGEN (métrica de fiabilidad/UX: 502,
+      // 429…). Aunque luego se reintente con éxito, queda el rastro de cuántas
+      // veces falló. Se persiste con la conversación si ya hay turnos.
+      const live = sessionsRef.current.find((s) => s.id === session.id);
+      if (live) {
+        const nextLog: SessionError[] = [
+          ...(live.errorLog ?? []),
+          { at: Date.now(), status, message: (e as Error).message || message },
+        ];
+        updateSession(session.id, { errorLog: nextLog });
+        saveConversation({ ...live, errorLog: nextLog }, live.messages, { closed: live.closed });
+      }
       // Mostrar el error solo si la sesión de origen sigue activa; en otra
       // sesión el banner (y su «Reintentar») no corresponderían a lo visible.
       if (activeSessionIdRef.current === session.id) {
-        setError((e as Error).message || "Error llamando al modelo");
+        setError(message);
       }
     } finally {
       setLoading(false);
@@ -516,10 +675,14 @@ export function ChatLab() {
   }
 
   function startWithGreeting() {
+    // Arranca el cronómetro: el saludo del avatar es el primer turno de la sesión.
     updateActiveSession({
       messages: [],
       promptChars: null,
       closed: false,
+      startedAt: Date.now(),
+      completedAt: undefined,
+      errorLog: [],
     });
     callChat([], true);
   }
@@ -528,7 +691,11 @@ export function ChatLab() {
     const text = input.trim();
     if (!text || loading) return;
     const next = [...messages, { role: "user" as const, content: text }];
-    updateActiveSession({ messages: next });
+    // Si el usuario escribe directo sin usar "Que inicie el avatar", el
+    // cronómetro arranca en su primer mensaje.
+    updateActiveSession(
+      activeSession.startedAt ? { messages: next } : { messages: next, startedAt: Date.now() }
+    );
     setInput("");
     callChat(next, false);
   }
@@ -552,10 +719,17 @@ export function ChatLab() {
   function saveConversation(
     session: ChatSession,
     msgs: ChatMsg[],
-    opts?: { closed?: boolean; model?: string | null }
+    opts?: { closed?: boolean; model?: string | null; satisfaction?: SatisfactionInfo | null }
   ) {
     if (!msgs.length) return;
-    apiFetch("/api/chat/conversation", {
+    // Telemetría de la sesión para "que quede registrado": tiempo real que llevó
+    // (cronómetro) y errores del proveedor (502, 429…). Si sigue viva, la duración
+    // se calcula hasta ahora; si terminó (completedAt), hasta el cierre.
+    const errs = session.errorLog ?? [];
+    const durationSeconds = session.startedAt
+      ? Math.round(((session.completedAt ?? Date.now()) - session.startedAt) / 1000)
+      : undefined;
+    chatLabFetch("/api/chat/conversation", {
       method: "POST",
       json: {
         // Namespaced por CLIENT_ID: aisla las filas en BD por navegador para que
@@ -567,8 +741,28 @@ export function ChatLab() {
         model: opts?.model ?? session.modelName ?? session.selectedModel ?? undefined,
         minutos: session.durationMin ?? DEFAULT_DURATION,
         closed: opts?.closed ?? session.closed,
+        // Cronómetro (snake_case para el backend).
+        started_at: session.startedAt ? new Date(session.startedAt).toISOString() : undefined,
+        duration_seconds: durationSeconds,
+        // Fiabilidad: conteo + detalle de los errores del proveedor.
+        error_count: errs.length,
+        errors: errs.map((e) => ({
+          at: new Date(e.at).toISOString(),
+          status: e.status ?? null,
+          message: e.message,
+        })),
         messages: msgs.map((m) => ({ role: m.role, content: m.content })),
         feedback: msgs.map((m) => m.feedback ?? null),
+        // Comentario del dislike alineado por índice con messages.
+        feedback_comments: msgs.map((m) => m.feedbackComment ?? null),
+        // Encuesta de satisfacción del diagnóstico (snake_case para el backend).
+        satisfaction: opts?.satisfaction ?? session.satisfaction
+          ? {
+              rating: (opts?.satisfaction ?? session.satisfaction)!.rating,
+              comment: (opts?.satisfaction ?? session.satisfaction)!.comment,
+              submitted_at: (opts?.satisfaction ?? session.satisfaction)!.submittedAt,
+            }
+          : undefined,
         user_profile: buildUserProfileFor(session),
       },
     }).catch((e) => console.warn("No se pudo guardar la conversación en BD:", e));
@@ -585,6 +779,57 @@ export function ChatLab() {
     saveConversation(activeSession, next);
   }
 
+  // Abre el modal para comentar POR QUÉ no gustó la respuesta (tras el 👎).
+  // Prefila con el comentario ya existente para poder editarlo.
+  function openFeedbackModal(index: number) {
+    setFeedbackDraft(messages[index]?.feedbackComment ?? "");
+    setFeedbackModalIndex(index);
+  }
+
+  // Guarda (o limpia) el comentario del dislike en el mensaje y lo persiste.
+  function saveFeedbackComment() {
+    if (feedbackModalIndex === null) return;
+    const idx = feedbackModalIndex;
+    const text = feedbackDraft.trim();
+    const next = messages.map((m, i) =>
+      i === idx ? { ...m, feedbackComment: text || undefined } : m
+    );
+    updateActiveSession({ messages: next });
+    saveConversation(activeSession, next);
+    setFeedbackModalIndex(null);
+    setFeedbackDraft("");
+  }
+
+  // Envía la encuesta de satisfacción del diagnóstico y la persiste con la sesión.
+  function submitSatisfaction() {
+    if (satRating < 1) return;
+    const info: SatisfactionInfo = {
+      rating: satRating,
+      comment: satComment.trim(),
+      submittedAt: new Date().toISOString(),
+    };
+    updateActiveSession({ satisfaction: info });
+    saveConversation(activeSession, activeSession.messages, { satisfaction: info });
+    setShowSatisfaction(false);
+  }
+
+  // Abre el modal de satisfacción prefilando con lo ya enviado (para editarlo).
+  function openSatisfaction() {
+    setSatRating(activeSession.satisfaction?.rating ?? 0);
+    setSatComment(activeSession.satisfaction?.comment ?? "");
+    setSatHover(0);
+    setShowSatisfaction(true);
+  }
+
+  // Cierra el diagnóstico; si el usuario aún no ha calificado, encadena la
+  // encuesta de satisfacción (así se pide "al final, tras ver el diagnóstico").
+  function closeDiag() {
+    setShowDiag(false);
+    if (!activeSession.satisfaction) {
+      openSatisfaction();
+    }
+  }
+
   async function generateDiagnostico() {
     // Igual que callChat: el resultado va a la sesión que lo pidió, aunque el
     // usuario cambie de sesión mientras el análisis corre (~10-20s).
@@ -593,7 +838,7 @@ export function ChatLab() {
     setDiagLoading(true);
     setError(null);
     try {
-      const res = await apiFetch<DiagnosticoResponse>("/api/chat/diagnostico", {
+      const res = await chatLabFetch<DiagnosticoResponse>("/api/chat/diagnostico", {
         method: "POST",
         json: {
           messages: session.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -605,14 +850,24 @@ export function ChatLab() {
       updateSession(session.id, {
         diagnostico: res.diagnostico,
         saveInfo: { saved: res.saved, id: res.diagnostic_id, error: res.save_error },
+        // Generar el diagnóstico cierra la sesión: congela el cronómetro si el
+        // avatar no lo había cerrado ya.
+        completedAt: session.completedAt ?? Date.now(),
       });
+      // Persistir el cronómetro final (duración total) en la conversación de BD.
+      const completedAt = session.completedAt ?? Date.now();
+      saveConversation({ ...session, completedAt }, session.messages);
       // Abrir el modal solo si el usuario sigue viendo esta sesión.
       if (activeSessionIdRef.current === session.id) {
         setShowDiag(true);
       }
     } catch (e) {
       if (activeSessionIdRef.current === session.id) {
-        setError((e as Error).message || "Error generando diagnóstico");
+        if ((e as any).status === 401) {
+          setError("Acceso denegado: falta el token de acceso o ha expirado. Por favor, configúralo en la sección técnica (⚙️).");
+        } else {
+          setError((e as Error).message || "Error generando diagnóstico");
+        }
       }
     } finally {
       setDiagLoading(false);
@@ -625,7 +880,13 @@ export function ChatLab() {
     const defaultAvatar = avatars.length ? avatars[0].id : "";
     const newSession: ChatSession = {
       id: newId,
-      name: `Sesión ${sessions.length + 1}`,
+      name: (() => {
+        const maxNum = sessions.reduce((max, s) => {
+          const m = s.name.match(/^Sesión (\d+)$/);
+          return m ? Math.max(max, parseInt(m[1])) : max;
+        }, 0);
+        return `Sesión ${maxNum + 1}`;
+      })(),
       avatarId: defaultAvatar,
       provider: "gemini",
       selectedModel: "gemini-3.5-flash",
@@ -638,7 +899,11 @@ export function ChatLab() {
     };
     const next = [...sessions, newSession];
     setSessions(next);
-    localStorage.setItem("chatlab_sessions", JSON.stringify(next));
+    try {
+      localStorage.setItem("chatlab_sessions", JSON.stringify(next));
+    } catch (e) {
+      console.warn("No se pudo guardar sesiones en localStorage:", e);
+    }
     setActiveSessionId(newId);
   }
 
@@ -651,7 +916,11 @@ export function ChatLab() {
     }
     const remaining = sessions.filter((s) => s.id !== id);
     setSessions(remaining);
-    localStorage.setItem("chatlab_sessions", JSON.stringify(remaining));
+    try {
+      localStorage.setItem("chatlab_sessions", JSON.stringify(remaining));
+    } catch (e) {
+      console.warn("No se pudo guardar sesiones en localStorage:", e);
+    }
     if (activeSessionId === id) {
       setActiveSessionId(remaining[0].id);
     }
@@ -667,14 +936,22 @@ export function ChatLab() {
     if (!editNameValue.trim()) return;
     setSessions((prev) => {
       const next = prev.map((s) => (s.id === id ? { ...s, name: editNameValue.trim() } : s));
-      localStorage.setItem("chatlab_sessions", JSON.stringify(next));
+      try {
+        localStorage.setItem("chatlab_sessions", JSON.stringify(next));
+      } catch (e) {
+        console.warn("No se pudo guardar sesiones en localStorage:", e);
+      }
       return next;
     });
     setEditingSessionId(null);
   }
 
   function exportSession(session: ChatSession) {
-    const avatarName = avatars.find((a) => a.id === session.avatarId)?.name || session.avatarId;
+    const sessionAvatar = avatars.find((a) => a.id === session.avatarId);
+    const avatarName = sessionAvatar?.name || session.avatarId;
+    const isDiagSession = sessionAvatar?.kind === "diagnostico";
+    const reg = { ...savedRegistro, ...(session.registro || {}) };
+
     let content = `# Reporte de Laboratorio: ${session.name}\n`;
     content += `Fecha: ${new Date(session.createdAt).toLocaleDateString()}\n`;
     content += `Avatar simulado: ${avatarName}\n`;
@@ -683,12 +960,51 @@ export function ChatLab() {
       content += `Modelo específico: ${session.modelName}\n`;
     }
     content += `Nivel: ${session.level}\n`;
+    if (isDiagSession) {
+      content += `Candidato: ${reg.nombre || "N/A"}\n`;
+      content += `Rol objetivo: ${reg.rol_objetivo || "N/A"}\n`;
+      content += `Industria: ${reg.industria || "N/A"}\n`;
+      const nivelLabels: Record<string, string> = {
+        entry: "Entry",
+        junior: "Junior",
+        mid: "Semi-Senior",
+        senior: "Senior",
+        lead: "Lead",
+        executive: "Ejecutivo",
+      };
+      content += `Nivel de experiencia: ${
+        reg.experience_level ? nivelLabels[reg.experience_level] ?? reg.experience_level : "N/A"
+      }\n`;
+      content += `Duración simulada: ${session.durationMin ?? DEFAULT_DURATION} min\n`;
+    }
     content += `Caracteres Prompt: ${session.promptChars || "N/A"}\n`;
     const totalCost = sessionCostUsd(session);
     if (totalCost > 0) {
       content += `Costo estimado de la sesión: ~${fmtUsd(totalCost)} USD (on-demand, sin cache)\n`;
     }
+    // Tiempo real que llevó la sesión (cronómetro), si arrancó.
+    if (session.startedAt) {
+      const durMs = (session.completedAt ?? Date.now()) - session.startedAt;
+      const estado = session.completedAt ? "" : " (en curso)";
+      content += `Tiempo de realización: ${fmtDuration(durMs)} (mm:ss)${estado}\n`;
+    }
+    // Fiabilidad: errores del proveedor durante la sesión.
+    const sessErrs = session.errorLog ?? [];
+    content += `Errores durante la sesión: ${sessErrs.length}`;
+    if (sessErrs.length) {
+      const server5xx = sessErrs.filter((e) => (e.status ?? 0) >= 500).length;
+      content += ` (${server5xx} de servidor/502)`;
+    }
     content += `\n`;
+    content += `\n`;
+    if (sessErrs.length) {
+      content += `## Registro de Errores\n\n`;
+      sessErrs.forEach((e) => {
+        const hora = new Date(e.at).toLocaleTimeString();
+        content += `- [${hora}] ${e.status ? `HTTP ${e.status}` : "sin código"}: ${e.message}\n`;
+      });
+      content += `\n`;
+    }
     content += `## Historial de Turnos de Prueba\n\n`;
 
     if (session.messages.length === 0) {
@@ -698,8 +1014,83 @@ export function ChatLab() {
         const roleLabel = m.role === "user" ? "Usuario" : avatarName;
         const latency = m.latencyMs !== undefined ? ` _(${(m.latencyMs / 1000).toFixed(1)}s)_` : "";
         const fb = m.feedback === "like" ? " 👍" : m.feedback === "dislike" ? " 👎" : "";
-        content += `**[${roleLabel.toUpperCase()}]**${latency}${fb}:\n${m.content}\n\n---\n\n`;
+        content += `**[${roleLabel.toUpperCase()}]**${latency}${fb}:\n${m.content}\n`;
+        if (m.feedbackComment) {
+          content += `> 💬 _Comentario del usuario (por qué no gustó):_ ${m.feedbackComment}\n`;
+        }
+        content += `\n---\n\n`;
       });
+    }
+
+    if (session.satisfaction) {
+      const sat = session.satisfaction;
+      content += `\n## Satisfacción del Diagnóstico\n\n`;
+      content += `Valoración: ${"★".repeat(sat.rating)}${"☆".repeat(5 - sat.rating)} (${sat.rating}/5)\n`;
+      if (sat.comment) {
+        content += `Comentario: ${sat.comment}\n`;
+      }
+      content += `\n`;
+    }
+
+    if (session.diagnostico) {
+      const diag = session.diagnostico;
+      content += `\n## Diagnóstico\n\n`;
+      if (diag.resumen_ejecutivo) {
+        content += `### Resumen Ejecutivo\n${diag.resumen_ejecutivo}\n\n`;
+      }
+      if (diag.competencias_foco && diag.competencias_foco.length > 0) {
+        content += `### Competencias Foco\n${diag.competencias_foco.map(c => `- ${c}`).join("\n")}\n\n`;
+      }
+      if (diag.strengths && diag.strengths.length > 0) {
+        content += `### Fortalezas\n`;
+        diag.strengths.forEach((s) => {
+          content += `- **${s.skill}**:\n`;
+          content += `  - *Evidencia*: ${s.evidence}\n`;
+          content += `  - *Por qué importa*: ${s.why_matters}\n`;
+        });
+        content += `\n`;
+      }
+      if (diag.gaps && diag.gaps.length > 0) {
+        content += `### Gaps / Áreas de Oportunidad\n`;
+        diag.gaps.forEach((g) => {
+          content += `- **${g.skill}**:\n`;
+          content += `  - *Evidencia*: ${g.evidence}\n`;
+          content += `  - *Impacto*: ${g.impact}\n`;
+          content += `  - *Micro-práctica recomendada*: ${g.micro_practice}\n`;
+        });
+        content += `\n`;
+      }
+      if (diag.blind_spot) {
+        content += `### Punto Ciego\n${diag.blind_spot}\n\n`;
+      }
+      if (diag.reflection_question) {
+        content += `### Pregunta de Reflexión\n${diag.reflection_question}\n\n`;
+      }
+      if (diag.coach_note) {
+        content += `### Nota del Coach\n${diag.coach_note}\n\n`;
+      }
+      if (diag.verbal_patterns) {
+        const vp = diag.verbal_patterns;
+        content += `### Patrones Verbales\n`;
+        if (vp.vague_verbs_detected && vp.vague_verbs_detected.length > 0) {
+          content += `- **Verbos vagos detectados**: ${vp.vague_verbs_detected.join(", ")}\n`;
+        }
+        if (vp.we_vs_i_tendency) {
+          content += `- **Tendencia "Nosotros" vs "Yo"**: ${vp.we_vs_i_tendency}\n`;
+        }
+        if (vp.filler_frequency) {
+          content += `- **Frecuencia de muletillas**: ${vp.filler_frequency}\n`;
+        }
+        content += `\n`;
+      }
+      if (diag.recommended_next_scenario) {
+        content += `### Siguiente Práctica Recomendada\n`;
+        content += `- **Escenario**: ${diag.recommended_next_scenario}\n`;
+        if (diag.recommended_next_level) {
+          content += `- **Nivel**: ${diag.recommended_next_level}\n`;
+        }
+        content += `\n`;
+      }
     }
 
     const blob = new Blob([content], { type: "text/markdown;charset=utf-8;" });
@@ -739,6 +1130,12 @@ export function ChatLab() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate("/voice-lab")}
+            className="text-xs font-syne text-teal hover:text-cream px-3 py-1.5 rounded-lg border border-teal/25 hover:bg-teal/10 transition-all flex items-center gap-1.5"
+          >
+            🎙️ Voz
+          </button>
           <button
             onClick={() => window.history.back()}
             className="text-xs font-syne text-muted hover:text-cream px-3 py-1.5 rounded-lg border border-white/5 hover:bg-white/5 transition-all"
@@ -1015,6 +1412,21 @@ export function ChatLab() {
                   </div>
                 </div>
               )}
+
+              {/* Token de Acceso */}
+              <div className="space-y-1.5 pt-2 border-t border-white/5">
+                <label className="text-[11px] text-muted font-mono">TOKEN DE ACCESO</label>
+                <input
+                  type="password"
+                  value={chatlabToken}
+                  onChange={(e) => handleTokenChange(e.target.value)}
+                  placeholder="Introduce el token de acceso..."
+                  className="w-full bg-ink border border-white/10 rounded-xl px-3.5 py-2 text-sm focus:outline-none focus:border-violet focus:ring-1 focus:ring-violet/30 transition-all text-cream placeholder-subtle/40"
+                />
+                <p className="text-[10px] text-subtle leading-normal">
+                  Requerido en producción para evitar consumos no autorizados. Se guarda localmente.
+                </p>
+              </div>
             </div>
           </CollapsibleSection>
 
@@ -1101,6 +1513,27 @@ export function ChatLab() {
                 <span className="text-muted">Estado del Cierre:</span>
                 <span className={`font-semibold ${closed ? "text-warning animate-pulse" : "text-teal"}`}>
                   {closed ? "CIERRE MARCADO" : "ACTIVA"}
+                </span>
+              </div>
+
+              {/* Cronómetro: tiempo real que llevó la sesión. */}
+              <div className="flex justify-between items-center border-t border-white/5 pt-2">
+                <span className="text-muted">Tiempo de sesión:</span>
+                {activeSession.startedAt ? (
+                  <span className={`font-bold ${activeSession.completedAt ? "text-cream" : "text-teal"}`}>
+                    {fmtDuration(elapsedMs)}
+                    {!activeSession.completedAt && <span className="text-subtle"> ⏱</span>}
+                  </span>
+                ) : (
+                  <span className="text-subtle">—</span>
+                )}
+              </div>
+
+              {/* Fiabilidad: errores del proveedor durante la sesión (502…). */}
+              <div className="flex justify-between items-center border-t border-white/5 pt-2">
+                <span className="text-muted">Errores (502 / total):</span>
+                <span className={`font-bold ${errorLog.length ? "text-danger" : "text-teal"}`}>
+                  {serverErrorCount} / {errorLog.length}
                 </span>
               </div>
 
@@ -1203,33 +1636,59 @@ export function ChatLab() {
             </div>
           </div>
 
-          {/* Barra de progreso hacia el diagnóstico (solo Sofia, ya iniciada) */}
+          {/* Barra de progreso hacia el diagnóstico (solo Sofia, ya iniciada).
+              La completa el esfuerzo del usuario: al alcanzar la meta de
+              intercambios llega a 100% y aparece el botón para terminar (ya no
+              depende de que Sofia emita [CIERRE] por su cuenta). */}
           {isDiagnostico && messages.length > 0 && (
             <div className="bg-deep/20 px-6 py-2.5 border-b border-white/5">
               <div className="max-w-3xl mx-auto w-full">
                 <div className="flex items-center justify-between text-[11px] mb-1.5">
                   <span className="font-syne font-semibold text-cream flex items-center gap-1.5">
-                    {closed ? "✅ Diagnóstico listo" : "🎯 Progreso hacia tu diagnóstico"}
+                    {closed
+                      ? "✅ Diagnóstico listo"
+                      : reachedTarget
+                      ? "✅ Ya tienes suficiente para tu diagnóstico"
+                      : "🎯 Progreso hacia tu diagnóstico"}
                   </span>
                   <span className="font-mono text-muted">
-                    {progressPct}% · práctica de {durationMin} min
+                    {progressPct}%
+                    {activeSession.startedAt && <> · ⏱ {fmtDuration(elapsedMs)}</>}
+                    <> · {durationMin} min</>
                   </span>
                 </div>
                 <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
                   <div
                     className={`h-full rounded-full transition-all duration-700 ${
-                      closed ? "bg-success" : "bg-gradient-to-r from-teal to-violet"
+                      progressComplete ? "bg-success" : "bg-gradient-to-r from-teal to-violet"
                     }`}
                     style={{ width: `${progressPct}%` }}
                   />
                 </div>
-                <p className="text-[10px] text-subtle mt-1 leading-normal">
-                  {closed
-                    ? diagnostico
-                      ? "Tu diagnóstico está generado — ábrelo con «Ver último diagnóstico»."
-                      : "Sofia cerró la entrevista. Pulsa «Generar Diagnóstico» para tu reporte."
-                    : `Cuéntale historias concretas; a más detalle, mejor diagnóstico. Vas ${exchanges} de ~${progressTarget} intercambios.`}
-                </p>
+                <div className="flex items-center justify-between gap-3 mt-1.5">
+                  <p className="text-[10px] text-subtle leading-normal flex-1">
+                    {progressComplete
+                      ? diagnostico
+                        ? "Tu diagnóstico está generado — ábrelo con «Ver último diagnóstico»."
+                        : closed
+                        ? "Sofia cerró la entrevista. Genera tu reporte cuando quieras."
+                        : "Llegaste a la meta de intercambios. Puedes seguir charlando o generar ya tu diagnóstico."
+                      : `Cuéntale historias concretas; a más detalle, mejor diagnóstico. Vas ${exchanges} de ~${progressTarget} intercambios.`}
+                  </p>
+                  {/* CTA de cierre: aparece al completar (por meta o por cierre de
+                      Sofia) mientras aún no exista diagnóstico. Da un final claro
+                      al usuario en vez de dejar la barra "colgada". */}
+                  {progressComplete && !diagnostico && (
+                    <button
+                      onClick={generateDiagnostico}
+                      disabled={diagLoading}
+                      className="shrink-0 font-syne font-bold text-[11px] py-1.5 px-3 rounded-lg bg-teal text-ink hover:bg-teal/80 disabled:opacity-50 transition-all flex items-center gap-1.5 active:scale-95"
+                      title="Corre el análisis de producción sobre esta conversación"
+                    >
+                      {diagLoading ? "🔬 Analizando…" : "🔬 Terminar y generar diagnóstico"}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1371,6 +1830,33 @@ export function ChatLab() {
                           >
                             <ThumbsDown className="w-3.5 h-3.5" />
                           </button>
+
+                          {/* Tras el 👎: ícono de info para contar por qué no gustó.
+                              Se resalta si ya hay un comentario guardado. */}
+                          {m.feedback === "dislike" && (
+                            <button
+                              onClick={() => openFeedbackModal(i)}
+                              className={`flex items-center gap-1 p-1 rounded-md transition-all ${
+                                m.feedbackComment
+                                  ? "text-teal bg-teal/10"
+                                  : "text-subtle hover:text-cream hover:bg-white/5 animate-pulse-slow"
+                              }`}
+                              title={m.feedbackComment ? "Editar tu comentario" : "¿Por qué no te gustó? (opcional)"}
+                            >
+                              <Info className="w-3.5 h-3.5" />
+                              {m.feedbackComment && (
+                                <span className="text-[9px] font-mono">nota</span>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Comentario del dislike, ya guardado (visible inline). */}
+                      {m.role === "assistant" && m.feedbackComment && (
+                        <div className="flex items-start gap-1.5 mt-0.5 px-2 py-1.5 rounded-lg bg-danger/5 border border-danger/15 text-[11px] text-danger/90 leading-snug max-w-full">
+                          <MessageSquareText className="w-3 h-3 mt-0.5 shrink-0" />
+                          <span className="italic">{m.feedbackComment}</span>
                         </div>
                       )}
                     </div>
@@ -1405,6 +1891,7 @@ export function ChatLab() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
+                    if (e.nativeEvent.isComposing) return;
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       send();
@@ -1568,7 +2055,7 @@ export function ChatLab() {
       {showDiag && diagnostico && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-ink/80 backdrop-blur-sm p-4"
-          onClick={() => setShowDiag(false)}
+          onClick={closeDiag}
         >
           <div
             className="bg-deep border border-white/10 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl"
@@ -1581,7 +2068,7 @@ export function ChatLab() {
                 <h2 className="font-syne font-bold text-cream text-sm">Diagnóstico de Habilidades Blandas</h2>
               </div>
               <button
-                onClick={() => setShowDiag(false)}
+                onClick={closeDiag}
                 className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-muted hover:text-cream flex items-center justify-center transition-all"
               >
                 ✕
@@ -1758,6 +2245,183 @@ export function ChatLab() {
                   </div>
                 </div>
               )}
+
+              {/* Encuesta de satisfacción (CTA dentro del diagnóstico) */}
+              <div className="border-t border-white/5 pt-4">
+                {satisfaction ? (
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-teal/5 border border-teal/20 p-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star
+                            key={n}
+                            className={`w-3.5 h-3.5 ${n <= satisfaction.rating ? "text-warning fill-warning" : "text-white/15"}`}
+                          />
+                        ))}
+                      </div>
+                      <span className="text-[11px] text-muted truncate">
+                        {satisfaction.comment ? `“${satisfaction.comment}”` : "¡Gracias por tu opinión!"}
+                      </span>
+                    </div>
+                    <button
+                      onClick={openSatisfaction}
+                      className="shrink-0 text-[11px] font-syne text-teal hover:text-cream underline decoration-dotted"
+                    >
+                      Editar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-gradient-to-br from-violet/10 to-teal/10 border border-white/10 p-3">
+                    <div className="min-w-0">
+                      <div className="text-xs font-syne font-bold text-cream">¿Qué te pareció tu diagnóstico?</div>
+                      <div className="text-[10px] text-muted">Tu opinión nos ayuda a mejorar.</div>
+                    </div>
+                    <button
+                      onClick={openSatisfaction}
+                      className="shrink-0 flex items-center gap-1.5 text-xs font-syne font-bold bg-violet text-white hover:bg-violet-light px-3 py-2 rounded-xl transition-all active:scale-95"
+                    >
+                      <Star className="w-3.5 h-3.5" /> Calificar
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: ¿Por qué no te gustó? (comentario del dislike) */}
+      {feedbackModalIndex !== null && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/80 backdrop-blur-sm p-4"
+          onClick={() => setFeedbackModalIndex(null)}
+        >
+          <div
+            className="bg-deep border border-white/10 rounded-2xl w-full max-w-md shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <h3 className="font-syne font-bold text-cream text-base flex items-center gap-2">
+                    <ThumbsDown className="w-4 h-4 text-danger" /> ¿Por qué no te gustó?
+                  </h3>
+                  <p className="text-xs text-muted leading-relaxed">
+                    Cuéntanos qué falló en esta respuesta. Es opcional, pero nos sirve muchísimo para afinar el prompt.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setFeedbackModalIndex(null)}
+                  className="w-7 h-7 shrink-0 rounded-lg bg-white/5 hover:bg-white/10 text-muted hover:text-cream flex items-center justify-center transition-all"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <textarea
+                value={feedbackDraft}
+                onChange={(e) => setFeedbackDraft(e.target.value)}
+                autoFocus
+                rows={4}
+                placeholder="Ej. Repitió una pregunta anterior / sonó robótico / no entendió el contexto…"
+                className="w-full bg-ink border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-cream placeholder-subtle focus:outline-none focus:border-danger/50 focus:ring-1 focus:ring-danger/30 resize-none leading-relaxed"
+              />
+
+              <div className="flex items-center justify-end gap-2">
+                {messages[feedbackModalIndex]?.feedbackComment && (
+                  <button
+                    onClick={() => { setFeedbackDraft(""); }}
+                    className="text-[11px] font-syne text-muted hover:text-danger px-2 py-1 rounded-lg transition-all mr-auto"
+                    title="Borrar el texto"
+                  >
+                    Limpiar
+                  </button>
+                )}
+                <button
+                  onClick={() => setFeedbackModalIndex(null)}
+                  className="text-xs font-syne text-muted hover:text-cream px-3 py-2 rounded-xl border border-white/10 hover:bg-white/5 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={saveFeedbackComment}
+                  className="text-xs font-syne font-bold bg-violet text-white hover:bg-violet-light px-4 py-2 rounded-xl transition-all active:scale-95"
+                >
+                  Guardar comentario
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Satisfacción del diagnóstico (estrellas + comentario opcional) */}
+      {showSatisfaction && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/80 backdrop-blur-sm p-4"
+          onClick={() => setShowSatisfaction(false)}
+        >
+          <div
+            className="bg-deep border border-white/10 rounded-2xl w-full max-w-md shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 space-y-5">
+              <div className="text-center space-y-1.5">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-warning/15 border border-warning/25 flex items-center justify-center text-2xl shadow-inner">
+                  ⭐
+                </div>
+                <h3 className="font-syne font-bold text-cream text-base">¿Qué te pareció tu diagnóstico?</h3>
+                <p className="text-xs text-muted leading-relaxed">
+                  Tu opinión nos ayuda a mejorar la experiencia. Queda registrada con tu conversación.
+                </p>
+              </div>
+
+              {/* Estrellas */}
+              <div className="flex items-center justify-center gap-1.5">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setSatRating(n)}
+                    onMouseEnter={() => setSatHover(n)}
+                    onMouseLeave={() => setSatHover(0)}
+                    className="p-1 transition-transform hover:scale-110 active:scale-95"
+                    title={`${n} de 5`}
+                  >
+                    <Star
+                      className={`w-8 h-8 transition-colors ${
+                        n <= (satHover || satRating) ? "text-warning fill-warning" : "text-white/15"
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-muted font-mono">COMENTARIO (opcional)</label>
+                <textarea
+                  value={satComment}
+                  onChange={(e) => setSatComment(e.target.value)}
+                  rows={3}
+                  placeholder="¿Qué te gustó o qué mejorarías del diagnóstico?"
+                  className="w-full bg-ink border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-cream placeholder-subtle focus:outline-none focus:border-violet/50 focus:ring-1 focus:ring-violet/30 resize-none leading-relaxed"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setShowSatisfaction(false)}
+                  className="text-xs font-syne text-muted hover:text-cream px-3 py-2 rounded-xl border border-white/10 hover:bg-white/5 transition-all"
+                >
+                  Ahora no
+                </button>
+                <button
+                  onClick={submitSatisfaction}
+                  disabled={satRating < 1}
+                  className="text-xs font-syne font-bold bg-violet text-white hover:bg-violet-light disabled:opacity-40 disabled:cursor-not-allowed px-4 py-2 rounded-xl transition-all active:scale-95"
+                >
+                  Enviar opinión
+                </button>
+              </div>
             </div>
           </div>
         </div>

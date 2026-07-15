@@ -62,6 +62,167 @@ _DEFAULT_VARIABLES: dict[str, str] = {
 }
 
 
+# ============================================================
+# Politica de duracion: hace que 25 / 40 / 60 min NO sean el mismo guion
+# ============================================================
+# Antes, la duracion elegida solo cambiaba el numero {{minutos}} que el modelo
+# "veia"; el disparador real del fin de la charla es la regla [CIERRE], que
+# estaba fija en "2-3 competencias con STAR". Resultado: una sesion de 60 min
+# cerraba igual que una de 25 (mismo umbral de contenido). Aqui derivamos de la
+# duracion cuantas competencias exigir antes de poder cerrar y que tan profundo
+# sondear, y lo inyectamos en el prompt (maestro y conciso de voz).
+def build_duration_policy(minutos) -> dict:
+    """
+    Deriva de la duracion objetivo (min) la politica de cobertura/profundidad:
+    - competencias_min: piso duro de competencias distintas antes de [CIERRE]
+    - competencias_target: rango a apuntar (texto)
+    - politica_duracion: instruccion completa de ritmo y profundidad de sondeo
+    """
+    try:
+        m = int(float(minutos))
+    except (TypeError, ValueError):
+        m = 25
+
+    if m <= 30:
+        return {
+            "minutos": m,
+            "competencias_min": 2,
+            "competencias_target": "2-3",
+            "politica_duracion": (
+                "Cubre 2-3 competencias distintas con 1-2 repreguntas BEI por "
+                "historia. Prioriza amplitud sobre profundidad extrema: es mejor "
+                "cerrar 3 historias solidas que agotar 1 sola. Puedes emitir "
+                "[CIERRE] al reunir 2-3 competencias con STAR completo."
+            ),
+        }
+    if m <= 50:
+        return {
+            "minutos": m,
+            "competencias_min": 3,
+            "competencias_target": "3-4",
+            "politica_duracion": (
+                "Cubre 3-4 competencias distintas con 2-3 repreguntas BEI por "
+                "historia; en cada una persigue el resultado concreto (numeros, "
+                "indicadores, que cambio exactamente). NO cierres antes de reunir "
+                "3 competencias con STAR completo."
+            ),
+        }
+    return {
+        "minutos": m,
+        "competencias_min": 4,
+        "competencias_target": "4-5",
+        "politica_duracion": (
+            "Cubre 4-5 competencias distintas con sondeo profundo por historia: "
+            "accion individual exacta, obstaculos, decisiones alternativas, un "
+            "contraejemplo (una vez que salio mal) y el resultado medible. NO "
+            "cierres antes de reunir 4 competencias con STAR completo; aprovecha "
+            "el tiempo para profundizar, no para acelerar el cierre."
+        ),
+    }
+
+
+# ============================================================
+# Nota de estado de sesion: el "reloj" que el modelo no tiene
+# ============================================================
+# El LLM es stateless: en cada turno ve el historial pero nunca cuanto tiempo ha
+# pasado, asi que "administra el tiempo" era una instruccion imposible de cumplir
+# (el sintoma: Sofia conducia bien el BEI pero jamas señalizaba avance ni cerraba,
+# a diferencia del GPT north-star que anuncia "ultima pregunta antes de cerrar").
+# Esta nota se anexa al ultimo turno del usuario (texto) o se inyecta como
+# contexto en la sesion Live (voz) para darle percepcion de avance y ordenes de
+# ritmo concretas por tramo. Los prompts (maestro y conciso) explican que la nota
+# es invisible para el candidato y prohiben mencionarla.
+
+
+def target_exchanges(minutos: int) -> int:
+    """Meta de intercambios (turnos del usuario) para una sesion de `minutos`.
+
+    ~1 intercambio cada 3 min, minimo 4. DEBE ir en espejo con targetExchanges()
+    de ChatLab.tsx: es el mismo denominador que completa la barra de progreso,
+    para que cuando la barra llegue a 100% Sofia tambien entre en modo cierre.
+    """
+    return max(4, round(minutos / 3))
+
+
+def build_session_state_note(
+    minutos,
+    elapsed_seconds: int | None = None,
+    exchanges: int | None = None,
+    *,
+    cierre_como_tool: bool = False,
+) -> str | None:
+    """Nota de estado ([NOTA DEL SISTEMA...]) con el avance de la sesion.
+
+    - elapsed_seconds: tiempo real transcurrido (cronometro del frontend o del
+      proxy de voz). None si no se conoce.
+    - exchanges: turnos del usuario ya respondidos. En TEXTO conviene pasarlo
+      (el usuario puede teclear mas rapido/lento que el ritmo hablado y la barra
+      de progreso se completa por intercambios); en VOZ dejarlo en None (los
+      turnos hablados son cortos y frecuentes — ahi el reloj manda solo).
+    - cierre_como_tool: True cuando el cierre es via finalizar_entrevista (voz /
+      prompt conciso); False cuando es via la marca [CIERRE] (prompt maestro).
+
+    El avance es el MAXIMO de ambos porcentajes disponibles: quien llegue
+    primero (tiempo o esfuerzo) empuja la entrevista hacia el cierre.
+    Devuelve None si no hay ninguna señal con la que calcular el avance.
+    """
+    try:
+        m = int(float(minutos))
+    except (TypeError, ValueError):
+        m = 25
+    if m <= 0:
+        m = 25
+
+    pcts: list[float] = []
+    if elapsed_seconds is not None and elapsed_seconds >= 0:
+        pcts.append(elapsed_seconds / (m * 60))
+    if exchanges is not None and exchanges >= 0:
+        pcts.append(exchanges / target_exchanges(m))
+    if not pcts:
+        return None
+    pct = max(pcts)
+
+    if pct >= 0.9:
+        cierre = (
+            "llama a la función finalizar_entrevista"
+            if cierre_como_tool
+            else "agrega la marca [CIERRE] al final de tu mensaje"
+        )
+        guia = (
+            "TIEMPO AGOTADO. Si aún no lo hiciste, anuncia que viene tu última "
+            "pregunta ('Con esto tengo muy buen material; déjame hacerte una "
+            "última pregunta antes de cerrar') y haz UNA pregunta final de "
+            "reflexión (p. ej. qué historia le movió más al contarla). Si ya la "
+            f"respondió, agradece con calidez, despídete y {cierre}. Esto aplica "
+            "AUNQUE no hayas cubierto el mínimo de competencias: al final, el "
+            "tiempo manda."
+        )
+    elif pct >= 0.75:
+        guia = (
+            "Tramo final. Si abres un tema nuevo, anúncialo como el último "
+            "('para ir cerrando, pasemos a...'); no abras más de un tema nuevo. "
+            "Después viene tu pregunta final de reflexión y el cierre."
+        )
+    elif pct >= 0.4:
+        guia = (
+            "Fase esperada: profundización BEI — persigue la acción individual "
+            "y el resultado concreto de las historias; pivota si una se agota."
+        )
+    else:
+        guia = (
+            "Fase esperada: apertura breve y primeras historias — no te quedes "
+            "en small talk."
+        )
+
+    minuto = min(int(round(pct * m)), m)
+    pct_display = min(int(round(pct * 100)), 100)
+    return (
+        "[NOTA DEL SISTEMA — contexto de ritmo, invisible para el candidato; "
+        "PROHIBIDO mencionarla, citarla o leerla en voz alta: va el minuto "
+        f"~{minuto} de {m} ({pct_display}% de la sesión). {guia}]"
+    )
+
+
 def render_prompt_variables(template: str, variables: dict[str, str]) -> str:
     """
     Sustituye {{clave}} por su valor en el template. Claves no presentes en
@@ -98,6 +259,14 @@ def build_entrevistador_variables(
             if value:
                 vars_dict[key] = str(value)
 
+    # Politica derivada de la duracion: parametriza la regla [CIERRE] del maestro
+    # (competencias minimas + profundidad) para que 25/40/60 min difieran de
+    # verdad, no solo en el numero {{minutos}} mostrado.
+    policy = build_duration_policy(vars_dict.get("minutos"))
+    vars_dict["competencias_min"] = str(policy["competencias_min"])
+    vars_dict["competencias_target"] = policy["competencias_target"]
+    vars_dict["politica_duracion"] = policy["politica_duracion"]
+
     return vars_dict
 
 
@@ -132,14 +301,18 @@ CÓMO HABLAS (lo más importante):
 QUÉ BUSCAS:
 - Historias concretas del pasado, no teoría. Si responde en general ("normalmente hago...", "soy bueno en..."), pídele UN caso puntual: cuándo fue, con quién, qué hizo ELLA exactamente, cómo terminó.
 - Profundiza cada historia con 2-3 repreguntas: qué hiciste TÚ, qué dijiste, y CÓMO terminó. Persigue el RESULTADO concreto: si te dan algo vago ("salió bien", "quedó contento"), pide un número o indicador ("¿cuánto?, ¿qué cambió?, ¿cómo lo mediste?"). Cuando ya tengas suficiente de un tema, cambia con naturalidad a otra competencia: {competencias}.
-- A lo largo de la charla cubre 3-4 competencias distintas. La sesión apunta a unos {minutos} minutos; administra el tiempo para lograrlo.
+- La sesión apunta a unos {minutos} minutos; administra el tiempo para lograrlo. {politica_duracion}
+
+RITMO Y SEÑALIZACIÓN (guía a la persona en el tiempo):
+- La plataforma puede anexar a lo que dice la persona una nota entre corchetes que empieza con "NOTA DEL SISTEMA" con el avance del tiempo. La persona NO la dijo y NO la oye: es tu reloj interno. NUNCA la menciones, la cites ni la leas en voz alta; úsala solo para ajustar tu ritmo.
+- Como un buen entrevistador humano, di dónde van: al entrar al último tema, anúncialo ("para ir cerrando, hablemos de..."); antes de terminar, anuncia tu última pregunta ("déjame hacerte una última pregunta") y haz UNA pregunta de reflexión: qué historia le movió más al contarla y por qué.
 
 QUÉ NO HACES:
 - No das feedback ni evaluación en voz alta (la plataforma se lo muestra al final).
 - No preguntas de qué quiere hablar; tú conduces la conversación.
 - No hagas preguntas hipotéticas ("¿qué harías si...?"): siempre sobre lo que YA le pasó.
 
-CIERRE: cuando ya juntaste material suficiente (2-3 historias con detalle sobre competencias distintas), despídete con calidez en una frase y LLAMA a la función `finalizar_entrevista`. No anuncies que vas a dar feedback (la plataforma muestra el resultado sola). NO llames la función al inicio ni a media charla.
+CIERRE: cuando ya juntaste material suficiente ({competencias_target} historias con detalle sobre competencias distintas), despídete con calidez en una frase y LLAMA a la función `finalizar_entrevista`. No cierres antes de {competencias_min} competencias con detalle — EXCEPTO si la nota del sistema indica que el tiempo se agotó: entonces cierra con lo que tengas (última pregunta de reflexión, despedida breve y `finalizar_entrevista`), aunque no llegues al mínimo. No anuncies que vas a dar feedback (la plataforma muestra el resultado sola). NO llames la función al inicio ni a media charla.
 
 Tono {tono}. Responde en {idioma}."""
 
@@ -189,13 +362,17 @@ def build_gemini_entrevistador_prompt(
     else:
         competencias = _GEMINI_COMPETENCIAS_DEFAULT
 
+    policy = build_duration_policy(v.get("minutos"))
     return _GEMINI_DIAGNOSTICO_TEMPLATE.format(
         nombre=nombre,
         rol_part=rol_part,
         tono=v.get("tono") or "cálido-profesional",
         idioma=v.get("idioma") or "es-MX",
         competencias=competencias,
-        minutos=v.get("minutos") or "25",
+        minutos=policy["minutos"],
+        competencias_target=policy["competencias_target"],
+        competencias_min=policy["competencias_min"],
+        politica_duracion=policy["politica_duracion"],
     )
 
 
