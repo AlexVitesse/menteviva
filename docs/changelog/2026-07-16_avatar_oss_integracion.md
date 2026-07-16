@@ -51,6 +51,17 @@ del mismo contrato.
   `signaling_url/offer`. `sendPcm24k` manda PCM16 **24k tal cual** (el servicio
   resamplea a 16k, §1.3, **sin** remuestrear en el front); `interrupt()` manda
   `{"type":"interrupt"}` por el canal; `isActive()` = `pc connected && dc open`.
+  - **Listener speaking/silent** (`dc.onmessage`): el avatar-service emite por el
+    mismo DataChannel `"audio-in"` mensajes de control en TEXTO
+    (`{"type":"speaking"}` / `{"type":"silent"}`); se parsean y disparan
+    `onSpeakingChange` → enciende el indicador "Sofia habla" en modo OSS. Los
+    frames binarios entrantes se ignoran (solo mandamos PCM, solo recibimos texto).
+  - **`end_utterance`**: nuevo método opcional `endUtterance()` del sink; manda
+    `{"type":"end_utterance"}` por el canal para que el servicio sintetice sin
+    esperar su watchdog de silencio (~350 ms).
+- **`src/hooks/useGeminiLive.ts`**: `GeminiAudioSink` gana `endUtterance?()`
+  (opcional; Simli no lo implementa). Se invoca en el handler `turn_complete`
+  (fin de generación del turno, ya no llegan más `assistant_audio_chunk`).
 - **`src/components/avatar/VideoAvatar.tsx`** (nuevo): capa visual agnóstica del
   proveedor (mismo markup que el antiguo `SimliAvatar`: `<video>/<audio>` +
   fondo blur). Reemplaza a `SimliAvatar.tsx`, que se **elimina** (nadie más lo
@@ -70,9 +81,8 @@ del mismo contrato.
 
 ## Pendiente (espera al `avatar-service` real — AvatarAI)
 - E2E: latencia real, calidad de lip-sync, barge-in de punta a punta, límites
-  de sesión.
-- Canal de "speaking" del servicio para el indicador "Sofia está hablando" en
-  modo OSS (hoy `onSpeakingChange` del hook OSS queda cableado pero sin emisor).
+  de sesión. Se hace cuando AvatarAI pase la URL del túnel + confirme el track
+  de audio (queda `AVATAR_SERVICE_URL` vacía en `.env` hasta entonces).
 - Ajuste fino de formato/tamaño de chunk de audio si el servicio lo pide.
 
 ## Nota de contenido (§7)

@@ -30,9 +30,10 @@ const API_URL = import.meta.env.VITE_API_URL || "";
 
 interface UseOssAvatarOptions {
   /**
-   * Notifica cuando el avatar empieza/termina de hablar. El contrato §1 aun no
-   * define un canal de "speaking"; se acepta por simetria con useSimliAvatar y
-   * quedara cableado cuando el avatar-service lo emita (E2E, ver §5 del plan).
+   * Notifica cuando el avatar empieza/termina de hablar. El avatar-service emite
+   * mensajes de control en TEXTO por el DataChannel "audio-in"
+   * ({"type":"speaking"} / {"type":"silent"}); los cableamos aqui para encender
+   * el indicador "Sofia habla" en modo OSS (simetria con useSimliAvatar).
    */
   onSpeakingChange?: (speaking: boolean) => void;
 }
@@ -116,6 +117,21 @@ export function useOssAvatar({ onSpeakingChange }: UseOssAvatarOptions = {}) {
     const dc = pc.createDataChannel("audio-in");
     dc.binaryType = "arraybuffer";
     dcRef.current = dc;
+
+    // El servicio devuelve por el MISMO canal mensajes de control en TEXTO:
+    //   {"type":"speaking"} / {"type":"silent"}  -> indicador "Sofia habla".
+    // Lo que MANDAMOS es binario (PCM); lo que RECIBIMOS es solo texto, asi que
+    // ignoramos cualquier frame binario entrante.
+    dc.onmessage = (ev) => {
+      if (typeof ev.data !== "string") return;
+      try {
+        const msg = JSON.parse(ev.data);
+        if (msg?.type === "speaking") speakingCbRef.current?.(true);
+        else if (msg?.type === "silent") speakingCbRef.current?.(false);
+      } catch {
+        /* mensaje no-JSON: ignorar */
+      }
+    };
 
     // Streams entrantes: video lip-synced -> <video>, voz -> <audio>.
     const videoStream = new MediaStream();
@@ -222,6 +238,19 @@ export function useOssAvatar({ onSpeakingChange }: UseOssAvatarOptions = {}) {
         if (dc?.readyState === "open") {
           try {
             dc.send(JSON.stringify({ type: "interrupt" }));
+          } catch {
+            /* noop */
+          }
+        }
+      },
+      endUtterance: () => {
+        // Fin de turno de Gemini (§2 del brief): avisar al servicio que no
+        // llegan mas chunks de esta frase para que sintetice YA, sin esperar
+        // su watchdog de silencio (~350 ms). Mensaje de control texto.
+        const dc = dcRef.current;
+        if (dc?.readyState === "open") {
+          try {
+            dc.send(JSON.stringify({ type: "end_utterance" }));
           } catch {
             /* noop */
           }

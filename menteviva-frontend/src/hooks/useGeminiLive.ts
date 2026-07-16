@@ -51,6 +51,12 @@ export interface GeminiAudioSink {
   isActive: () => boolean;
   sendPcm24k: (b64: string) => void;
   interrupt: () => void;
+  /**
+   * Opcional: aviso de fin de turno del avatar (no llegan mas chunks de esta
+   * frase). El sink OSS lo usa para disparar la sintesis sin esperar su
+   * watchdog de silencio; Simli no lo implementa (barra baja del contrato).
+   */
+  endUtterance?: () => void;
 }
 
 interface UseGeminiLiveOptions {
@@ -239,6 +245,10 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
           break;
 
         case "turn_complete": {
+          // Fin de generacion del turno: no llegan mas assistant_audio_chunk.
+          // Avisar al sink OSS para que sintetice sin esperar su watchdog de
+          // silencio (~350 ms). Simli no implementa endUtterance -> no-op.
+          audioSinkRef.current?.endUtterance?.();
           const text = assistantTextRef.current.trim();
           if (text) {
             // Si la voz sigue sonando (player local o Simli), retener el
