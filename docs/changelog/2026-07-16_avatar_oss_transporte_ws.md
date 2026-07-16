@@ -49,11 +49,23 @@ se activa con `VITE_AVATAR_TRANSPORT=ws`.
 - `npm run build` (tsc + vite) → **limpio**.
 - Vite levanta con el nuevo flag; provider=oss + transport=ws → monta `useOssAvatarWs`.
 - Contrato WebRTC §1 y path Simli **sin tocar** (aditivo, tras el flag).
+- **E2E del transporte WS contra el servicio real (RunPod tras el túnel
+  Cloudflare)**: probado desde el navegador replicando el flujo del hook:
+  `/api/avatar/session` → 200 (oss) → `wss://<host>/ws/demo` abre → al mandar
+  PCM16 24k + `end_utterance` el servicio emitió `{"type":"speaking"}`, **12
+  frames JPEG binarios** (~112 KB c/u) y `{"type":"silent"}`. El transporte
+  funciona.
 
-## Pendiente (E2E contra RunPod — AvatarAI)
-- URL del servicio RunPod en `AVATAR_SERVICE_URL` (backend) y confirmar que
-  expone `POST /session` (contrato) + `WS /ws/demo` (frames JPEG binarios +
-  control speaking/silent en texto).
-- Ajuste fino: fps/tamaño de frame JPEG, y timing del "speaking" respecto al PCM
-  acumulado (si el servicio hace lip-sync en streaming, quizá reproducir en
-  `end_utterance` en vez de en "speaking").
+## Hallazgo del E2E → fix de sincronía audio/video
+El `{"type":"speaking"}` llegó **~4 s ANTES** del primer frame de video
+(latencia de inferencia MuseTalk en RunPod: `speaking` +3.0s, 1er frame +6.9s).
+Reproducir el audio en `speaking` lo desincronizaba del video. **Fix**: se
+reproduce el WAV acumulado al llegar el **primer frame de la locución** (armado
+por `speaking`, disparado por el frame) → audio y video arrancan juntos. Fallback:
+si llega `silent` sin ningún frame, se reproduce igual para no quedar mudos.
+
+## Pendiente (E2E de conversación real)
+- Probarlo dentro del flujo `/diagnostico` (con Gemini alimentando el sink) para
+  validar sincronía con voz real, barge-in e indicador "Sofía habla".
+- Ajuste fino: fps/tamaño de frame JPEG (los ~112 KB/frame son pesados; ver si el
+  servicio puede bajar resolución/calidad para el interino).

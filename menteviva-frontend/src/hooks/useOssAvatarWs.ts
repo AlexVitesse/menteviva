@@ -55,9 +55,14 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ctx2dRef = useRef<CanvasRenderingContext2D | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  // PCM de la locución en curso (se vacía al reproducir en "speaking").
+  // PCM de la locución en curso (se vacía al reproducir).
   const utterancePcmRef = useRef<Int16Array[]>([]);
   const audioUrlRef = useRef<string | null>(null);
+  // "Armado" para reproducir: se activa con {"type":"speaking"} y se dispara al
+  // llegar el PRIMER frame de video de la locución. En RunPod el "speaking" llega
+  // ~4s ANTES del primer frame (latencia de inferencia MuseTalk); reproducir en
+  // "speaking" desincronizaría el audio del video. Reproducimos en el 1er frame.
+  const armedRef = useRef(false);
 
   const [connected, setConnected] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -138,6 +143,12 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
             video.play().catch(() => {});
             setConnected(true);
           }
+          // Primer frame de la locución armada: reproducir el audio AHORA para
+          // que arranque junto con el video (no en "speaking", que llega antes).
+          if (armedRef.current && utterancePcmRef.current.length) {
+            armedRef.current = false;
+            playUtterance();
+          }
         })
         .catch(() => {
           /* frame corrupto: descartar */
@@ -155,10 +166,18 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
         try {
           const msg = JSON.parse(data);
           if (msg?.type === "speaking") {
+            // Armar la reproducción; el audio se dispara en el 1er frame de video
+            // (el "speaking" llega ~4s antes que los frames en RunPod).
+            armedRef.current = true;
             speakingCbRef.current?.(true);
-            playUtterance();
           } else if (msg?.type === "silent") {
             speakingCbRef.current?.(false);
+            // Fallback: si el servicio dijo "silent" sin que llegara ningún frame,
+            // reproducir igual el audio acumulado para no quedar mudos.
+            if (armedRef.current && utterancePcmRef.current.length) {
+              armedRef.current = false;
+              playUtterance();
+            }
           }
         } catch {
           /* mensaje no-JSON: ignorar */
@@ -218,6 +237,7 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
       audioUrlRef.current = null;
     }
     utterancePcmRef.current = [];
+    armedRef.current = false;
     canvasRef.current = null;
     ctx2dRef.current = null;
   }, []);
@@ -252,6 +272,7 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
           }
         }
         // Barge-in local: descartar el PCM acumulado y cortar el <audio>.
+        armedRef.current = false;
         utterancePcmRef.current = [];
         const audio = audioRef.current;
         if (audio) {
