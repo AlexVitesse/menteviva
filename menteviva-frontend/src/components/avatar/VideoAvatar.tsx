@@ -2,29 +2,28 @@ import { useEffect, useRef, type RefObject } from "react";
 import { Loader2 } from "lucide-react";
 
 /**
- * Capa visual del avatar Simli: el <video> y <audio> que simli-client llena
- * con el stream WebRTC (cara fotorrealista + voz lip-synced). La logica de
- * conexion vive en useSimliAvatar — este componente solo monta los elementos
- * (los refs DEBEN estar en el DOM antes de llamar connect()).
+ * Capa visual del avatar de video, AGNOSTICA del proveedor (Simli u OSS
+ * self-hosted). El <video>/<audio> los llena el hook de conexion
+ * (useSimliAvatar / useOssAvatar) con el stream WebRTC — este componente solo
+ * monta los elementos (los refs DEBEN estar en el DOM antes de connect()).
  *
- * Render: Simli entrega 512x512. Antes usabamos `object-cover` sobre todo el
- * panel (~2x mas grande) -> upscaling + crop = imagen borrosa. Ahora el video
- * se muestra a su aspecto NATIVO (cuadrado, centrado, object-contain) y el
- * panel se rellena con el MISMO stream desenfocado de fondo (estilo TV), asi
+ * Render: el stream suele venir cuadrado (Simli 512x512; el avatar-service
+ * puede diferir). Se muestra a su aspecto NATIVO (object-contain, centrado) y
+ * el panel se rellena con el MISMO stream desenfocado de fondo (estilo TV), asi
  * la cara queda lo mas nitida posible sin deformar ni recortar.
  */
-interface SimliAvatarProps {
+interface VideoAvatarProps {
   videoRef: RefObject<HTMLVideoElement>;
   audioRef: RefObject<HTMLAudioElement>;
   connected: boolean;
 }
 
-export function SimliAvatar({ videoRef, audioRef, connected }: SimliAvatarProps) {
+export function VideoAvatar({ videoRef, audioRef, connected }: VideoAvatarProps) {
   const bgVideoRef = useRef<HTMLVideoElement>(null);
 
   // El fondo blur reusa el MISMO MediaStream del video principal (cero costo
-  // extra de red/decodificacion significativo). Se engancha cuando Simli ya
-  // conecto (srcObject asignado por simli-client).
+  // extra de red/decodificacion significativo). Se engancha cuando ya conecto
+  // (srcObject asignado por el hook de conexion).
   useEffect(() => {
     if (!connected) return;
     const main = videoRef.current;

@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.db import init_db, close_pool
-from app.routers import auth, conversation, avatars, profiles, sessions, simli, chat_text
+from app.routers import auth, conversation, avatars, profiles, sessions, simli, avatar, chat_text
 
 # ============ CONFIGURAR LOGGING ============
 
@@ -72,6 +72,7 @@ app.include_router(profiles.router, prefix="/api", tags=["profiles"])
 app.include_router(sessions.router, prefix="/api", tags=["sessions"])
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(simli.router, prefix="/api", tags=["simli"])
+app.include_router(avatar.router, prefix="/api", tags=["avatar"])
 app.include_router(chat_text.router, prefix="/api", tags=["chat-text"])
 
 

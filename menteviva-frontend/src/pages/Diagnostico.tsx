@@ -19,12 +19,13 @@ import { useMicVAD, utils as vadUtils } from "@ricky0123/vad-react";
 
 import { AnimatedAvatar } from "../components/avatar/AnimatedAvatar";
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
-import { SimliAvatar } from "../components/avatar/SimliAvatar";
+import { VideoAvatar } from "../components/avatar/VideoAvatar";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useGeminiLive } from "../hooks/useGeminiLive";
 import { useSimliAvatar } from "../hooks/useSimliAvatar";
-import { getSimliFlag } from "../utils/simliFlag";
+import { useOssAvatar } from "../hooks/useOssAvatar";
+import { getAvatarProvider } from "../utils/avatarProvider";
 import { useSessionStore } from "../stores/sessionStore";
 import { ENTREVISTADOR_AVATAR } from "../utils/entrevistador";
 import { formatDuration, isSecureOriginForMic } from "../utils/audio";
@@ -141,16 +142,23 @@ export function Diagnostico() {
     initPayload,
   });
 
-  // Avatar fotorrealista Simli (video WebRTC, solo modo Gemini). Su sink
-  // recibe el PCM del avatar y devuelve video+voz lip-synced; los eventos
-  // speaking/silent de Simli reemplazan al onSpeakingChange del player local
-  // para el indicador "Sofia esta hablando".
-  const simliEnabled = useMemo(() => IS_GEMINI && getSimliFlag(), []);
-  const handleSimliSpeaking = useCallback(
+  // Avatar de video (WebRTC, solo modo Gemini). El provider lo elige
+  // getAvatarProvider() (simli | oss | none); ver docs/plans/16_...md §3.1.
+  // Su sink recibe el PCM del avatar y devuelve video+voz lip-synced; los
+  // eventos speaking/silent del proveedor reemplazan al onSpeakingChange del
+  // player local para el indicador "Sofia esta hablando".
+  const avatarProvider = useMemo(() => (IS_GEMINI ? getAvatarProvider() : "none"), []);
+  const handleVideoSpeaking = useCallback(
     (speaking: boolean) => setStatus(speaking ? "generating_audio" : "ready"),
     [setStatus]
   );
-  const simli = useSimliAvatar({ onSpeakingChange: handleSimliSpeaking });
+  // Ambos hooks se instancian SIEMPRE (reglas de hooks); solo se conecta el que
+  // corresponde al provider. El inactivo queda inerte (connect() nunca se llama).
+  const simli = useSimliAvatar({ onSpeakingChange: handleVideoSpeaking });
+  const oss = useOssAvatar({ onSpeakingChange: handleVideoSpeaking });
+  const videoAvatar =
+    avatarProvider === "simli" ? simli : avatarProvider === "oss" ? oss : null;
+  const videoEnabled = videoAvatar !== null;
 
   // Modo Gemini Live (audio nativo continuo). Se instancia siempre (reglas de
   // hooks); solo se conecta cuando IS_GEMINI. Sofia saluda sola al abrir la
@@ -158,7 +166,7 @@ export function Diagnostico() {
   const gemini = useGeminiLive({
     avatarId: "entrevistador",
     initPayload,
-    audioSink: simliEnabled ? simli.sink : undefined,
+    audioSink: videoAvatar ? videoAvatar.sink : undefined,
     onClosingIntent: handleClosingIntent,
   });
   const [micMuted, setMicMuted] = useState(false);
@@ -223,14 +231,14 @@ export function Diagnostico() {
     startRef.current = Date.now();
     if (IS_GEMINI) {
       (async () => {
-        // Simli primero: asi el video ya esta arriba cuando llegue el saludo
-        // de Sofia. Si falla, seguimos con el avatar 3D + player local (el
+        // Video primero: asi el avatar ya esta arriba cuando llegue el saludo
+        // de Sofia. Si falla, seguimos con el avatar 2D + player local (el
         // sink queda inactivo y useGeminiLive cae solo al fallback).
-        if (simliEnabled && !simli.failed) {
+        if (videoEnabled && videoAvatar && !videoAvatar.failed) {
           try {
-            await simli.connect("entrevistador");
+            await videoAvatar.connect("entrevistador");
           } catch (e) {
-            console.error("[Diagnostico] Simli fallo, fallback a avatar 3D:", e);
+            console.error("[Diagnostico] avatar de video fallo, fallback a 2D:", e);
           }
         }
         await gemini.connect();
@@ -241,7 +249,9 @@ export function Diagnostico() {
       });
       return () => {
         gemini.disconnect();
+        // Desconectar ambos: el inactivo es no-op (nunca se conecto).
         simli.disconnect();
+        oss.disconnect();
       };
     }
     connect();
@@ -262,15 +272,15 @@ export function Diagnostico() {
     setPermissionError(null);
     setShowEscape(false);
 
-    // Pre-conexion de Simli EN PARALELO al permiso de mic: el WebRTC tarda
-    // unos segundos y asi el video ya esta arriba cuando arranca la sesion.
-    // connect() es idempotente (guard interno), el connect del effect de
+    // Pre-conexion del avatar de video EN PARALELO al permiso de mic: el WebRTC
+    // tarda unos segundos y asi el video ya esta arriba cuando arranca la
+    // sesion. connect() es idempotente (guard interno), el connect del effect de
     // sessionStarted se vuelve no-op. No se pre-conecta al montar para no
     // quemar maxIdleTime si el usuario se queda leyendo el overlay.
-    if (IS_GEMINI && simliEnabled && !simli.failed) {
-      simli
+    if (IS_GEMINI && videoEnabled && videoAvatar && !videoAvatar.failed) {
+      videoAvatar
         .connect("entrevistador")
-        .catch((e) => console.warn("[Diagnostico] pre-conexion Simli fallo:", e));
+        .catch((e) => console.warn("[Diagnostico] pre-conexion avatar de video fallo:", e));
     }
 
     // Bloqueo preventivo: en Chrome movil sobre HTTP (LAN IP), mediaDevices es
@@ -509,11 +519,11 @@ export function Diagnostico() {
         {/* Panel principal con avatar 3D */}
         <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[#2a2a3a] to-[#1a1a2e] h-[40vh] md:h-auto md:flex-1">
           <div className="absolute inset-0 flex items-center justify-center">
-            {simliEnabled && !simli.failed ? (
-              <SimliAvatar
-                videoRef={simli.videoRef}
-                audioRef={simli.audioRef}
-                connected={simli.connected}
+            {videoEnabled && videoAvatar && !videoAvatar.failed ? (
+              <VideoAvatar
+                videoRef={videoAvatar.videoRef}
+                audioRef={videoAvatar.audioRef}
+                connected={videoAvatar.connected}
               />
             ) : use3DAvatar ? (
               <TalkingHeadAvatar

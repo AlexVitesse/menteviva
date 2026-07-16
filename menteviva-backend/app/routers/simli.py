@@ -37,19 +37,19 @@ class SimliTokenRequest(BaseModel):
     avatar_id: str = "entrevistador"
 
 
-@router.post("/simli/session-token")
-async def create_simli_session_token(req: SimliTokenRequest):
+async def mint_simli_session(avatar_id: str) -> dict:
     """Emite un session token efimero de Simli para el avatar pedido.
 
-    El token caduca solo (maxSessionLength/maxIdleTime), asi que exponer este
-    endpoint sin auth es aceptable para el piloto — lo unico que permite es
-    abrir una sesion de video que consume minutos de NUESTRA cuenta, igual
-    que el WS de conversacion consume Gemini/Groq.
+    Helper reutilizable: lo llama tanto el endpoint legacy
+    (POST /api/simli/session-token) como el router unificado
+    (POST /api/avatar/session, provider=simli). Devuelve
+    {"session_token": ..., "face_id": ...} o lanza HTTPException
+    (503 sin config, 502 si Simli falla) — mismo contrato de errores.
     """
     if not settings.simli_api_key:
         raise HTTPException(status_code=503, detail="SIMLI_API_KEY no configurada")
 
-    face_id = AVATAR_FACES.get(req.avatar_id, DEFAULT_FACE_ID)
+    face_id = AVATAR_FACES.get(avatar_id, DEFAULT_FACE_ID)
     payload = {
         "faceId": face_id,
         "maxSessionLength": settings.simli_max_session_seconds,
@@ -79,5 +79,20 @@ async def create_simli_session_token(req: SimliTokenRequest):
         logger.error(f"[Simli] respuesta sin token valido: {resp.text[:200]}")
         raise HTTPException(status_code=502, detail="Simli no devolvio un token valido")
 
-    logger.info(f"[Simli] session token emitido (avatar={req.avatar_id}, face={face_id[:8]}...)")
+    logger.info(f"[Simli] session token emitido (avatar={avatar_id}, face={face_id[:8]}...)")
     return {"session_token": token, "face_id": face_id}
+
+
+@router.post("/simli/session-token")
+async def create_simli_session_token(req: SimliTokenRequest):
+    """Endpoint legacy de session token de Simli.
+
+    El token caduca solo (maxSessionLength/maxIdleTime), asi que exponer este
+    endpoint sin auth es aceptable para el piloto — lo unico que permite es
+    abrir una sesion de video que consume minutos de NUESTRA cuenta, igual
+    que el WS de conversacion consume Gemini/Groq.
+
+    Se conserva intacto (aunque el router unificado /api/avatar/session ya
+    cubre el camino simli) hasta validar el OSS en produccion.
+    """
+    return await mint_simli_session(req.avatar_id)

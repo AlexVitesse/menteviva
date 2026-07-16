@@ -110,6 +110,21 @@ class Settings(BaseSettings):
     # streaming). 1800s = 30 min: cubre el diagnostico de ~25 min con colchon.
     simli_max_session_seconds: int = 1800
 
+    # ============ Avatar OSS self-hosted (reemplazo de Simli) ============
+    # Selector del proveedor de avatar de video que responde /api/avatar/session
+    # (routers/avatar.py). Ver docs/plans/16_avatar_oss_integracion.md.
+    #   "simli" -> mint de token efimero contra api.simli.ai (comportamiento actual).
+    #   "oss"   -> sesion WebRTC contra el avatar-service self-hosted (MuseTalk).
+    #   "none"  -> sin video; el frontend cae al avatar 2D.
+    # Default "simli" para REGRESION CERO: sin este var en el .env todo sigue igual.
+    avatar_provider: str = "simli"  # "simli" | "oss" | "none"
+    # Base URL del avatar-service OSS (p.ej. http://127.0.0.1:8300 o el tunnel del
+    # VPS). Vive SOLO en el backend — el navegador nunca la ve; el backend hace
+    # POST {avatar_service_url}/session y devuelve la signaling_url ya resuelta.
+    avatar_service_url: str = ""
+    # Espejo de simli_max_session_seconds para el camino OSS (limite duro de sesion).
+    avatar_max_session_seconds: int = 1800
+
     # Firebase Admin SDK. Dos formas de configurar — usa una:
     #  (1) FIREBASE_SERVICE_ACCOUNT_PATH: ruta absoluta o relativa a un JSON
     #      descargado de Firebase Console > Project Settings > Service Accounts.
