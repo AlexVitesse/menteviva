@@ -42,6 +42,7 @@ import {
   type RegistroInput,
   type SatisfactionInfo,
   DEFAULT_DURATION,
+  DURATIONS,
   PROVIDER_BADGE,
 } from "./chatlab/types";
 import {
@@ -1229,6 +1230,34 @@ export function VoiceLab() {
                   ))}
                 </div>
               )}
+
+              {/* Selector de duración de la práctica (25/40/60, igual que ChatLab).
+                  Alimenta el ritmo del diagnóstico y se manda como session_vars.minutos
+                  al abrir la sesión Live (ver useVoiceLab / session_vars). */}
+              <div className="space-y-2">
+                <p className="text-[10px] text-muted font-mono uppercase tracking-widest text-center">
+                  Duración de la práctica
+                </p>
+                <div className="flex items-center justify-center gap-2">
+                  {DURATIONS.map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => updateSession({ durationMin: d })}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-syne transition-all border ${
+                        (session.durationMin ?? DEFAULT_DURATION) === d
+                          ? "bg-teal/15 text-teal border-teal/30"
+                          : "text-muted border-white/10 hover:bg-white/5 hover:text-cream"
+                      }`}
+                    >
+                      {d} min
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-subtle text-center leading-relaxed">
+                  Marca el ritmo del diagnóstico. Nota: Gemini Live puede cerrar la
+                  sesión de voz cerca de los ~15 min.
+                </p>
+              </div>
 
               {/* Registro rápido */}
               {isDiagnostico && !registroCompleto && (
