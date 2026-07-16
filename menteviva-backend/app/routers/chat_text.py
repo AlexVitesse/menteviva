@@ -446,6 +446,10 @@ class DiagnosticoRequest(BaseModel):
     # el flujo de voz), bajo un user_id sintetico "chatlab:<nombre>". Si la BD no
     # esta disponible el diagnostico igual se devuelve (persistencia no-fatal).
     save: bool = True
+    # EXPERIMENTAL (VoiceLab): lectura de tono/nervios que Gemini extrajo del
+    # audio crudo (gemini_live.analyze_vocal_tone), reenviada por el cliente
+    # desde el session_end del WS de voz. None en ChatLab texto / produccion.
+    vocal_note: str | None = None
 
 
 class DiagnosticoResponse(BaseModel):
@@ -511,7 +515,10 @@ async def chat_diagnostico(req: DiagnosticoRequest) -> DiagnosticoResponse:
 
     t0 = time.perf_counter()
     diagnostico = await generate_user_profile(
-        conversation, registro, session_vars=req.session_vars
+        conversation,
+        registro,
+        session_vars=req.session_vars,
+        vocal_note=req.vocal_note,
     )
     latency_ms = int((time.perf_counter() - t0) * 1000)
     logger.info(

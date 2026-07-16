@@ -23,6 +23,7 @@ Formato de audio:
 
 import asyncio
 import logging
+import struct
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from threading import Lock
@@ -562,3 +563,114 @@ async def generate_text(
     if return_usage:
         return text, closing, usage_out
     return text, closing
+
+
+# ============================================================
+# Señal vocal experimental (VoiceLab) — tono/nervios desde el audio crudo
+# ============================================================
+# Idea: en vez de sumar un modelo de emocion dedicado, aprovechamos que Gemini
+# ya entiende audio nativamente. El proxy WS bufferea el audio PCM del USUARIO
+# (no el de Sofia) durante la sesion Live y, al cerrar, se lo mandamos aqui en
+# una sola llamada de texto/multimodal pidiendole que describa el TONO (no el
+# contenido). Solo VoiceLab lo usa hoy (ver conversation.py _run_gemini_conversation,
+# finalize=False) para validar si aporta algo al diagnostico antes de decidir si
+# vale la pena llevarlo a produccion.
+_VOCAL_TONE_MIN_SECONDS = 3.0
+# Ventana deslizante: si la sesion es larga, solo mandamos lo mas reciente para
+# no pasarnos del limite de audio inline de generate_content ni inflar cuota.
+_VOCAL_TONE_MAX_SECONDS = 180.0
+# Tope en bytes de la ventana (PCM16 mono 16 kHz). Lo usa tambien el proxy WS
+# (conversation.py) para recortar el buffer SOBRE LA MARCHA: sin ese recorte,
+# una sesion de 60 min acumularia ~115 MB de RAM que igual se descartarian aqui.
+VOCAL_TONE_MAX_BYTES = int(_VOCAL_TONE_MAX_SECONDS * 16000 * 2)
+
+_VOCAL_TONE_PROMPT = (
+    "Vas a escuchar un fragmento de audio de un candidato hablando durante una "
+    "entrevista de trabajo simulada. Ignora POR COMPLETO lo que dice (el "
+    "contenido ya se analiza aparte) y describe en 1-2 frases breves solo COMO "
+    "suena su voz: ritmo, pausas, firmeza, temblor, energia, cambios de tono a "
+    "lo largo del fragmento. Si no percibes señales claras de nervios o "
+    "emocion particular, dilo honestamente en vez de inventar. Responde SOLO "
+    "esa descripcion, sin preambulos ni disclaimers."
+)
+
+
+def _pcm16_to_wav(pcm: bytes, sample_rate: int = 16000) -> bytes:
+    """Envuelve PCM16 mono crudo en un contenedor WAV (header de 44 bytes).
+
+    generate_content NO acepta `audio/pcm` crudo (eso es exclusivo de la Live
+    API); los formatos documentados son WAV/MP3/AAC/OGG/FLAC. WAV es el envoltorio
+    mas barato: solo un header, sin re-encodear.
+    """
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF", 36 + len(pcm), b"WAVE",
+        b"fmt ", 16, 1, 1, sample_rate, sample_rate * 2, 2, 16,
+        b"data", len(pcm),
+    )
+    return header + pcm
+
+
+async def analyze_vocal_tone(audio_pcm16_16k: bytes) -> str | None:
+    """Lee el TONO de un fragmento de audio del usuario (nervios/energia).
+
+    EXPERIMENTAL: reutiliza `gemini_model_text` (multimodal) con el audio
+    crudo como input en vez de meter un modelo de emocion dedicado. Best-effort
+    — devuelve None si el audio es muy corto o si Gemini falla; nunca debe
+    bloquear el cierre de la sesion de VoiceLab.
+    """
+    min_bytes = int(_VOCAL_TONE_MIN_SECONDS * 16000 * 2)
+    if not audio_pcm16_16k or len(audio_pcm16_16k) < min_bytes:
+        return None
+
+    if len(audio_pcm16_16k) > VOCAL_TONE_MAX_BYTES:
+        audio_pcm16_16k = audio_pcm16_16k[-VOCAL_TONE_MAX_BYTES:]
+
+    contents = [
+        types.Content(
+            role="user",
+            parts=[
+                types.Part(text=_VOCAL_TONE_PROMPT),
+                types.Part(
+                    inline_data=types.Blob(
+                        data=_pcm16_to_wav(audio_pcm16_16k), mime_type="audio/wav"
+                    )
+                ),
+            ],
+        )
+    ]
+
+    attempts = max(1, _num_gemini_keys())
+    for i in range(attempts):
+        client = _gemini_client(http_options=_GEMINI_HTTP_OPTIONS)
+
+        def _call():
+            return client.models.generate_content(
+                model=settings.gemini_model_text,
+                contents=contents,
+            )
+
+        try:
+            resp = await asyncio.to_thread(_call)
+        except Exception as e:  # noqa: BLE001
+            if i < attempts - 1 and _should_try_next_key(e):
+                logger.warning(
+                    f"[GeminiVocalTone] key {i + 1}/{attempts} fallo "
+                    f"({str(e)[:120]}); reintentando con la siguiente key"
+                )
+                continue
+            logger.warning(f"[GeminiVocalTone] fallo, se omite la señal: {e}")
+            return None
+
+        usage = getattr(resp, "usage_metadata", None)
+        if usage:
+            log_llm_cost(
+                "gemini",
+                settings.gemini_model_text,
+                getattr(usage, "prompt_token_count", 0) or 0,
+                (getattr(usage, "candidates_token_count", 0) or 0)
+                + (getattr(usage, "thoughts_token_count", 0) or 0),
+            )
+        return (getattr(resp, "text", None) or "").strip() or None
+
+    return None

@@ -123,6 +123,10 @@ export interface ChatSession {
   startedAt?: number;
   completedAt?: number;
   errorLog?: SessionError[];
+  // EXPERIMENTAL (VoiceLab): lectura de tono/nervios que Gemini extrajo del
+  // audio crudo del usuario al cerrar la sesion (gemini_live.analyze_vocal_tone).
+  // Ausente en ChatLab texto y en producción.
+  vocalNote?: string | null;
 }
 
 export const LEVELS = ["principiante", "intermedio", "avanzado"];

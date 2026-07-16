@@ -265,11 +265,12 @@ export function VoiceLab() {
     }));
   }, []);
 
-  const onEnded = useCallback(() => {
+  const onEnded = useCallback((vocalNote?: string) => {
     setSession((prev) => ({
       ...prev,
       closed: true,
       completedAt: prev.completedAt ?? Date.now(),
+      vocalNote: vocalNote ?? prev.vocalNote,
     }));
   }, []);
 
@@ -417,6 +418,7 @@ export function VoiceLab() {
             : undefined,
           session_vars: { minutos: session.durationMin ?? DEFAULT_DURATION },
           save: true,
+          vocal_note: session.vocalNote || undefined,
         },
       });
       updateSession({
@@ -948,6 +950,14 @@ export function VoiceLab() {
                   <span className="text-muted">Costo</span>
                   <span className="text-subtle font-mono">N/A (Gemini Live)</span>
                 </div>
+                {session.vocalNote && (
+                  <div className="pt-2 mt-1 border-t border-white/5 space-y-1">
+                    <span className="text-muted">Señal vocal (experimental)</span>
+                    <p className="text-cream/80 italic leading-relaxed">
+                      "{session.vocalNote}"
+                    </p>
+                  </div>
+                )}
               </div>
             </CollapsibleSection>
 

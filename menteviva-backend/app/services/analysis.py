@@ -598,7 +598,7 @@ estructurado que se le dara al candidato como espejo de lo observado.
 
 ## CONVERSACION COMPLETA
 {conversation}
-
+{vocal_note_section}
 ## EVALUACION DE LA CONVERSACION
 
 Antes de analizar, verifica si el candidato realmente entrego material evaluable:
@@ -903,6 +903,7 @@ async def generate_user_profile(
     conversation: list[dict],
     registro: Registro,
     session_vars: dict | None = None,
+    vocal_note: str | None = None,
 ) -> dict:
     """
     Genera el bloque 'diagnostico' del UserProfile a partir de la conversacion
@@ -915,6 +916,10 @@ async def generate_user_profile(
             antes de llamar.
         session_vars: reservado para futura personalizacion del analisis
             (hoy no se usa; competencias preseleccionadas podrian entrar aqui).
+        vocal_note: EXPERIMENTAL (VoiceLab) — lectura de tono/nervios que
+            Gemini extrajo del audio crudo del candidato (gemini_live.
+            analyze_vocal_tone), no del transcript. None en produccion y en
+            ChatLab texto; solo VoiceLab la pasa hoy.
 
     Returns:
         Dict que cumple el schema Diagnostico (user_profile.py). La llamada
@@ -938,6 +943,21 @@ async def generate_user_profile(
 
     conversation_text = _format_conversation(conversation)
 
+    vocal_note_section = ""
+    if vocal_note and vocal_note.strip():
+        vocal_note_section = (
+            "\n## SEÑAL VOCAL (EXPERIMENTAL)\n"
+            "Ademas del contenido, esta es una lectura del TONO DE VOZ del "
+            "candidato durante la sesion, extraida por Gemini directamente del "
+            "audio (no del transcript):\n\n"
+            f'"{vocal_note.strip()}"\n\n'
+            "Usala solo como señal de APOYO si es coherente con el transcript "
+            "(p.ej. para matizar el resumen_ejecutivo). NUNCA la uses como unica "
+            "evidencia de un strength o gap — la regla de cita textual del "
+            "transcript sigue aplicando igual. Si contradice el contenido, "
+            "prioriza el contenido.\n"
+        )
+
     prompt = USER_PROFILE_PROMPT_TEMPLATE.format(
         nombre=registro.nombre,
         rol=registro.rol_objetivo,
@@ -945,6 +965,7 @@ async def generate_user_profile(
         nivel=registro.experience_level,
         skills_catalog=_SKILLS_CATALOG_FORMATTED,
         conversation=conversation_text,
+        vocal_note_section=vocal_note_section,
     )
 
     try:

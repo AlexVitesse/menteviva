@@ -52,8 +52,10 @@ interface UseVoiceLabOptions {
   // El avatar llamo finalizar_entrevista -> el backend manda closing_intent.
   onClosingIntent?: () => void;
   onError?: (msg: string) => void;
-  // La sesion termino (session_end del backend, o el WS se cerro).
-  onEnded?: () => void;
+  // La sesion termino (session_end del backend, o el WS se cerro). vocalNote es
+  // EXPERIMENTAL: lectura de tono/nervios que Gemini extrajo del audio crudo
+  // (ver gemini_live.analyze_vocal_tone), presente solo si hubo suficiente audio.
+  onEnded?: (vocalNote?: string) => void;
 }
 
 type AudioCtxCtor = typeof AudioContext;
@@ -239,9 +241,10 @@ export function useVoiceLab({
 
         case "session_end":
           // El backend del lab NO manda metrics (el diagnostico lo hace el
-          // frontend por REST). Solo confirma el cierre.
+          // frontend por REST). Solo confirma el cierre; vocal_note es
+          // experimental y puede venir ausente.
           flushPendingAssistant();
-          cbRef.current.onEnded?.();
+          cbRef.current.onEnded?.(data.vocal_note);
           break;
 
         case "error":

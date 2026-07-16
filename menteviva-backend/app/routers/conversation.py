@@ -31,6 +31,7 @@ from app.services.groq_whisper import transcribe_audio
 from app.services.groq_llm import chat_stream
 from app.services.edge_tts import text_to_speech, text_to_speech_stream
 from app.services.gemini_live import open_session as open_gemini_session
+from app.services.gemini_live import analyze_vocal_tone, VOCAL_TONE_MAX_BYTES
 from app.services.analysis import analyze_conversation, generate_user_profile
 from app.services.user_repo import save_diagnostic, upsert_user
 from app.services.session_repo import save_practice_session
@@ -298,6 +299,15 @@ async def _gemini_handle_upstream_msg(data: dict, websocket, state: dict, histor
         pcm = base64.b64decode(data.get("pcm", "") or "")
         if pcm and live:
             await live.send_audio_chunk(pcm)
+            user_audio = state.get("user_audio")
+            if user_audio is not None:
+                user_audio.extend(pcm)
+                # Ventana deslizante en caliente: solo importa el final de la
+                # sesion (analyze_vocal_tone recorta a lo mismo), asi que no
+                # dejamos crecer el buffer sin tope (60 min ≈ 115 MB). La
+                # holgura de 32 KB evita recortar en cada chunk.
+                if len(user_audio) > VOCAL_TONE_MAX_BYTES + 32768:
+                    del user_audio[: len(user_audio) - VOCAL_TONE_MAX_BYTES]
     elif t == "text":
         # Modo texto (pruebas / fallback sin mic). El turno de usuario por texto
         # NO genera input_transcription, asi que lo agregamos al historial aqui.
@@ -543,6 +553,11 @@ async def _run_gemini_conversation(
     # forwardea a state["live"] y persiste a traves de reconexiones; la sesion
     # Gemini se re-crea en el bucle de abajo (sesiones largas via resumption).
     state: dict = {"live": None, "pacing": pacing}
+    if not finalize:
+        # Solo VoiceLab bufferea el audio crudo del usuario (ver analyze_vocal_tone
+        # mas abajo): en produccion no lo necesitamos y evitamos el costo de
+        # memoria/CPU de acumularlo turno a turno.
+        state["user_audio"] = bytearray()
     # El reader NO procesa `initial`: si lo hiciera ahora, state["live"] aun seria
     # None (la sesion no abre hasta el bucle) y se perderia el primer turno. Se
     # procesa abajo, en la 1a iteracion, ya con la sesion abierta.
@@ -650,14 +665,32 @@ async def _run_gemini_conversation(
             )
         else:
             # Modo lab: el analisis/persistencia lo hace el frontend por REST.
-            # Solo confirmamos el cierre para que el cliente cierre limpio.
+            # Antes de confirmar el cierre, intentamos la lectura vocal
+            # experimental (best-effort: nunca bloquea ni rompe el cierre).
             total_exchanges = len(history) // 2
             logger.info(
                 f"[WS-Voice] Sesion del lab finalizada sin analisis server-side "
                 f"(intercambios={total_exchanges})"
             )
+            vocal_note: str | None = None
+            user_audio = state.get("user_audio")
+            if user_audio:
+                try:
+                    # Timeout global: con rotacion de N keys el peor caso seria
+                    # N x 20s; el cliente esta esperando el session_end, asi que
+                    # cortamos y cerramos sin nota antes que colgar el cierre.
+                    vocal_note = await asyncio.wait_for(
+                        analyze_vocal_tone(bytes(user_audio)), timeout=30.0
+                    )
+                    if vocal_note:
+                        logger.info(f"[WS-Voice] señal vocal capturada: {vocal_note[:120]}")
+                except Exception as e:
+                    logger.warning(f"[WS-Voice] analyze_vocal_tone fallo, se omite: {e}")
             try:
-                await websocket.send_json({"type": "session_end"})
+                payload = {"type": "session_end"}
+                if vocal_note:
+                    payload["vocal_note"] = vocal_note
+                await websocket.send_json(payload)
             except Exception:
                 pass
     else:
@@ -1089,7 +1122,9 @@ async def voice_lab_websocket(
     - Cliente -> Server: {"type":"end_session"}
     - Server -> Cliente: status | user_message | output_transcript | turn_complete
                          | assistant_audio_start/chunk/end | interrupted
-                         | closing_intent | session_end (sin metrics) | error
+                         | closing_intent | session_end (sin metrics, con
+                           "vocal_note" experimental si Gemini pudo leer el
+                           tono del audio del usuario) | error
     """
     # Token guard antes de aceptar (mismo criterio que verify_chatlab_token de
     # chat_text.py, pero via query param porque el WS no manda headers).
