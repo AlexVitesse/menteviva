@@ -564,6 +564,10 @@ async def _run_gemini_conversation(
     reader = asyncio.create_task(_gemini_upstream(websocket, state, history, None))
     result = "disconnect"
     resume_handle: str | None = None
+    # Key pinneada de la sesion: al reconectar con resume_handle hay que reusar la
+    # MISMA key (el handle es por-proyecto de Google; rotar da 1008 "Session does
+    # not belong to this project"). None en la 1a apertura -> open_session rota.
+    pinned_key: str | None = None
     greeted = False
     initial_pending = initial
 
@@ -574,6 +578,7 @@ async def _run_gemini_conversation(
                 system_prompt,
                 enable_closing_tool=enable_closing,
                 resume_handle=resume_handle,
+                api_key=pinned_key,
             ) as live:
                 state["live"] = live
                 if resume_handle is None:
@@ -609,8 +614,10 @@ async def _run_gemini_conversation(
                         logger.warning(f"[WS-Gemini] saludo inicial fallo: {e}")
 
                 done, _ = await asyncio.wait({reader, down}, return_when=asyncio.FIRST_COMPLETED)
-                # Guardar el handle mas reciente por si toca reconectar.
+                # Guardar el handle mas reciente por si toca reconectar, y pinnear
+                # la key de ESTA sesion para que el resume no cambie de proyecto.
                 resume_handle = live.resume_handle or resume_handle
+                pinned_key = live.api_key or pinned_key
                 state["live"] = None
 
                 if reader in done:

@@ -74,14 +74,22 @@ _GEMINI_HTTP_OPTIONS = types.HttpOptions(
 )
 
 
-def _gemini_client(http_options: types.HttpOptions | None = None) -> genai.Client:
-    """Cliente Gemini con la siguiente key del pool de rotacion.
+def _gemini_client(
+    http_options: types.HttpOptions | None = None,
+    api_key: str | None = None,
+) -> genai.Client:
+    """Cliente Gemini. Usa `api_key` si se pasa; si no, rota la siguiente del pool.
 
     `http_options` se aplica solo al path de TEXTO (generate_content); la sesion
     Live de audio usa el default para no meterle un timeout HTTP a un websocket
     persistente.
+
+    `api_key` explicita se usa para PINNEAR una key durante la vida de una sesion
+    Live: el handle de session_resumption esta atado al PROYECTO de Google de la
+    key con que se abrio, asi que reconectar con otra key (otro proyecto) revienta
+    con 1008 "Session does not belong to this project". Ver open_session.
     """
-    kwargs = {"api_key": _next_gemini_key()}
+    kwargs = {"api_key": api_key or _next_gemini_key()}
     if http_options is not None:
         kwargs["http_options"] = http_options
     return genai.Client(**kwargs)
@@ -186,12 +194,15 @@ class TurnResult:
 class GeminiLiveSession:
     """Envoltura fina sobre una sesion `live.connect` ya abierta."""
 
-    def __init__(self, session, avatar_id: str):
+    def __init__(self, session, avatar_id: str, api_key: str | None = None):
         self._session = session
         self.avatar_id = avatar_id
         # Handle de resumption mas reciente (lo emite el servidor). El proxy lo
         # usa para reconectar sin perder el hilo cuando llega un go_away.
         self.resume_handle: str | None = None
+        # Key con que se abrio esta sesion. El proxy la reusa al reconectar con
+        # resume_handle: el handle es por-PROYECTO, rotar de key da 1008.
+        self.api_key: str | None = api_key
 
     async def send_text(self, text: str) -> None:
         """Envia un turno de usuario como TEXTO (util para el smoke test).
@@ -431,18 +442,25 @@ async def open_session(
     *,
     enable_closing_tool: bool = False,
     resume_handle: str | None = None,
+    api_key: str | None = None,
 ):
     """Abre una sesion Gemini Live y la cede como `GeminiLiveSession`.
 
     enable_closing_tool: declara finalizar_entrevista (cierre del diagnostico).
     resume_handle: si se pasa, reanuda una sesion previa (reconexion transparente).
+    api_key: si se pasa, PINNEA la key (no rota). Obligatorio al reconectar con
+        resume_handle para no cambiar de proyecto (el handle es por-proyecto ->
+        rotar da 1008). El caller lee `live.api_key` de la 1a sesion y lo reusa.
 
     Uso:
         async with open_session("entrevistador", prompt) as live:
             await live.send_text("Hola")
             turn = await live.collect_turn()
     """
-    client = _gemini_client()  # rota entre las keys configuradas
+    # 1a apertura (api_key=None): rota el pool para balancear carga. Reconexion:
+    # el caller pasa la MISMA key para que el resume_handle siga siendo valido.
+    used_key = api_key or _next_gemini_key()
+    client = _gemini_client(api_key=used_key)
     voice = get_voice(avatar_id)
     model = settings.gemini_model_live
     # Anexamos las reglas de voz al final (mas peso para el modelo native-audio).
@@ -456,7 +474,7 @@ async def open_session(
     tag = " (resume)" if resume_handle else ""
     logger.info(f"[GeminiLive] Abriendo sesion{tag} - avatar={avatar_id} voz={voice} modelo={model}")
     async with client.aio.live.connect(model=model, config=config) as session:
-        yield GeminiLiveSession(session, avatar_id)
+        yield GeminiLiveSession(session, avatar_id, api_key=used_key)
     logger.info(f"[GeminiLive] Sesion cerrada - avatar={avatar_id}")
 
 
