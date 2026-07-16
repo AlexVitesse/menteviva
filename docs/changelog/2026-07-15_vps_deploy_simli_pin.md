@@ -28,6 +28,32 @@ fallaban.
 - `menteviva-frontend/package.json`: `"simli-client": "^3.0.1"` → `"3.0.1"`
   (pin exacto) + lockfile sincronizado. Commit `9bda110` en `dev`.
 
+## Resultado (deploy verificado 2026-07-15 ~22:48)
+
+Con el pin en su lugar, en el VPS: `git checkout -- package.json
+package-lock.json` + `git checkout main` + `git pull origin main`, `sed -i
+'/^VITE_API_URL/d' .env`, `npm ci` (instaló 3.0.1), `npm run build` → `✓ built
+in 4.66s` con lista de assets, reinicio del backend con nohup. Verificado:
+`/health` → `{"status":"ok"}` y `/chat-lab` devuelve el HTML del SPA. ChatLab y
+VoiceLab accesibles vía túnel.
+
+## Estado final del VPS
+
+- Repo `~/menteviva` en rama **main** (antes estaba en dev; `main` se fusionó
+  con dev en `5a6a998` y ambas quedaron equivalentes ese día).
+- Backend: `nohup poetry run python -m app > backend.log 2>&1 &` en
+  `~/menteviva/menteviva-backend`, puerto **8005** (via `PORT=8005` en el
+  `.env` del backend → `settings.port`). Corre con reloader de uvicorn
+  (WatchFiles), así que un `git pull` de código backend se recarga solo; el
+  frontend NO — requiere `npm run build`.
+- Frontend: NO corre Vite; el backend sirve `menteviva-frontend/dist/`
+  (StaticFiles, mismo origen → API relativa y WS `wss://` del mismo host).
+- Túnel: quick tunnel de cloudflared (`~/cloudflared`, sin cuenta) →
+  `cloudflared tunnel --no-autoupdate --url http://localhost:8005`. La URL
+  `*.trycloudflare.com` es efímera: cambia en cada relanzamiento.
+- Reinicio del backend: `kill $(lsof -ti:8005); sleep 1; nohup poetry run
+  python -m app > backend.log 2>&1 &`.
+
 ## Notas de deploy que quedaron de la sesión
 
 - El `.env` del frontend en el VPS NO debe tener `VITE_API_URL`: con la
