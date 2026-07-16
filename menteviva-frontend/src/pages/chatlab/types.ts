@@ -143,10 +143,10 @@ export const PROVIDER_MODELS = {
     { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B (Fast — ojo TPM)" },
   ],
   gemini: [
-    { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash (GA - Default)" },
+    { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash (GA)" },
     { id: "gemini-3.1-pro-preview", name: "Gemini 3.1 Pro (Preview - Reasoning)" },
     { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash Lite (Rápido)" },
-    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Legacy)" },
+    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash (Default)" },
     { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro (Legacy - Reasoning)" },
     { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite (Legacy)" },
   ],
