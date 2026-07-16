@@ -1,0 +1,157 @@
+Hola 
+
+Hola, soy Elena Ríos, entrevistadora por competencias en Mente Viva. Será un gusto acompañarte en esta práctica.
+
+Para preparar una entrevista que se sienta lo más cercana posible a una situación real, cuéntame:
+
+¿Cómo te llamas?
+¿Qué puesto o rol quieres practicar?
+Si ya lo sabes, ¿en qué industria?
+¿Qué nivel buscas (entry, junior, mid, senior, lead o executive)?
+¿Prefieres una práctica de 25, 40 o 60 minutos?
+¿Hay alguna habilidad que quieras trabajar especialmente? Si no lo tienes claro, yo seleccionaré las competencias más relevantes para el rol.
+
+Con tu nombre y el puesto es suficiente para empezar; el resto lo podemos ir ajustando sobre la marcha.
+
+Eric, soy consultor de una empresa de tecnologia, soy mid, una practica de 25 min, solo me gustaria recibir mi diagnostico
+
+Mucho gusto, Eric.
+
+Entonces prepararemos una entrevista para un Consultor en una empresa de tecnología, con un perfil mid. Como tu objetivo es recibir un diagnóstico, centraré la conversación en competencias que suelen ser críticas para este tipo de rol: comunicación, resolución de problemas, trabajo en equipo, influencia y gestión de prioridades.
+
+Dame un momento para preparar tu entrevista…
+
+Antes de entrar en materia, me gustaría empezar con algo sencillo: ¿cómo llegaste hoy a esta conversación? ¿Fue un día tranquilo o más bien movido?
+
+bastante tranquilo
+
+Entiendo. Llegar con un poco de calma suele ayudar a pensar con más claridad durante una conversación como ésta.
+
+Antes de entrar en las preguntas de experiencia, quisiera saber una cosa más: ¿qué estabas haciendo justo antes de conectarte a esta sesión?
+
+Fui a comprar las cosas para el desayuno
+
+Perfecto, Eric. Gracias.
+
+Suena a que llegaste con el tiempo suficiente para empezar el día con calma. Bien.
+
+Déjame explicarte brevemente cómo trabajaremos. Durante esta práctica voy a hacerte preguntas sobre situaciones reales que hayas vivido como consultor. No busco respuestas teóricas ni lo que "debería hacerse", sino lo que ocurrió, cuál fue tu papel y cómo actuaste. Es probable que repregunte varias veces para entender los detalles; no significa que haya una respuesta correcta o incorrecta. Al finalizar, te entregaré un diagnóstico conductual basado en la evidencia que aparezca durante la conversación, no en impresiones generales.
+
+¿Tiene sentido? ¿Alguna duda antes de empezar?
+
+Gracias, Eric.
+
+Lo que acabas de decir es importante porque añade un matiz que no había aparecido antes: reconoces una posible área de mejora en tu propia actuación, independientemente de cómo haya actuado tu PM.
+
+No voy a sacar conclusiones todavía, pero me interesa entender cómo cierras este tipo de situaciones.
+
+Después de esa conversación, ¿qué aprendizaje concreto te llevaste y qué has hecho —o harías diferente— la siguiente vez que tengas que entregar un documento de requerimientos a esa misma persona?
+
+La proxima vez antes de ejecutar haria como hace la IA un plan y para ese plan debo hacer las preguntas necesarias para ejecutarlo como para que tipo de persona esta dirigido, si conoce el SO del cliente, que si el cliente lo prefiere simple o detallado
+
+Gracias, Eric.
+
+Con esa respuesta tengo una imagen mucho más clara de cómo reflexionas sobre tu propio trabajo.
+
+Lo que escucho es que no atribuyes completamente la situación a la otra persona. Identificas que, aunque defendiste tu razonamiento técnico, podías haber reducido la ambigüedad desde el principio haciendo preguntas sobre el contexto y el destinatario del documento. Es un aprendizaje concreto, no una respuesta teórica.
+
+Con esto tengo muy buen material para trabajar. Déjame hacerte una última pregunta antes de cerrar.
+
+De todas las situaciones que recordaste hoy, ¿cuál fue la que más te hizo reflexionar mientras la contabas y por qué?
+
+creo que me hizo reflexionar mas la de mis fricciones con mi PM, ya que soy una persona que estoy orgulloso de mi trabajo, se que soy capaz, pero como en la situacion con mi PM senti que estaban poniendo en duda mi capacidad de ejecutarlo me senti atacado de manera personal y platicandolo contigo pude tener un cierre con otra perspectiva de cual pudo haber sido otra manera de abordarlo por eso me hizo reflexionarlo, encambio lo del cliente fue como contarte una lista de cosas que hice y donde no aprendi nada nuevo
+
+Gracias, Eric.
+
+Con esto cerramos la parte de la entrevista. Ahora voy a compartirte lo que observé, con la mayor honestidad posible. Recuerda: esto es un espejo, no un juicio.
+
+RETROALIMENTACIÓN DE HABILIDADES BLANDAS
+1. RESUMEN EJECUTIVO
+
+Te presentaste como un consultor de tecnología con un perfil claramente orientado a la ejecución. Tu forma de comunicar transmite seguridad técnica y pragmatismo: sueles enfocarte en resolver problemas y entregar valor. El patrón más consistente que observé es que dedicas mucho esfuerzo a la calidad del producto, pero verbalizas menos el proceso de comunicación y alineación que hay detrás de ese trabajo.
+
+2. FORTALEZAS OBSERVADAS
+1. Resolución de problemas
+
+Evidencia: Cuando hablaste del agente de IA, explicaste que partiste de una solución existente, investigaste el negocio del cliente antes de modificarla y evitaste asumir necesidades sin evidencia.
+
+Por qué importa: En consultoría, reutilizar conocimiento sin perder de vista el contexto del cliente permite entregar soluciones más rápidas y con menor riesgo.
+
+2. Orientación al cliente
+
+Evidencia: Decidiste incorporar un dashboard que el cliente no había solicitado porque identificaste una necesidad adicional y buscabas reducir todavía más el tiempo que invertiría en consultar información.
+
+Por qué importa: Pensar más allá del requerimiento suele diferenciar a un consultor que solo ejecuta de uno que agrega valor.
+
+3. Autoconciencia
+
+Evidencia: Al final de la conversación reconociste espontáneamente que quizás el problema con tu PM no era únicamente la forma en que él reaccionó, sino que tú no habías hecho suficientes preguntas para entender qué esperaba del documento.
+
+Por qué importa: La capacidad de revisar tu propia actuación sin buscar únicamente responsables externos acelera el crecimiento profesional.
+
+3. ÁREAS DE OPORTUNIDAD
+1. Comunicación de contexto
+
+Evidencia observada: En varias respuestas comenzabas describiendo el resultado ("hicimos una demo", "adapté una solución", "se hicieron pruebas"), pero fue necesario repreguntar varias veces para entender tu razonamiento y tus decisiones.
+
+Impacto potencial: Un cliente, un gerente o un entrevistador pueden quedarse con la impresión de que ejecutas bien, pero no necesariamente de que lideras el proceso de pensamiento.
+
+Micro-práctica para esta semana:
+Cuando expliques un proyecto, utiliza conscientemente esta estructura:
+
+Contexto.
+Problema.
+Mi decisión.
+Por qué la tomé.
+Resultado.
+
+Practícala incluso en conversaciones informales.
+
+2. Alineación de expectativas
+
+Evidencia observada: En el caso del documento para tu PM, asumiste un nivel de detalle que tenía sentido para ti, pero no validaste previamente quién sería el lector ni qué formato esperaba.
+
+Impacto potencial: Puedes terminar invirtiendo tiempo en trabajo técnicamente correcto que luego requiere ajustes por diferencias de expectativas, no de calidad.
+
+Micro-práctica para esta semana:
+Antes de empezar cualquier entregable, acostúmbrate a hacer tres preguntas:
+
+¿Quién va a leer esto?
+¿Qué decisión tomará con este documento?
+¿Qué nivel de detalle espera?
+3. Gestión emocional frente al cuestionamiento
+
+Evidencia observada: Dijiste que cuando sentiste que tu PM cuestionaba tu trabajo, lo viviste como un cuestionamiento a tu capacidad profesional.
+
+Impacto potencial: Si esa asociación se vuelve automática, puedes responder desde la necesidad de demostrar que tienes razón, cuando quizá la conversación solo busca alinear criterios.
+
+Micro-práctica para esta semana:
+Cuando recibas una observación, haz una pausa mental y pregúntate:
+
+"¿Está cuestionando mi capacidad o simplemente el formato, el contexto o el entregable?"
+
+Esa pregunta ayuda a separar la identidad profesional de la retroalimentación sobre un trabajo concreto.
+
+4. BLIND SPOT
+
+Creo que hay un patrón que probablemente no habías visto con claridad.
+
+Durante la historia del cliente, hablaste casi exclusivamente del producto que construiste. Sin embargo, la historia que realmente te movilizó fue la de tu PM, donde el tema central no era técnico sino relacional.
+
+Eso me sugiere que una parte importante de tu identidad profesional está asociada a hacer un buen trabajo técnico. Cuando percibes que ese trabajo es cuestionado, la conversación deja de ser solo sobre un documento o una decisión y adquiere un componente personal.
+
+Lo interesante es que tú mismo llegaste a una conclusión diferente al final: el aprendizaje no era "debí defender mejor mi trabajo", sino "debí entender mejor qué esperaba la otra persona antes de empezar". Ese cambio de perspectiva es una señal de madurez profesional.
+
+5. PREGUNTA PARA LLEVARSE
+
+¿Cuántas de las fricciones que has vivido en proyectos realmente fueron por diferencias técnicas y cuántas, en realidad, nacieron porque las expectativas nunca se hicieron explícitas al inicio?
+
+Observación adicional como coach
+
+Hubo un momento que me pareció especialmente valioso. No fue cuando hablaste del proyecto de IA; fue cuando dijiste:
+
+"Platicándolo contigo pude tener un cierre con otra perspectiva."
+
+Eso indica que eres una persona que reflexiona mientras conversa. En un entorno de consultoría, esa capacidad es muy valiosa porque te permite ajustar tu modelo mental en lugar de aferrarte a una primera interpretación.
+
+Si esta hubiera sido una entrevista real para un puesto mid-level, mi principal recomendación no sería mejorar tu conocimiento técnico —ese no fue el punto que más apareció— sino hacer más visible tu proceso de pensamiento. Muchas veces ya tienes el razonamiento correcto, pero el interlocutor solo ve el resultado. Cuando logres explicar con la misma claridad por qué tomaste una decisión que qué construiste, tu impacto como consultor aumentará considerablemente.

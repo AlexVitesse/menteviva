@@ -1,0 +1,2849 @@
+ ▐▛███▜▌   Claude Code v2.1.141
+▝▜█████▛▘  Opus 4.7 · Claude Max
+  ▘▘ ▝▝    ~\OneDrive\Documentos\Mente Viva\menteviva-frontend
+
+✻ Conversation compacted (ctrl+o for history)
+
+  ⎿  Read docs\plans\04_postgres_ready.md (255 lines)
+  ⎿  Read docs\plans\03_staticfiles_spa_fallback.md (241 lines)
+  ⎿  Read docs\plans\02_tts_swap_openai.md (217 lines)
+  ⎿  Read docs\plans\01_branch_protection_remote.md (182 lines)
+  ⎿  Read docker-compose.dev.yml (38 lines)
+
+● Bash(docker compose -f docker-compose.dev.yml ps)
+  ⎿  NAME               IMAGE                COMMAND                  SERVI
+     CE    CREATED         STATUS                   PORTS
+     menteviva-pg-dev   postgres:16-alpine   "docker-entrypoint.s…"   postg
+     … +2 lines (ctrl+o to expand)
+
+● Container healthy. Verificando conexión.
+
+● Bash(docker exec menteviva-pg-dev psql -U menteviva -d menteviva -c "SELECT
+      version();" -c "\conninfo")
+  ⎿                                           version
+
+     ----------------------------------------------------------------------
+     … +7 lines (ctrl+o to expand)
+
+● Postgres dev listo:
+
+  - Container: menteviva-pg-dev healthy, PostgreSQL 16.14
+  - Conexión host: postgresql+psycopg://menteviva:dev@127.0.0.1:5433/menteviva
+  - Volumen persistente: menteviva_pgdata-dev
+
+  Comandos útiles:
+  - Logs: docker compose -f docker-compose.dev.yml logs -f postgres
+  - Detener (preserva datos): docker compose -f docker-compose.dev.yml down
+  - Detener y borrar datos: docker compose -f docker-compose.dev.yml down -v
+  - Psql desde host (si tienes cliente): psql 
+  "postgresql://menteviva:dev@127.0.0.1:5433/menteviva"
+  - Psql desde el container (no requiere cliente local): docker exec -it 
+  menteviva-pg-dev psql -U menteviva -d menteviva
+
+  El siguiente paso natural sería ejecutar plan #4 (auditar app/db/, añadir
+  psycopg, refactorar connection.py para leer DATABASE_URL, correr la migración
+  contra este Postgres). Pero dijiste "1, 5 las demás la haremos después" — así
+  que me quedo aquí. Cuando quieras seguir con el refactor del backend para que
+  use este Postgres, avísame.
+
+✻ Worked for 5m 29s
+
+> genera una lista de tareas md en base a nuestro plan tacha esta como realzada 
+   porfa                                                                        
+
+  Listed 1 directory (ctrl+o to expand)
+
+● Write(~\OneDrive\Documentos\Mente Viva\docs\TODO_PILOTO.md)
+  ⎿  Wrote 104 lines to ..\docs\TODO_PILOTO.md
+      1 # TODO Piloto Mente Viva
+      2 
+      3 Lista de tareas pendientes para el piloto. Referencia a los plane
+        s detallados en `docs/plans/`.
+      4 
+      5 Convención: `[x]` completado, `[ ]` pendiente, `[~]` en progreso.
+      6 
+      7 ---
+      8 
+      9 ## Infraestructura local (dev)
+     … +127 lines (ctrl+o to expand)
+
+● Listo. Creé docs/TODO_PILOTO.md con el checklist completo organizado por plan.
+   Lo de hoy ya marcado:
+
+  - [x] Crear ramas main y dev
+  - [x] docker-compose.dev.yml con Postgres
+  - [x] Levantar contenedor → healthy
+
+  Lo demás queda en [ ] agrupado por: Infra local, Plan 01 (remote+ramas), Plan 
+  02 (TTS OpenAI), Plan 03 (StaticFiles), Plan 04 (Postgres-ready), Deploy 
+  servidor, Validación pre-demo, Riesgos abiertos. Convención [~] para
+  in-progress si quieres marcar avances parciales.
+
+✻ Brewed for 43s
+
+> que otras tareas hay?                                                         
+
+● Déjame escanear el repo en busca de pendientes que no estén en el TODO.
+
+● Bash(git status --short)
+  ⎿  ?? docs/TODO_PILOTO.md
+
+  Searched for 2 patterns, read 2 files (ctrl+o to expand)
+
+● Encontré varios pendientes importantes que se me escaparon del TODO. Voy a
+  añadirlos.
+
+● Update(~\OneDrive\Documentos\Mente Viva\docs\TODO_PILOTO.md)
+  ⎿  Added 55 lines, removed 3 lines
+       90  ## Validación pre-demo
+       91  
+       92  - [ ] Smoke test full-flow en Chrome desktop sobre Cloudflare 
+           Tunnel
+       93 -- [ ] Smoke test en Chrome Android (audio, WS, TTS)           
+       94 -- [ ] Validar Sofía y María con `gpt-oss-20b` (LLM principal) 
+       93 +- [ ] Smoke test en Chrome Android (audio, WS, TTS) — task #13
+       94 +- [ ] Validar Sofía y María con `gpt-oss-20b` (LLM principal) 
+          +— task #28                                                    
+       95 +  - Verificar Fase 5 de Sofía (hoy anuncia "déjame hacerte una
+          + pregunta final" pero emite `[CIERRE]` sin la pregunta)       
+       96 +  - Adaptar `test_roberto_long_session.py` para Sofía y María 
+       97  - [ ] Validar fallback a `llama-3.1-8b-instant` cuando gpt-oss
+            tira `tool_choice` glitch
+       96 -- [ ] Polish + bug bash con 2-3 usuarios reales antes de abrir
+          - piloto                                                       
+       98 +- [ ] Polish + bug bash con 2-3 usuarios reales antes de abrir
+          + piloto — task #29                                            
+       99  
+      100  ---
+      101  
+      102 +## Loop adaptativo / progresión visible (BLOQUEADOR piloto B2B
+          +)                                                             
+      103 +**Ref:** `docs/roadmap.md` §"Bloqueador del piloto" · scope ~8
+          +-10h                                                          
+      104 +                                                              
+      105 +> La promesa central del producto es "roadmap personalizado qu
+          +e evoluciona contigo". Hoy el perfil queda congelado tras el d
+          +iagnóstico inicial. Sin esto, un manager B2B en la sesión 5 va
+          + a notar que "el sistema no aprende del usuario".             
+      106 +                                                              
+      107 +### Motor (merge prueba → perfil)                             
+      108 +- [ ] Alinear shape `ConversationAnalysis` (output prácticas) 
+          +con `Diagnostico` (perfil)                                    
+      109 +- [ ] Reglas de actualización: confirmar `strength` tras 2+ se
+          +siones, bajar `gap` con score >70, reemplazar `blind_spot`, ro
+          +tar `recommended_next_scenario`                               
+      110 +- [ ] `mergeAnalysisIntoProfile()` en backend + wire en fronte
+          +nd tras `session_end`                                         
+      111 +- [ ] **Reconciliar catálogo de skills**: diagnóstico usa 10 h
+          +abilidades, `SKILLS_BY_SCENARIO` usa 5 hardcoded por avatar — 
+          +el usuario ve "comunicación" en perfil pero "manejo_objeciones
+          +" en reporte                                                  
+      112 +                                                              
+      113 +### Progresión visible (UI sobria, no arcade)                 
+      114 +- [ ] Niveles por habilidad (0-100) con barra de progreso en R
+          +eport + `/mi-plan`                                            
+      115 +- [ ] Strengths confirmadas con check + contador "respaldada p
+          +or N sesiones"                                                
+      116 +- [ ] Áreas de foco con barra desde el valor inicial del diagn
+          +óstico                                                        
+      117 +- [ ] "Tu siguiente reto" como tarjeta destacada (no popup)   
+      118 +- [ ] Insights nuevos (blind_spot descubierto/resuelto) mostra
+          +dos una sola vez                                              
+      119 +- [ ] Indicador de constancia discreto ("12 sesiones este mes"
+          +) sin streak agresivo                                         
+      120 +                                                              
+      121 +---                                                           
+      122 +                                                              
+      123 +## Contenido / avatares                                       
+      124 +                                                              
+      125 +- [ ] **Sofía Ready Player Me custom** — hoy `sofia.glb` es el
+          + `brunette.glb` genérico del repo TalkingHead                 
+      126 +- [ ] **Carlos completo (CAT-03 Entrevistas)**: `system_prompt
+          +` + visual SVG/PNG + rubrica en `SKILLS_BY_SCENARIO`/`KPIS_BY_
+          +SCENARIO` (hoy comparte voz de Roberto, sin rubrica propia)   
+      127 +- [ ] **María refactor a "Celeste"** del documento CAT-01 cien
+          +tífico (mismo formato Roberto-Cóndor)                         
+      128 +- [ ] **María niveles** Intermedio / Avanzado (Roberto ya los 
+          +tiene)                                                        
+      129 +- [ ] (Post-piloto) Ampliar catálogo CAT-02 a CAT-08 del spec 
+          +original                                                      
+      130 +                                                              
+      131 +---                                                           
+      132 +                                                              
+      133 +## Tech / calidad                                             
+      134 +                                                              
+      135 +- [ ] **Lip-sync con visemas reales** (timestamps de ElevenLab
+          +s o Whisper word-level) — gran salto vs amplitud actual       
+      136 +- [ ] **SEO básico**: Open Graph tags en `index.html` (twitter
+          + card, og:image con captura del avatar)                       
+      137 +- [ ] Re-diagnóstico desde `/mi-plan` (botón + flujo) cada N s
+          +esiones                                                       
+      138 +- [ ] Edición del registro desde `/mi-plan`                   
+      139 +- [ ] Pantalla `/mi-plan` con histórico de sesiones y curva de
+          + evolución del perfil                                         
+      140 +                                                              
+      141 +---                                                           
+      142 +                                                              
+      143 +## B2B Manager (post-piloto solo, pero documentar)            
+      144 +                                                              
+      145 +- [ ] Modelo multi-tenant: organización → equipos → usuarios  
+      146 +- [ ] Pantallas P-13 / P-14 del spec: dashboard agregado del e
+          +quipo + ficha de empleado                                     
+      147 +- [ ] Métricas HR: cobertura, evolución por habilidad a nivel 
+          +grupo, brechas agregadas                                      
+      148 +- [ ] Auth con roles (manager vs colaborador)                 
+      149 +                                                              
+      150 +---                                                           
+      151 +                                                              
+      152  ## Riesgos abiertos
+      153  
+      154  - [ ] Confirmar Groq tier suficiente para 100 usuarios concurr
+           entes (round-robin de 4 keys vs subir a tier pagado)
+
+● Añadí 4 secciones al TODO_PILOTO.md. Resumen de lo que faltaba:
+
+  Pendientes formales (task tracker)
+  - #13 Validar 3D en Chrome Android (in_progress, posiblemente irrelevante
+  post-Cloudflare)
+  - #28 Validar Sofía y María con gpt-oss-20b (Sofía rompe Fase 5)
+  - #29 Polish + bug bash pre-demo
+
+  Loop adaptativo (BLOQUEADOR piloto B2B, ~8-10h) — del roadmap.md
+  - Motor: merge prueba → perfil (mergeAnalysisIntoProfile), reconciliar
+  catálogo (10 skills diagnóstico vs 5 hardcoded en SKILLS_BY_SCENARIO)
+  - UI sobria: progress bars por habilidad, strengths confirmadas, "tu siguiente
+   reto"
+
+  Contenido
+  - Sofía custom RPM (hoy es el brunette.glb genérico)
+  - Carlos completo: prompt + visual + rubrica
+  - María refactor a "Celeste" del CAT-01
+  - María niveles Intermedio/Avanzado
+
+  Tech / calidad
+  - Lip-sync con visemas reales (ElevenLabs timestamps)
+  - SEO Open Graph
+  - Re-diagnóstico desde /mi-plan
+  - Edición de registro
+  - Histórico + curva de evolución en /mi-plan
+
+  B2B (post-piloto)
+  - Multi-tenant org→equipos→usuarios
+  - Pantallas P-13/P-14 manager
+  - Métricas HR agregadas
+
+  ¿Quieres que reordene por prioridad (lo que bloquea piloto vs lo que puede
+  esperar), o seguimos con la ejecución de algún plan?
+
+✻ Worked for 1m 4s
+
+> Ayudame acomodando las tareas por orden de urgencia para ir sacando el MVP ya 
+
+● Voy a reescribir el TODO con orden de urgencia explícito — P0 (bloquea
+  shipear) hasta P4 (futuro).
+
+● Write(~\OneDrive\Documentos\Mente Viva\docs\TODO_PILOTO.md)
+  ⎿  Added 123 lines, removed 111 lines
+        1 -# TODO Piloto Mente Viva                                      
+        1 +# TODO Piloto Mente Viva — Ruta al MVP                        
+        2  
+        3 -Lista de tareas pendientes para el piloto. Referencia a los pl
+          -anes detallados en `docs/plans/`.                             
+        3 +Tareas ordenadas por urgencia para shipear el piloto. Convenci
+          +ón: `[x]` hecho, `[ ]` pendiente, `[~]` en progreso.          
+        4  
+        5 -Convención: `[x]` completado, `[ ]` pendiente, `[~]` en progre
+          -so.                                                           
+        5 +**Definición de MVP:** un demo accesible vía URL pública (Clou
+          +dflare Tunnel sobre el server empresa), con login + diagnóstic
+          +o + práctica + reporte funcionando para hasta ~100 usuarios co
+          +ncurrentes.                                                   
+        6  
+        7  ---
+        8  
+        9 -## Infraestructura local (dev)                                
+        9 +## 🔴 P0 — Ruta crítica al shipping (bloquean el demo)        
+       10  
+       11 -- [x] Crear rama `main` (deploy) y `dev` (trabajo) localmente 
+       12 -- [x] `docker-compose.dev.yml` con Postgres 16-alpine en `:543
+          -3` (volumen `pgdata-dev`, locale `es_MX.UTF-8`)               
+       13 -- [x] Levantar contenedor Postgres dev → `menteviva-pg-dev` he
+          -althy, accesible en `postgresql://menteviva:dev@127.0.0.1:5433
+          -/menteviva`                                                   
+       14 -- [ ] Probar `psql` desde host (cliente local) — opcional, ya 
+          -tenemos `docker exec`                                         
+       11 +**Meta: poder dar un link a un cliente esta semana.**         
+       12  
+       16 ----                                                           
+       13 +### 0.1 Backend listo para Postgres (~2h) — Plan 04           
+       14 +- [ ] Auditar `app/db/connection.py`, `migrator.py`, `migratio
+          +ns/*.sql` (¿SQLite-isms?)                                     
+       15 +- [ ] `poetry add "psycopg[binary]"`                          
+       16 +- [ ] Refactor `connection.py` para leer `DATABASE_URL` (defau
+          +lt SQLite legacy para no romper)                              
+       17 +- [ ] Setear `DATABASE_URL=postgresql+psycopg://menteviva:dev@
+          +127.0.0.1:5433/menteviva` en `.env`                           
+       18 +- [ ] Correr migración contra Postgres dev (Docker ya levantad
+          +o)                                                            
+       19 +- [ ] Smoke local: registro + diagnóstico + práctica escriben 
+          +rows en Postgres dev                                          
+       20  
+       18 -## Plan 01 — Estrategia de ramas + remote GitHub              
+       19 -**Ref:** `docs/plans/01_branch_protection_remote.md`          
+       21 +### 0.2 Servir frontend desde uvicorn (~1h) — Plan 03         
+       22 +- [ ] `app/main.py`: bloque `StaticFiles` + SPA fallback (`/as
+          +sets/*`, `/vad/*`, `/avatars/*`, catch-all `index.html`)      
+       23 +- [ ] `menteviva-frontend/.env.production` con `VITE_API_URL=`
+          + y `VITE_WS_URL=` vacíos                                      
+       24 +- [ ] Validar `useWebSocket.ts` construye `wss://<host>` cuand
+          +o vacío                                                       
+       25 +- [ ] Smoke local: `npm run build && uvicorn` → http://127.0.0
+          +.1:8000 todo end-to-end sin Vite                              
+       26  
+       21 -- [ ] Crear repo `menteviva` en GitHub (privado)              
+       22 -- [ ] `git remote add origin <url>`                           
+       23 -- [ ] `git push -u origin main`                               
+       24 -- [ ] `git push -u origin dev`                                
+       25 -- [ ] Branch protection rule para `main` (require PR, 1 approv
+          -al, no force push, no delete)                                 
+       26 -- [ ] Default branch = `dev` en Settings → General            
+       27 -- [ ] (Opcional) `git filter-repo` para scrub de la Groq key d
+          -el commit `c077aa8` — **key ya revocada**, decisión: dejar his
+          -toria                                                         
+       28 -- [ ] (Opcional) `.github/workflows/ci.yml` con typecheck fron
+          -tend + import backend                                         
+       27 +### 0.3 Repo en GitHub (~30 min) — Plan 01                    
+       28 +- [ ] Crear repo `menteviva` privado en GitHub                
+       29 +- [ ] `git remote add origin` + `git push -u origin main` + `g
+          +it push -u origin dev`                                        
+       30 +- [ ] Branch protection en `main`: require PR, 1 approval, no 
+          +force push, no delete                                         
+       31 +- [ ] Default branch = `dev`                                  
+       32  
+       30 ----                                                           
+       33 +### 0.4 Setup Neon prod (~30 min)                             
+       34 +- [ ] Crear Neon project `menteviva-piloto` (región us-east-2,
+          + Pg 16)                                                       
+       35 +- [ ] Copiar Pooled connection string                         
+       36 +- [ ] Correr migración contra Neon desde local                
+       37 +- [ ] Smoke: `psql "$NEON_URL" -c '\d'` muestra todas las tabl
+          +as                                                            
+       38  
+       32 -## Plan 02 — Swap TTS de ElevenLabs a OpenAI                  
+       33 -**Ref:** `docs/plans/02_tts_swap_openai.md`                   
+       39 +### 0.5 Deploy en servidor empresa (~2-3h)                    
+       40 +- [ ] Aprovisionar VM / acceso al server                      
+       41 +- [ ] Instalar Python 3.11+, Node 20, Poetry, postgres-client,
+          + cloudflared                                                  
+       42 +- [ ] Clonar repo, `.env` con secrets prod (Firebase, Groq, El
+          +evenLabs, `DATABASE_URL`=Neon)                                
+       43 +- [ ] `deploy.sh` con `git pull + poetry install + npm ci && n
+          +pm run build + systemctl restart`                             
+       44 +- [ ] systemd unit `menteviva-backend.service` (uvicorn 4 work
+          +ers)                                                          
+       45 +- [ ] systemd unit `cloudflared.service` apuntando al subdomin
+          +io piloto                                                     
+       46 +- [ ] Añadir subdominio Cloudflare a authorized domains en Fir
+          +ebase Auth                                                    
+       47 +- [ ] Smoke full-flow desde laptop sobre la URL pública       
+       48  
+       35 -- [ ] `poetry add openai` (si no está)                        
+       36 -- [ ] Añadir `TTS_PROVIDER`, `OPENAI_API_KEY` a `.env` y `app/
+          -config.py`                                                    
+       37 -- [ ] Refactor `app/services/edge_tts.py`: dispatcher `_tts_op
+          -enai` / `_tts_elevenlabs` con firma estable                   
+       38 -- [ ] Mapeo voces: `sofia→alloy`, `roberto→onyx`, `maria→nova`
+       39 -- [ ] Script `scripts/test_tts.py` para A/B (OpenAI vs ElevenL
+          -abs)                                                          
+       40 -- [ ] Validación humana: sesión de 5 min en `/diagnostico` y `
+          -/simulation` con OpenAI                                       
+       41 -- [ ] Default a `TTS_PROVIDER=openai`, mantener `ELEVENLABS_AP
+          -I_KEY` para fallback                                          
+       42 -- [ ] (Post-piloto) `poetry remove elevenlabs` + renombrar `ed
+          -ge_tts.py` a `tts.py`                                         
+       49 +### 0.6 Validación pre-demo (~1h)                             
+       50 +- [ ] Fix Sofía Fase 5: hoy anuncia "déjame hacerte una pregun
+          +ta final" y emite `[CIERRE]` sin la pregunta — task #28       
+       51 +- [ ] Validar Sofía y María bajo `gpt-oss-20b` (adaptar `test_
+          +roberto_long_session.py`)                                     
+       52 +- [ ] Validar fallback automático a `llama-3.1-8b-instant` cua
+          +ndo gpt-oss tira `tool_choice` glitch                         
+       53  
+       54  ---
+       55  
+       46 -## Plan 03 — StaticFiles + SPA fallback en uvicorn            
+       47 -**Ref:** `docs/plans/03_staticfiles_spa_fallback.md`          
+       56 +## 🟠 P1 — Crítico tras shipping (primeros días con tráfico)  
+       57  
+       49 -- [ ] Añadir bloque `StaticFiles` + SPA fallback en `app/main.
+          -py`                                                           
+       50 -- [ ] `menteviva-frontend/.env.production` con `VITE_API_URL=`
+          - y `VITE_WS_URL=` vacíos (URLs relativas)                     
+       51 -- [ ] Validar `useWebSocket.ts` construye `wss://<host>` cuand
+          -o `VITE_WS_URL` vacío                                         
+       52 -- [ ] Smoke local: `npm run build && uvicorn` → http://127.0.0
+          -.1:8000 funciona end-to-end sin Vite                          
+       53 -- [ ] Actualizar `deploy.sh` para incluir `npm run build` ante
+          -s del restart                                                 
+       54 -- [ ] (Opcional) `CachedStaticFiles` con `Cache-Control: max-a
+          -ge=31536000, immutable` para `/assets/*`                      
+       58 +**Meta: que el demo aguante 100 usuarios sin reventar costos o
+          + caer.**                                                      
+       59  
+       56 ----                                                           
+       60 +### 1.1 TTS swap a OpenAI (~1.5h) — Plan 02                   
+       61 +- [ ] `poetry add openai` (si no está)                        
+       62 +- [ ] `TTS_PROVIDER` + `OPENAI_API_KEY` en `.env` y `Settings`
+       63 +- [ ] Refactor `services/edge_tts.py` con dispatcher OpenAI/El
+          +evenLabs                                                      
+       64 +- [ ] Mapeo voces: sofia→`alloy`, roberto→`onyx`, maria→`nova`
+       65 +- [ ] A/B con `scripts/test_tts.py` (calidad español, latencia
+          +)                                                             
+       66 +- [ ] Sesión de 5 min en `/diagnostico` y `/simulation` para v
+          +alidar                                                        
+       67 +- [ ] Default `TTS_PROVIDER=openai` con fallback EL automático
+          + si error                                                     
+       68  
+       58 -## Plan 04 — Backend Postgres-ready                           
+       59 -**Ref:** `docs/plans/04_postgres_ready.md`                    
+       69 +**Justificación:** $0.015/1k chars vs $0.066-0.10 → ~6× más ba
+          +rato. A 100 usuarios concurrentes la diferencia es material.  
+       70  
+       61 -- [ ] Auditar `app/db/`: `connection.py`, `migrator.py`, `migr
+          -ations/*.sql`                                                 
+       62 -- [ ] Verificar `.sql` files son portables (sin `AUTOINCREMENT
+          -`, `pragma`, `rowid`, `BIGSERIAL`)                            
+       63 -- [ ] `poetry add "psycopg[binary]"`                          
+       64 -- [ ] Refactor `app/db/connection.py` para leer `DATABASE_URL`
+          - (default SQLite legacy)                                      
+       65 -- [ ] Setear `DATABASE_URL=postgresql+psycopg://menteviva:dev@
+          -127.0.0.1:5433/menteviva` en `.env` dev                       
+       66 -- [ ] Correr `poetry run python -m app.db.migrate up` contra P
+          -ostgres dev                                                   
+       67 -- [ ] Smoke end-to-end: registro + diagnostico + practica escr
+          -iben rows a Postgres                                          
+       68 -- [ ] (Cuando se cree) Setup Neon project `menteviva-piloto` r
+          -egión us-east-2                                               
+       69 -- [ ] Correr migración contra Neon                            
+       70 -- [ ] (Opcional) Setup `neonctl` para DB branching en PRs     
+       71 -- [ ] Cleanup: eliminar rama SQLite de `connection.py` post-pi
+          -loto                                                          
+       71 +### 1.2 Observabilidad mínima                                 
+       72 +- [ ] logrotate config con `copytruncate` para `menteviva-back
+          +end/logs/*.log`                                               
+       73 +- [ ] Verificar que `gpt-oss-20b → llama-3.1-8b-instant` fallb
+          +ack se loguea claro                                           
+       74 +- [ ] Backup `pg_dump` manual semanal a S3 / disco local del s
+          +erver                                                         
+       75 +- [ ] Bug bash con 2-3 usuarios reales — task #29             
+       76  
+       77 +### 1.3 Headers de cache (opcional, mejora UX)                
+       78 +- [ ] `CachedStaticFiles` con `Cache-Control: max-age=31536000
+          +, immutable` para `/assets/*`                                 
+       79 +- [ ] `Cache-Control: no-cache` para `index.html` (SPA fallbac
+          +k)                                                            
+       80 +                                                              
+       81  ---
+       82  
+       75 -## Deploy piloto en servidor empresa                          
+       76 -**Ref:** `docs/DEPLOY_PILOTO.md`                              
+       83 +## 🟡 P2 — Calidad de producto (siguiente sprint, semana 2-3) 
+       84  
+       78 -- [ ] Aprovisionar VM / server empresa                        
+       79 -- [ ] Instalar Python 3.11+, Node 20, Poetry, postgres-client,
+          - cloudflared                                                  
+       80 -- [ ] Clonar repo, configurar `.env` server con secrets prod  
+       81 -- [ ] systemd unit `menteviva-backend.service` (uvicorn 4 work
+          -ers)                                                          
+       82 -- [ ] systemd unit `cloudflared.service` apuntando al subdomin
+          -io piloto                                                     
+       83 -- [ ] `deploy.sh` ejecutable y testeado                       
+       84 -- [ ] logrotate config con `copytruncate` para `menteviva-back
+          -end/logs/*.log`                                               
+       85 -- [ ] Configurar dominio Firebase Auth (añadir subdominio Clou
+          -dflare a authorized domains)                                  
+       86 -- [ ] Backup `pg_dump` mensual a S3 o local                   
+       85 +**Meta: que el demo se sienta pulido y diferenciado.**        
+       86  
+       88 ----                                                           
+       87 +### 2.1 Loop adaptativo — motor (~5h)                         
+       88 +> Roadmap lo llama "bloqueador piloto B2B". Para demo de **1 s
+          +esión** no se nota; a partir de sesión 3 sí.                  
+       89  
+       90 -## Validación pre-demo                                        
+       90 +- [ ] Alinear shape `ConversationAnalysis` con `Diagnostico`  
+       91 +- [ ] `mergeAnalysisIntoProfile()` backend + wire frontend tra
+          +s `session_end`                                               
+       92 +- [ ] Reglas: confirmar `strength` con 2+ sesiones, bajar `gap
+          +` con score>70, reemplazar `blind_spot`, rotar `recommended_ne
+          +xt_scenario`                                                  
+       93 +- [ ] **Reconciliar catálogo de skills**: diagnóstico usa 10 h
+          +abilidades, `SKILLS_BY_SCENARIO` usa 5 hardcoded — usuario ve 
+          +"comunicación" en perfil pero "manejo_objeciones" en reporte  
+       94  
+       92 -- [ ] Smoke test full-flow en Chrome desktop sobre Cloudflare 
+          -Tunnel                                                        
+       93 -- [ ] Smoke test en Chrome Android (audio, WS, TTS) — task #13
+       94 -- [ ] Validar Sofía y María con `gpt-oss-20b` (LLM principal) 
+          -— task #28                                                    
+       95 -  - Verificar Fase 5 de Sofía (hoy anuncia "déjame hacerte una
+          - pregunta final" pero emite `[CIERRE]` sin la pregunta)       
+       96 -  - Adaptar `test_roberto_long_session.py` para Sofía y María 
+       97 -- [ ] Validar fallback a `llama-3.1-8b-instant` cuando gpt-oss
+          - tira `tool_choice` glitch                                    
+       98 -- [ ] Polish + bug bash con 2-3 usuarios reales antes de abrir
+          - piloto — task #29                                            
+       95 +### 2.2 Loop adaptativo — UI (~3h)                            
+       96 +- [ ] Barras de progreso por habilidad (0-100) en Report + `/m
+          +i-plan`                                                       
+       97 +- [ ] Strengths confirmadas con check + "respaldada por N sesi
+          +ones"                                                         
+       98 +- [ ] Áreas de foco con progreso desde valor inicial del diagn
+          +óstico                                                        
+       99 +- [ ] "Tu siguiente reto" como tarjeta destacada en dashboard 
+      100 +- [ ] Indicador de constancia discreto ("12 sesiones este mes"
+          +)                                                             
+      101  
+      102 +### 2.3 Contenido faltante                                    
+      103 +- [ ] Sofía custom Ready Player Me (hoy es `brunette.glb` gené
+          +rico)                                                         
+      104 +- [ ] Fix Sofía Fase 5 a nivel prompt (si no se resolvió en P0
+          +)                                                             
+      105 +- [ ] María refactor a "Celeste" del CAT-01 científico        
+      106 +- [ ] María niveles Intermedio/Avanzado (Roberto ya los tiene)
+      107 +                                                              
+      108  ---
+      109  
+      102 -## Loop adaptativo / progresión visible (BLOQUEADOR piloto B2B
+          -)                                                             
+      103 -**Ref:** `docs/roadmap.md` §"Bloqueador del piloto" · scope ~8
+          --10h                                                          
+      110 +## 🟢 P3 — Expansión (mes 2+)                                 
+      111  
+      105 -> La promesa central del producto es "roadmap personalizado qu
+          -e evoluciona contigo". Hoy el perfil queda congelado tras el d
+          -iagnóstico inicial. Sin esto, un manager B2B en la sesión 5 va
+          - a notar que "el sistema no aprende del usuario".             
+      112 +### 3.1 Carlos completo (CAT-03 Entrevistas)                  
+      113 +- [ ] `system_prompt` propio                                  
+      114 +- [ ] Visual PNG/3D propio (hoy comparte voz de Roberto)      
+      115 +- [ ] Rubrica en `SKILLS_BY_SCENARIO` / `KPIS_BY_SCENARIO`    
+      116  
+      107 -### Motor (merge prueba → perfil)                             
+      108 -- [ ] Alinear shape `ConversationAnalysis` (output prácticas) 
+          -con `Diagnostico` (perfil)                                    
+      109 -- [ ] Reglas de actualización: confirmar `strength` tras 2+ se
+          -siones, bajar `gap` con score >70, reemplazar `blind_spot`, ro
+          -tar `recommended_next_scenario`                               
+      110 -- [ ] `mergeAnalysisIntoProfile()` en backend + wire en fronte
+          -nd tras `session_end`                                         
+      111 -- [ ] **Reconciliar catálogo de skills**: diagnóstico usa 10 h
+          -abilidades, `SKILLS_BY_SCENARIO` usa 5 hardcoded por avatar — 
+          -el usuario ve "comunicación" en perfil pero "manejo_objeciones
+          -" en reporte                                                  
+      117 +### 3.2 Usuario power-features                                
+      118 +- [ ] Re-diagnóstico desde `/mi-plan` (botón + flujo cada N se
+          +siones)                                                       
+      119 +- [ ] Edición de registro desde `/mi-plan`                    
+      120 +- [ ] Histórico de sesiones + curva de evolución del perfil en
+          + `/mi-plan`                                                   
+      121 +- [ ] SEO básico: Open Graph tags en `index.html` (twitter car
+          +d, og:image)                                                  
+      122  
+      113 -### Progresión visible (UI sobria, no arcade)                 
+      114 -- [ ] Niveles por habilidad (0-100) con barra de progreso en R
+          -eport + `/mi-plan`                                            
+      115 -- [ ] Strengths confirmadas con check + contador "respaldada p
+          -or N sesiones"                                                
+      116 -- [ ] Áreas de foco con barra desde el valor inicial del diagn
+          -óstico                                                        
+      117 -- [ ] "Tu siguiente reto" como tarjeta destacada (no popup)   
+      118 -- [ ] Insights nuevos (blind_spot descubierto/resuelto) mostra
+          -dos una sola vez                                              
+      119 -- [ ] Indicador de constancia discreto ("12 sesiones este mes"
+          -) sin streak agresivo                                         
+      123 +### 3.3 Producción ready                                      
+      124 +- [ ] `.github/workflows/ci.yml`: typecheck frontend + import 
+          +backend en PRs                                                
+      125 +- [ ] DB branching para PRs vía `neonctl` (preview deploys)   
+      126 +- [ ] (Opcional) Scrub Groq key del commit `c077aa8` con `git 
+          +filter-repo` (key ya revocada, decisión: dejar historia)      
+      127  
+      128  ---
+      129  
+      123 -## Contenido / avatares                                       
+      130 +## 🔵 P4 — Post-piloto / B2B real                             
+      131  
+      125 -- [ ] **Sofía Ready Player Me custom** — hoy `sofia.glb` es el
+          - `brunette.glb` genérico del repo TalkingHead                 
+      126 -- [ ] **Carlos completo (CAT-03 Entrevistas)**: `system_prompt
+          -` + visual SVG/PNG + rubrica en `SKILLS_BY_SCENARIO`/`KPIS_BY_
+          -SCENARIO` (hoy comparte voz de Roberto, sin rubrica propia)   
+      127 -- [ ] **María refactor a "Celeste"** del documento CAT-01 cien
+          -tífico (mismo formato Roberto-Cóndor)                         
+      128 -- [ ] **María niveles** Intermedio / Avanzado (Roberto ya los 
+          -tiene)                                                        
+      129 -- [ ] (Post-piloto) Ampliar catálogo CAT-02 a CAT-08 del spec 
+          -original                                                      
+      132 +- [ ] Multi-tenant: organización → equipos → usuarios         
+      133 +- [ ] Pantallas P-13/P-14 manager: dashboard agregado + ficha 
+          +empleado                                                      
+      134 +- [ ] Métricas HR: cobertura, evolución por habilidad agregada
+          +, brechas grupo                                               
+      135 +- [ ] Auth con roles (manager vs colaborador)                 
+      136 +- [ ] Lip-sync con visemas reales (timestamps ElevenLabs o Whi
+          +sper word-level)                                              
+      137 +- [ ] Catálogo CAT-02 a CAT-08 del spec original              
+      138 +- [ ] Cleanup post-piloto: `poetry remove elevenlabs`, renombr
+          +ar `edge_tts.py` → `tts.py`, eliminar rama SQLite             
+      139  
+      140  ---
+      141  
+      133 -## Tech / calidad                                             
+      142 +## ✅ Ya hecho (referencia)                                   
+      143  
+      135 -- [ ] **Lip-sync con visemas reales** (timestamps de ElevenLab
+          -s o Whisper word-level) — gran salto vs amplitud actual       
+      136 -- [ ] **SEO básico**: Open Graph tags en `index.html` (twitter
+          - card, og:image con captura del avatar)                       
+      137 -- [ ] Re-diagnóstico desde `/mi-plan` (botón + flujo) cada N s
+          -esiones                                                       
+      138 -- [ ] Edición del registro desde `/mi-plan`                   
+      139 -- [ ] Pantalla `/mi-plan` con histórico de sesiones y curva de
+          - evolución del perfil                                         
+      144 +- [x] Ramas `main` y `dev` locales                            
+      145 +- [x] `docker-compose.dev.yml` con Postgres 16                
+      146 +- [x] Postgres dev levantado y healthy (`menteviva-pg-dev`)   
+      147 +- [x] Plans escritos: 01 (remote), 02 (TTS), 03 (StaticFiles),
+          + 04 (Postgres)                                                
+      148 +- [x] Roberto-Cóndor 3 niveles + 6 KPIs                       
+      149 +- [x] Dashboard `/mi-plan` desde SQLite                       
+      150 +- [x] Firebase Auth backend + frontend                        
+      151 +- [x] Avatares 3D Roberto/María/Sofía (lip-sync por amplitud) 
+      152 +- [x] Idle animation oficial RPM (brazos abajo, no T-pose)    
+      153 +- [x] Diagnóstico estilo Zoom + mute                          
+      154 +- [x] UserMenu con foto Google + dropdown                     
+      155  
+      156  ---
+      157  
+      143 -## B2B Manager (post-piloto solo, pero documentar)            
+      158 +## Resumen ejecutivo                                          
+      159  
+      145 -- [ ] Modelo multi-tenant: organización → equipos → usuarios  
+      146 -- [ ] Pantallas P-13 / P-14 del spec: dashboard agregado del e
+          -quipo + ficha de empleado                                     
+      147 -- [ ] Métricas HR: cobertura, evolución por habilidad a nivel 
+          -grupo, brechas agregadas                                      
+      148 -- [ ] Auth con roles (manager vs colaborador)                 
+      160 +| Bloque | Esfuerzo | Cuándo |                                
+      161 +|---|---|---|                                                 
+      162 +| **P0 ruta crítica** | ~7-8h (1-2 días de trabajo enfocado) |
+          + YA — antes de shipear |                                      
+      163 +| P1 estabilización | ~2-3h | Primera semana con tráfico |    
+      164 +| P2 calidad producto | ~10-12h | Semana 2-3 |                
+      165 +| P3 expansión | depende del scope | Mes 2 |                  
+      166 +| P4 B2B real | semanas | Mes 3+ |                            
+      167  
+      150 ----                                                           
+      151 -                                                              
+      152 -## Riesgos abiertos                                           
+      153 -                                                              
+      154 -- [ ] Confirmar Groq tier suficiente para 100 usuarios concurr
+          -entes (round-robin de 4 keys vs subir a tier pagado)          
+      155 -- [ ] Decidir si abrimos Neon en plan free (0.5GB) o Launch ($
+          -19/mo, 10GB + branching)                                      
+      156 -- [ ] Plan de rollback si TTS OpenAI no convence: env-flip a `
+          -TTS_PROVIDER=elevenlabs`                                      
+      168 +**Próxima acción concreta:** ejecutar 0.1 (Postgres-ready). El
+          + Docker dev ya está corriendo, solo falta el refactor del back
+          +end para usarlo.                                              
+
+● Reordenado por urgencia con 5 niveles:
+
+  ┌───────────┬─────────────────────────────────────┬──────────┬────────────┐
+  │ Prioridad │               Bloque                │ Esfuerzo │   Cuándo   │
+  ├───────────┼─────────────────────────────────────┼──────────┼────────────┤
+  │           │ Ruta crítica (Postgres-ready,       │          │            │
+  │ 🔴 P0     │ StaticFiles, GitHub, Neon, deploy   │ ~7-8h    │ YA         │
+  │           │ server, fix Sofía Fase 5)           │          │            │
+  ├───────────┼─────────────────────────────────────┼──────────┼────────────┤
+  │           │ TTS swap OpenAI, logrotate,         │          │ Semana 1   │
+  │ 🟠 P1     │ backups, bug bash                   │ ~2-3h    │ con        │
+  │           │                                     │          │ tráfico    │
+  ├───────────┼─────────────────────────────────────┼──────────┼────────────┤
+  │ 🟡 P2     │ Loop adaptativo (motor+UI), Sofía   │ ~10-12h  │ Semana 2-3 │
+  │           │ custom, María refactor              │          │            │
+  ├───────────┼─────────────────────────────────────┼──────────┼────────────┤
+  │ 🟢 P3     │ Carlos completo, re-diagnóstico,    │ depende  │ Mes 2      │
+  │           │ SEO, CI                             │          │            │
+  ├───────────┼─────────────────────────────────────┼──────────┼────────────┤
+  │ 🔵 P4     │ Multi-tenant B2B, lip-sync visemas, │ semanas  │ Mes 3+     │
+  │           │  catálogo CAT-02..08                │          │            │
+  └───────────┴─────────────────────────────────────┴──────────┴────────────┘
+
+  Lo crítico que faltaba ordenar bien:
+  - 0.1 Postgres-ready primero porque sin eso, database is locked con 4 workers
+  → demo se cae
+  - 0.2 StaticFiles porque sin eso necesitamos 2 tunnels Cloudflare (frontend +
+  backend) = más fricción
+  - 0.6 Fix Sofía Fase 5 es bug visible en demo, no opcional
+  - TTS swap a P1 (no P0): a 1-2 sesiones de demo aguanta ElevenLabs, pero a 100
+   usuarios la factura duele
+  - Loop adaptativo a P2: el roadmap lo llamaba "bloqueador B2B" pero para demo
+  de 1 sesión no se nota — primero shipear, luego pulir
+
+  Próxima acción concreta: ejecutar 0.1 Backend Postgres-ready. ¿Le entramos?
+✻ Worked for 1m 16s
+
+> que podemos ir adelantando entonces                                           
+
+● Sin que tengas que hacer nada externo (crear repo, contratar Neon, dar acceso
+  al server, etc.), puedo avanzar bastante código en paralelo. Lo que está
+  desbloqueado ahora mismo:
+
+  Trabajo de código que puedo hacer ya
+
+  Tarea: 0.1 Backend Postgres-ready (audit + psycopg + refactor connection +
+    migrar contra Docker dev)
+  Prioridad: P0
+  Esfuerzo: ~2h
+  Bloqueado por: Nada (Docker dev ya levantado)
+  ────────────────────────────────────────
+  Tarea: 0.2 StaticFiles + SPA fallback en app/main.py + .env.production
+  Prioridad: P0
+  Esfuerzo: ~1h
+  Bloqueado por: Nada
+  ────────────────────────────────────────
+  Tarea: 0.6 Fix Sofía Fase 5 (prompt) + scripts de validación Sofía/María con
+    gpt-oss-20b
+  Prioridad: P0
+  Esfuerzo: ~1h
+  Bloqueado por: Necesito API key Groq ya disponible
+  ────────────────────────────────────────
+  Tarea: 1.1 TTS swap a OpenAI (refactor edge_tts.py con dispatcher)
+  Prioridad: P1
+  Esfuerzo: ~1.5h
+  Bloqueado por: Necesito OPENAI_API_KEY para test, pero el código puede quedar
+    listo sin ella
+  ────────────────────────────────────────
+  Tarea: 1.2 logrotate config + deploy.sh esqueleto
+  Prioridad: P1
+  Esfuerzo: ~30min
+  Bloqueado por: Nada
+
+  Lo que necesito de ti (en paralelo, no me bloquean a mí)
+
+  ┌────────────────────────────────────────┬──────────┬─────────────────────┐
+  │                 Tarea                  │  Quién   │       Cuándo        │
+  ├────────────────────────────────────────┼──────────┼─────────────────────┤
+  │ 0.3 Crear repo GitHub menteviva        │ tú, 5    │ Cuando quieras      │
+  │ privado                                │ min      │ hacer push          │
+  ├────────────────────────────────────────┼──────────┼─────────────────────┤
+  │ 0.4 Crear cuenta Neon + project        │ tú, 10   │ Antes de deploy a   │
+  │ menteviva-piloto                       │ min      │ server              │
+  ├────────────────────────────────────────┼──────────┼─────────────────────┤
+  │ 0.5 Acceso/credenciales al server      │ tú       │ Antes de deploy     │
+  │ empresa                                │          │                     │
+  ├────────────────────────────────────────┼──────────┼─────────────────────┤
+  │ OPENAI_API_KEY en .env                 │ tú       │ Antes de validar    │
+  │                                        │          │ TTS swap            │
+  └────────────────────────────────────────┴──────────┴─────────────────────┘
+
+  Mi recomendación de orden
+
+  Te propongo arrancar con esta secuencia (todo es código, sin acción tuya hasta
+   el final):
+
+  1. 0.1 Postgres-ready — desbloquea todo el resto. Refactor connection.py,
+  añadir psycopg, correr migración contra el Docker que ya está corriendo. Si
+  descubro algo no portable en los .sql, lo parcheo.
+  2. 0.2 StaticFiles — independiente, lo dejamos listo para que el deploy sea 1
+  proceso.
+  3. 0.6 Fix Sofía + scripts de validación — con gpt-oss-20b corriendo,
+  comprobamos que no se rompe el flujo de diagnóstico.
+  4. 1.1 TTS dispatcher — código del refactor, las pruebas humanas las haces tú
+  cuando metas la OPENAI_API_KEY.
+
+  Eso son ~5h de trabajo enfocado. Te lo voy reportando paso a paso. Después ya
+  solo te queda crear repo + Neon + tocar el server.
+
+  ¿Arranco con 0.1 (Postgres-ready)?
+
+✻ Churned for 22s
+
+> trabaja yo mientras adelanto github, neon ya tengo acceso solo creo tardaria  
+  con penai porqe me la darian hasta mañana                                     
+
+● Arrancando con 0.1 (Postgres-ready). Primero audito qué hay.
+
+  Read 1 file, listed 1 directory (ctrl+o to expand)
+
+● No existe app/db/. Voy a buscar dónde vive la lógica de DB.
+
+  Searched for 3 patterns, read 4 files, listed 1 directory (ctrl+o to expand)
+
+● Encontré la estructura real: app/db.py (monolítico, no app/db/), schema
+  inline, 2 repos (user_repo.py, session_repo.py) con SQL crudo. Reviso scripts
+  y archivos restantes.
+
+  Read 2 files, listed 1 directory (ctrl+o to expand)
+
+● Auditoría completa. Voy a implementar — un par de cosas importantes:
+
+  Decisión que tomo (aviso por si quieres revertir): drop SQLite por completo,
+  no mantener dual SQLite+Postgres. Razones: tenés Docker dev healthy, Neon para
+   prod, no hay datos reales en SQLite, y mantener dos paths duplica el surface
+  de bugs. Si querés conservar SQLite como fallback, dímelo y lo abstraigo con
+  SQLAlchemy en su lugar.
+
+  SQLite-isms a corregir:
+  1. INTEGER PRIMARY KEY AUTOINCREMENT → GENERATED BY DEFAULT AS IDENTITY
+  2. ? placeholders → %s (psycopg)
+  3. cursor.lastrowid → RETURNING <pk> (2 usos)
+  4. PRAGMA foreign_keys → drop (PG nativo)
+  5. datetime('now') en migrator → ISO Python
+  6. executescript → cur.execute multi-statement
+  7. row_factory = aiosqlite.Row → row_factory=dict_row psycopg
+
+  Arrancando con pyproject.toml y config.py.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(~\OneDrive\Documentos\Mente Viva\menteviva-backend\pyproject.toml)
+  ⎿  Added 1 line, removed 1 line
+      15  pydantic-settings = "^2.4.0"
+      16  python-multipart = "^0.0.12"
+      17  websockets = "^13.0"
+      18 -aiosqlite = "^0.22.1"                                          
+      18 +psycopg = {extras = ["binary", "pool"], version = "^3.2"}      
+      19  firebase-admin = "^6.0"
+      20  
+      21  [tool.poetry.group.dev.dependencies]
+
+● Update(~\OneDrive\Documentos\Mente Viva\menteviva-backend\app\config.py)
+  ⎿  Added 9 lines
+      41      firebase_service_account_path: str = ""
+      42      firebase_service_account_json: str = ""
+      43  
+      44 +    # Database — Postgres connection string.                   
+      45 +    # Dev local Docker:  postgresql://menteviva:dev@127.0.0.1:5
+         +433/menteviva                                                  
+      46 +    # Prod Neon:         postgresql://<user>:<pwd>@<host>.neon.
+         +tech/menteviva?sslmode=require                                 
+      47 +    # El driver es psycopg async (psycopg 3.x); no incluir "+ps
+         +ycopg" en la URL,                                              
+      48 +    # psycopg.AsyncConnection acepta una connection string libp
+         +q estandar.                                                    
+      49 +    database_url: str = "postgresql://menteviva:dev@127.0.0.1:5
+         +433/menteviva"                                                 
+      50 +    db_pool_min_size: int = 2                                  
+      51 +    db_pool_max_size: int = 10                                 
+      52 +                                                               
+      53      # App
+      54      app_name: str = "Mente Viva API"
+      55      debug: bool = False
+
+● Ahora reescribo app/db.py para psycopg async + pool.
+
+● Write(~\OneDrive\Documentos\Mente Viva\menteviva-backend\app\db.py)
+  ⎿  Added 143 lines, removed 97 lines
+       1  """
+       2 -SQLite async wrapper. Persistencia server-side de usuarios, dia
+         -gnosticos y                                                    
+       2 +Postgres async wrapper. Persistencia server-side de usuarios, d
+         +iagnosticos y                                                  
+       3  sesiones de practica.
+       4  
+       5 -# Portabilidad a Postgres                                      
+       6 -El schema esta escrito para minimizar fricciones cuando se migr
+         -e a Postgres                                                   
+       7 -(probablemente Supabase, post-piloto). Reglas seguidas:        
+       5 +Driver: psycopg 3.x async + AsyncConnectionPool. Connection str
+         +ing en                                                         
+       6 +`settings.database_url` (libpq estandar, sin prefijo "+psycopg"
+         +).                                                             
+       7  
+       9 -- TEXT en lugar de VARCHAR(n)        -> Postgres tambien soport
+         -a TEXT.                                                        
+      10 -- INTEGER PRIMARY KEY AUTOINCREMENT  -> en Postgres se reemplaz
+         -a por SERIAL/                                                  
+      11 -                                        BIGSERIAL o IDENTITY. L
+         -a semantica es                                                 
+      12 -                                        la misma; el ALTER es t
+         -rivial.                                                        
+      13 -- Sin DEFAULT (datetime('now'))      -> es una funcion SQLite-o
+         -nly. Escribimos                                                
+      14 -                                        ISO timestamps desde Py
+         -thon, asi el                                                   
+      15 -                                        comportamiento es ident
+         -ico en Postgres                                                
+      16 -                                        (y la columna queda com
+         -o TEXT/ISO o se                                                
+      17 -                                        promueve a TIMESTAMPTZ 
+         -trivialmente).                                                 
+      18 -- TEXT para JSON                     -> Postgres puede leer TEX
+         -T igual; al                                                    
+      19 -                                        migrar conviene cambiar
+         - a JSONB con                                                   
+      20 -                                        ALTER TABLE ... ALTER C
+         -OLUMN ... TYPE                                                 
+      21 -                                        JSONB USING <col>::json
+         -b.                                                             
+      22 -- FOREIGN KEY ... REFERENCES         -> SQLite no enforza FKs p
+         -or defecto;                                                    
+      23 -                                        habilitamos `PRAGMA for
+         -eign_keys = ON`                                                
+      24 -                                        en cada conexion.      
+       8 +# Schema                                                       
+       9 +Definido inline en BASE_SCHEMA. Reglas de portabilidad (post-pi
+         +loto cuando                                                    
+      10 +migremos a otro backend o agreguemos read replicas):           
+      11 +- BIGINT GENERATED BY DEFAULT AS IDENTITY        (no SERIAL ni 
+         +AUTOINCREMENT)                                                 
+      12 +- TIMESTAMPTZ para timestamps server-side                      
+      13 +- TEXT para strings y JSON serializado (migrar a JSONB con ALTE
+         +R TABLE                                                        
+      14 +  ... USING ::jsonb cuando convenga indexarlo)                 
+      15 +- BOOLEAN para flags (no INTEGER 0/1)                          
+      16 +- FKs explicitas — Postgres las enforza por default, no hay PRA
+         +GMA                                                            
+      17  
+      18  # Migraciones
+      27 -Tabla `schema_version` mas funcion `apply_migrations()` aplican
+         - ALTERs                                                        
+      28 -idempotentes en orden. No usamos Alembic todavia para no traer 
+         -una                                                            
+      29 -dependencia pesada en piloto; cuando migremos a Postgres lo int
+         -roducimos                                                      
+      30 -y reemplazamos esto por una migracion baseline.                
+      19 +Tabla `schema_version` mas funcion `apply_migrations()` aplican
+         + statements                                                    
+      20 +idempotentes en orden. Sin Alembic para no traer la dep en pilo
+         +to; cuando                                                     
+      21 +crezca el numero de migraciones lo introducimos con baseline.  
+      22  """
+      23  
+      24  import logging
+      25  from contextlib import asynccontextmanager
+      35 -from pathlib import Path                                       
+      26 +from typing import AsyncIterator                               
+      27  
+      37 -import aiosqlite                                               
+      28 +from psycopg import AsyncConnection                            
+      29 +from psycopg.errors import DuplicateColumn, DuplicateObject, Du
+         +plicateTable                                                   
+      30 +from psycopg.rows import dict_row                              
+      31 +from psycopg_pool import AsyncConnectionPool                   
+      32  
+      33 +from app.config import settings                                
+      34 +                                                               
+      35  logger = logging.getLogger("menteviva")
+      36  
+      41 -DB_PATH = Path(__file__).parent.parent / "data" / "menteviva.db
+         -"                                                              
+      37  
+      43 -                                                               
+      38  # ============================================================
+      39  # Schema base — version 0 (idempotente)
+      40  # ============================================================
+      41  
+      42  BASE_SCHEMA = """
+      43  CREATE TABLE IF NOT EXISTS schema_version (
+      50 -    version INTEGER PRIMARY KEY,                               
+      51 -    applied_at TEXT NOT NULL                                   
+      44 +    version    INTEGER PRIMARY KEY,                            
+      45 +    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()              
+      46  );
+      47  
+      48  CREATE TABLE IF NOT EXISTS users (
+      55 -    -- En piloto user_id = Firebase UID (post-firebase auth). A
+         -ntes era UUID                                                  
+      56 -    -- generado en cliente. Mantener TEXT permite ambos.       
+      49 +    -- user_id = Firebase UID. Mantener TEXT permite tambien UU
+         +IDs legacy.                                                    
+      50      user_id           TEXT PRIMARY KEY,
+      51      nombre            TEXT NOT NULL,
+      52      email             TEXT,
+     ...
+      58  );
+      59  
+      60  CREATE TABLE IF NOT EXISTS diagnostics (
+      68 -    -- En Postgres: SERIAL PRIMARY KEY                         
+      69 -    diagnostic_id      INTEGER PRIMARY KEY AUTOINCREMENT,      
+      70 -    user_id            TEXT NOT NULL,                          
+      61 +    diagnostic_id      BIGINT GENERATED BY DEFAULT AS IDENTITY 
+         +PRIMARY KEY,                                                   
+      62 +    user_id            TEXT NOT NULL REFERENCES users(user_id),
+      63      completed_at       TEXT NOT NULL,
+      72 -    -- TEXT con JSON serializado. Migrar a JSONB en Postgres.  
+      64 +    -- TEXT con JSON serializado. Migrar a JSONB cuando necesit
+         +emos GIN index.                                                
+      65      diagnostico_json   TEXT NOT NULL,
+      66      conversation_json  TEXT NOT NULL,
+      75 -    is_demo            INTEGER NOT NULL DEFAULT 0,             
+      76 -    -- ISO escrito desde Python (ver user_repo.save_diagnostic)
+         -.                                                              
+      77 -    created_at         TEXT NOT NULL,                          
+      78 -    FOREIGN KEY (user_id) REFERENCES users(user_id)            
+      67 +    is_demo            BOOLEAN NOT NULL DEFAULT FALSE,         
+      68 +    created_at         TEXT NOT NULL                           
+      69  );
+      70  
+      71  CREATE INDEX IF NOT EXISTS idx_diagnostics_user ON diagnostics(
+          user_id);
+      72  CREATE INDEX IF NOT EXISTS idx_diagnostics_created ON diagnosti
+          cs(created_at);
+      73  
+      74  CREATE TABLE IF NOT EXISTS practice_sessions (
+      85 -    -- En Postgres: SERIAL PRIMARY KEY                         
+      86 -    session_id         INTEGER PRIMARY KEY AUTOINCREMENT,      
+      87 -    user_id            TEXT NOT NULL,                          
+      75 +    session_id         BIGINT GENERATED BY DEFAULT AS IDENTITY 
+         +PRIMARY KEY,                                                   
+      76 +    user_id            TEXT NOT NULL REFERENCES users(user_id),
+      77      avatar_id          TEXT NOT NULL,
+      78      level              TEXT,
+      79      started_at         TEXT NOT NULL,
+     ...
+       81      duration_seconds   INTEGER,
+       82      total_exchanges    INTEGER,
+       83      overall_score      INTEGER,
+       95 -    -- TEXT con JSON serializado. Migrar a JSONB en Postgres. 
+       84      analysis_json      TEXT,
+       85      conversation_json  TEXT,
+       98 -    created_at         TEXT NOT NULL,                         
+       99 -    FOREIGN KEY (user_id) REFERENCES users(user_id)           
+       86 +    created_at         TEXT NOT NULL                          
+       87  );
+       88  
+       89  CREATE INDEX IF NOT EXISTS idx_sessions_user ON practice_sessi
+           ons(user_id);
+     ...
+       96  # ============================================================
+       97  # Cada entrada: (version, descripcion, lista_de_statements).
+       98  # Las migraciones se aplican en orden y solo si version > MAX(
+           schema_version).
+      112 -# Cada statement debe ser idempotente o gated por SELECT a sql
+          -ite_master.                                                   
+       99 +# Postgres soporta IF NOT EXISTS en ADD COLUMN — los statement
+          +s son nativamente                                             
+      100 +# idempotentes. Mantenemos el try/except por seguridad si algu
+          +ien corrio una                                                
+      101 +# migracion a mano sin actualizar schema_version.             
+      102  
+      103  MIGRATIONS: list[tuple[int, str, list[str]]] = [
+      104      (
+      105          1,
+      106          "auth fields: password_hash, last_login, email_verifie
+           d, UNIQUE email",
+      107          [
+      119 -            # SQLite no soporta IF NOT EXISTS en ADD COLUMN; u
+          -samos try/except                                              
+      120 -            # en apply_migrations(). En Postgres seria:       
+      121 -            #   ALTER TABLE users ADD COLUMN IF NOT EXISTS pas
+          -sword_hash TEXT;                                              
+      122 -            "ALTER TABLE users ADD COLUMN password_hash TEXT",
+      123 -            "ALTER TABLE users ADD COLUMN last_login TEXT",   
+      124 -            "ALTER TABLE users ADD COLUMN email_verified INTEG
+          -ER NOT NULL DEFAULT 0",                                       
+      125 -            # UNIQUE solo si email es no-null. SQLite trata NU
+          -LL como distintos                                             
+      126 -            # entre si en UNIQUE -> esto sigue permitiendo mul
+          -tiples NULL.                                                  
+      108 +            "ALTER TABLE users ADD COLUMN IF NOT EXISTS passwo
+          +rd_hash TEXT",                                                
+      109 +            "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_l
+          +ogin TEXT",                                                   
+      110 +            "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_
+          +verified BOOLEAN NOT NULL DEFAULT FALSE",                     
+      111              "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
+            ON users(email)",
+      112          ],
+      113      ),
+     ...
+      115          2,
+      116          "firebase: provider + uid metadata para usuarios auten
+           ticados via Firebase",
+      117          [
+      134 -            # Permite migrar usuarios locales (UUID) a usuario
+          -s Firebase sin                                                
+      135 -            # romper FKs: user_id sigue siendo PK; firebase_ui
+          -d es el espejo                                                
+      136 -            # del UID que viene en el token verificado.       
+      137 -            "ALTER TABLE users ADD COLUMN auth_provider TEXT",
+      138 -            "ALTER TABLE users ADD COLUMN firebase_uid TEXT", 
+      118 +            "ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_p
+          +rovider TEXT",                                                
+      119 +            "ALTER TABLE users ADD COLUMN IF NOT EXISTS fireba
+          +se_uid TEXT",                                                 
+      120              "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_fireb
+           ase_uid ON users(firebase_uid)",
+      121          ],
+      122      ),
+      123  ]
+      124  
+      125  
+      145 -async def _current_version(db: aiosqlite.Connection) -> int:  
+      146 -    cursor = await db.execute("SELECT MAX(version) FROM schema
+          -_version")                                                    
+      147 -    row = await cursor.fetchone()                             
+      148 -    return (row[0] if row and row[0] is not None else 0)      
+      126 +# ============================================================
+      127 +# Pool de conexiones (lazy, una sola instancia por proceso)   
+      128 +# ============================================================
+      129  
+      130 +_pool: AsyncConnectionPool | None = None                      
+      131  
+      132 +                                                              
+      133 +def _build_pool() -> AsyncConnectionPool:                     
+      134 +    """Crea el pool. No abre conexiones todavia (open=False pe
+          +rmite warm-up                                                 
+      135 +    durante startup_db)."""                                   
+      136 +    return AsyncConnectionPool(                               
+      137 +        conninfo=settings.database_url,                       
+      138 +        min_size=settings.db_pool_min_size,                   
+      139 +        max_size=settings.db_pool_max_size,                   
+      140 +        kwargs={"row_factory": dict_row},                     
+      141 +        open=False,                                           
+      142 +    )                                                         
+      143 +                                                              
+      144 +                                                              
+      145 +async def _get_pool() -> AsyncConnectionPool:                 
+      146 +    global _pool                                              
+      147 +    if _pool is None:                                         
+      148 +        _pool = _build_pool()                                 
+      149 +        await _pool.open(wait=True, timeout=10.0)             
+      150 +        logger.info(                                          
+      151 +            f"[DB] pool abierto (min={settings.db_pool_min_siz
+          +e}, "                                                         
+      152 +            f"max={settings.db_pool_max_size})"               
+      153 +        )                                                     
+      154 +    return _pool                                              
+      155 +                                                              
+      156 +                                                              
+      157 +async def close_pool() -> None:                               
+      158 +    global _pool                                              
+      159 +    if _pool is not None:                                     
+      160 +        await _pool.close()                                   
+      161 +        _pool = None                                          
+      162 +        logger.info("[DB] pool cerrado")                      
+      163 +                                                              
+      164 +                                                              
+      165 +# ============================================================
+      166 +# Migrator                                                    
+      167 +# ============================================================
+      168 +                                                              
+      169 +async def _current_version(conn: AsyncConnection) -> int:     
+      170 +    async with conn.cursor() as cur:                          
+      171 +        await cur.execute("SELECT MAX(version) AS v FROM schem
+          +a_version")                                                   
+      172 +        row = await cur.fetchone()                            
+      173 +        return (row["v"] if row and row["v"] is not None else 
+          +0)                                                            
+      174 +                                                              
+      175 +                                                              
+      176  async def _apply_migration(
+      152 -    db: aiosqlite.Connection, version: int, description: str, 
+          -statements: list[str]                                         
+      177 +    conn: AsyncConnection, version: int, description: str, sta
+          +tements: list[str]                                            
+      178  ) -> None:
+      154 -    """Aplica una migracion. Tolera ALTERs cuya columna ya exi
+          -sta (idempotente                                              
+      155 -    real cuando alguien corrio la migracion a mano antes de te
+          -ner la tabla                                                  
+      156 -    schema_version)."""                                       
+      157 -    for stmt in statements:                                   
+      158 -        try:                                                  
+      159 -            await db.execute(stmt)                            
+      160 -        except aiosqlite.OperationalError as e:               
+      161 -            msg = str(e).lower()                              
+      162 -            if "duplicate column" in msg or "already exists" i
+          -n msg:                                                        
+      163 -                logger.info(f"[DB][migrate v{version}] skip (y
+          -a existe): {stmt[:60]}")                                      
+      179 +    """Aplica una migracion. Tolera duplicados (columna/indice
+          + ya existe) cuando                                            
+      180 +    alguien corrio la migracion a mano antes de registrarla en
+          + schema_version."""                                           
+      181 +    async with conn.cursor() as cur:                          
+      182 +        for stmt in statements:                               
+      183 +            try:                                              
+      184 +                await cur.execute(stmt)  # type: ignore[arg-ty
+          +pe]                                                           
+      185 +            except (DuplicateColumn, DuplicateObject, Duplicat
+          +eTable) as e:                                                 
+      186 +                logger.info(f"[DB][migrate v{version}] skip (y
+          +a existe): {stmt[:60]} — {e}")                                
+      187 +                # psycopg deja la txn en error state; rollback
+          + y seguimos.                                                  
+      188 +                await conn.rollback()                         
+      189                  continue
+      165 -            raise                                             
+      166 -    await db.execute(                                         
+      167 -        "INSERT INTO schema_version (version, applied_at) VALU
+          -ES (?, datetime('now'))",                                     
+      168 -        (version,),                                           
+      169 -    )                                                         
+      170 -    await db.commit()                                         
+      190 +        await cur.execute(                                    
+      191 +            "INSERT INTO schema_version (version) VALUES (%s)"
+          +,                                                             
+      192 +            (version,),                                       
+      193 +        )                                                     
+      194 +    await conn.commit()                                       
+      195      logger.info(f"[DB][migrate v{version}] OK — {description}"
+           )
+      196  
+      197  
+      198  async def init_db() -> None:
+      175 -    """Crea el archivo, aplica el schema base y todas las migr
+          -aciones pendientes."""                                        
+      176 -    DB_PATH.parent.mkdir(parents=True, exist_ok=True)         
+      177 -    async with aiosqlite.connect(DB_PATH) as db:              
+      178 -        await db.execute("PRAGMA foreign_keys = ON")          
+      179 -        await db.executescript(BASE_SCHEMA)                   
+      180 -        await db.commit()                                     
+      199 +    """Abre el pool, aplica el schema base y todas las migraci
+          +ones pendientes."""                                           
+      200 +    pool = await _get_pool()                                  
+      201 +    async with pool.connection() as conn:                     
+      202 +        async with conn.cursor() as cur:                      
+      203 +            # executemany no aplica para DDL; ejecutamos el sc
+          +ript completo de                                              
+      204 +            # una. psycopg permite multi-statement en una sola
+          + execute().                                                   
+      205 +            await cur.execute(BASE_SCHEMA)  # type: ignore[arg
+          +-type]                                                        
+      206 +        await conn.commit()                                   
+      207  
+      182 -        current = await _current_version(db)                  
+      208 +        current = await _current_version(conn)                
+      209          pending = [m for m in MIGRATIONS if m[0] > current]
+      210          if pending:
+      211              logger.info(
+     ...
+      213                  f"aplicando {len(pending)} migraciones..."
+      214              )
+      215              for version, desc, stmts in pending:
+      190 -                await _apply_migration(db, version, desc, stmt
+          -s)                                                            
+      216 +                await _apply_migration(conn, version, desc, st
+          +mts)                                                          
+      217          else:
+      218              logger.info(f"[DB] schema al dia (version {current
+           })")
+      193 -    logger.info(f"[DB] SQLite listo en {DB_PATH}")            
+      219 +    logger.info(f"[DB] Postgres listo en {_obscure_url(setting
+          +s.database_url)}")                                            
+      220  
+      221  
+      222 +def _obscure_url(url: str) -> str:                            
+      223 +    """Quita credenciales del DSN para loguear sin filtrar sec
+          +rets."""                                                      
+      224 +    # postgresql://user:pwd@host:port/db -> postgresql://user:
+          +***@host:port/db                                              
+      225 +    try:                                                      
+      226 +        scheme, rest = url.split("://", 1)                    
+      227 +        if "@" not in rest:                                   
+      228 +            return url                                        
+      229 +        creds, host = rest.rsplit("@", 1)                     
+      230 +        if ":" in creds:                                      
+      231 +            user, _pwd = creds.split(":", 1)                  
+      232 +            return f"{scheme}://{user}:***@{host}"            
+      233 +        return url                                            
+      234 +    except Exception:                                         
+      235 +        return "<unparseable>"                                
+      236 +                                                              
+      237 +                                                              
+      238 +# ============================================================
+      239 +# Connection helper para los repos                            
+      240 +# ============================================================
+      241 +                                                              
+      242  @asynccontextmanager
+      197 -async def get_db():                                           
+      198 -    """Context manager para una conexion. Habilita FKs por con
+          -exion (SQLite                                                 
+      199 -    olvida el PRAGMA si no se setea cada vez)."""             
+      200 -    async with aiosqlite.connect(DB_PATH) as db:              
+      201 -        await db.execute("PRAGMA foreign_keys = ON")          
+      202 -        db.row_factory = aiosqlite.Row                        
+      203 -        yield db                                              
+      243 +async def get_db() -> AsyncIterator[AsyncConnection]:         
+      244 +    """Context manager que toma una conexion del pool. Las que
+          +ries usan `%s`                                                
+      245 +    como placeholder (DB-API estandar de psycopg). Cada `async
+          + with` hace                                                   
+      246 +    commit/rollback automatico al salir del bloque."""        
+      247 +    pool = await _get_pool()                                  
+      248 +    async with pool.connection() as conn:                     
+      249 +        yield conn                                            
+
+● Ahora reescribo user_repo.py con %s placeholders y RETURNING.
+
+● Write(~\OneDrive\Documentos\Mente
+       Viva\menteviva-backend\app\services\user_repo.py)
+  ⎿  Added 100 lines, removed 95 lines
+      1  """
+      2 -Repositorio de usuarios y diagnosticos en SQLite.               
+      2 +Repositorio de usuarios y diagnosticos en Postgres.             
+      3  
+      4  Todo en JSON dentro de columnas TEXT — mantiene el contrato con 
+         el
+      5  frontend sin normalizar (prioridad: velocidad de iteracion).
+     ...
+      23      """Inserta o actualiza el registro del usuario."""
+      24      r = profile.registro
+      25      async with get_db() as db:
+      26 -        await db.execute(                                      
+      27 -            """                                                
+      28 -            INSERT INTO users (user_id, nombre, email, rol_obje
+         -tivo, industria,                                               
+      29 -                               experience_level, created_at, up
+         -dated_at)                                                      
+      30 -            VALUES (?, ?, ?, ?, ?, ?, ?, ?)                    
+      31 -            ON CONFLICT(user_id) DO UPDATE SET                 
+      32 -                nombre = excluded.nombre,                      
+      33 -                email = excluded.email,                        
+      34 -                rol_objetivo = excluded.rol_objetivo,          
+      35 -                industria = excluded.industria,                
+      36 -                experience_level = excluded.experience_level,  
+      37 -                updated_at = excluded.updated_at               
+      38 -            """,                                               
+      39 -            (                                                  
+      40 -                profile.user_id,                               
+      41 -                r.nombre,                                      
+      42 -                r.email,                                       
+      43 -                r.rol_objetivo,                                
+      44 -                r.industria,                                   
+      45 -                r.experience_level,                            
+      46 -                profile.created_at,                            
+      47 -                profile.updated_at,                            
+      48 -            ),                                                 
+      49 -        )                                                      
+      26 +        async with db.cursor() as cur:                         
+      27 +            await cur.execute(                                 
+      28 +                """                                            
+      29 +                INSERT INTO users (user_id, nombre, email, rol_
+         +objetivo, industria,                                           
+      30 +                                   experience_level, created_at
+         +, updated_at)                                                  
+      31 +                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)        
+      32 +                ON CONFLICT (user_id) DO UPDATE SET            
+      33 +                    nombre = EXCLUDED.nombre,                  
+      34 +                    email = EXCLUDED.email,                    
+      35 +                    rol_objetivo = EXCLUDED.rol_objetivo,      
+      36 +                    industria = EXCLUDED.industria,            
+      37 +                    experience_level = EXCLUDED.experience_leve
+         +l,                                                             
+      38 +                    updated_at = EXCLUDED.updated_at           
+      39 +                """,                                           
+      40 +                (                                              
+      41 +                    profile.user_id,                           
+      42 +                    r.nombre,                                  
+      43 +                    r.email,                                   
+      44 +                    r.rol_objetivo,                            
+      45 +                    r.industria,                               
+      46 +                    r.experience_level,                        
+      47 +                    profile.created_at,                        
+      48 +                    profile.updated_at,                        
+      49 +                ),                                             
+      50 +            )                                                  
+      51          await db.commit()
+      52      logger.info(f"[DB] upsert user {profile.user_id} ({r.nombre
+          })")
+      53  
+     ...
+       67      """
+       68      now = _now_iso()
+       69      async with get_db() as db:
+       69 -        await db.execute(                                     
+       70 -            """                                               
+       71 -            INSERT INTO users (                               
+       72 -                user_id, nombre, email, rol_objetivo, industri
+          -a,                                                            
+       73 -                experience_level, created_at, updated_at,     
+       74 -                auth_provider, firebase_uid, email_verified, l
+          -ast_login                                                     
+       75 -            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)     
+       76 -            ON CONFLICT(user_id) DO UPDATE SET                
+       77 -                nombre = excluded.nombre,                     
+       78 -                email = excluded.email,                       
+       79 -                rol_objetivo = excluded.rol_objetivo,         
+       80 -                industria = excluded.industria,               
+       81 -                experience_level = excluded.experience_level, 
+       82 -                updated_at = excluded.updated_at,             
+       83 -                email_verified = excluded.email_verified,     
+       84 -                last_login = excluded.last_login              
+       85 -            """,                                              
+       86 -            (                                                 
+       87 -                firebase_uid,                                 
+       88 -                registro.nombre,                              
+       89 -                email,                                        
+       90 -                registro.rol_objetivo,                        
+       91 -                registro.industria,                           
+       92 -                registro.experience_level,                    
+       93 -                now,                                          
+       94 -                now,                                          
+       95 -                "firebase",                                   
+       96 -                firebase_uid,                                 
+       97 -                1 if email_verified else 0,                   
+       98 -                now,                                          
+       99 -            ),                                                
+      100 -        )                                                     
+       70 +        async with db.cursor() as cur:                        
+       71 +            await cur.execute(                                
+       72 +                """                                           
+       73 +                INSERT INTO users (                           
+       74 +                    user_id, nombre, email, rol_objetivo, indu
+          +stria,                                                        
+       75 +                    experience_level, created_at, updated_at, 
+       76 +                    auth_provider, firebase_uid, email_verifie
+          +d, last_login                                                 
+       77 +                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 
+          +%s, %s, %s)                                                   
+       78 +                ON CONFLICT (user_id) DO UPDATE SET           
+       79 +                    nombre = EXCLUDED.nombre,                 
+       80 +                    email = EXCLUDED.email,                   
+       81 +                    rol_objetivo = EXCLUDED.rol_objetivo,     
+       82 +                    industria = EXCLUDED.industria,           
+       83 +                    experience_level = EXCLUDED.experience_lev
+          +el,                                                           
+       84 +                    updated_at = EXCLUDED.updated_at,         
+       85 +                    email_verified = EXCLUDED.email_verified, 
+       86 +                    last_login = EXCLUDED.last_login          
+       87 +                """,                                          
+       88 +                (                                             
+       89 +                    firebase_uid,                             
+       90 +                    registro.nombre,                          
+       91 +                    email,                                    
+       92 +                    registro.rol_objetivo,                    
+       93 +                    registro.industria,                       
+       94 +                    registro.experience_level,                
+       95 +                    now,                                      
+       96 +                    now,                                      
+       97 +                    "firebase",                               
+       98 +                    firebase_uid,                             
+       99 +                    email_verified,                           
+      100 +                    now,                                      
+      101 +                ),                                            
+      102 +            )                                                 
+      103          await db.commit()
+      104      logger.info(f"[DB] firebase user registrado uid={firebase_
+           uid} ({registro.nombre})")
+      105      profile = await get_user_profile(firebase_uid)
+     ...
+      112  async def touch_last_login(user_id: str) -> None:
+      113      """Actualiza last_login al hacer /auth/sync. Tolera user i
+           nexistente."""
+      114      async with get_db() as db:
+      113 -        await db.execute(                                     
+      114 -            "UPDATE users SET last_login = ? WHERE user_id = ?
+          -",                                                            
+      115 -            (_now_iso(), user_id),                            
+      116 -        )                                                     
+      115 +        async with db.cursor() as cur:                        
+      116 +            await cur.execute(                                
+      117 +                "UPDATE users SET last_login = %s WHERE user_i
+          +d = %s",                                                      
+      118 +                (_now_iso(), user_id),                        
+      119 +            )                                                 
+      120          await db.commit()
+      121  
+      122  
+     ...
+      126      conversation: list[dict],
+      127  ) -> int:
+      128      """Guarda un diagnostico + la conversacion que lo origino.
+            Retorna el id."""
+      126 -    is_demo = 1 if diagnostico.get("is_demo") else 0          
+      129 +    is_demo = bool(diagnostico.get("is_demo"))                
+      130      completed_at = diagnostico.get("completed_at", "")
+      131      async with get_db() as db:
+      129 -        cursor = await db.execute(                            
+      130 -            """                                               
+      131 -            INSERT INTO diagnostics (user_id, completed_at, di
+          -agnostico_json,                                               
+      132 -                                     conversation_json, is_dem
+          -o, created_at)                                                
+      133 -            VALUES (?, ?, ?, ?, ?, ?)                         
+      134 -            """,                                              
+      135 -            (                                                 
+      136 -                user_id,                                      
+      137 -                completed_at,                                 
+      138 -                json.dumps(diagnostico, ensure_ascii=False),  
+      139 -                json.dumps(conversation, ensure_ascii=False), 
+      140 -                is_demo,                                      
+      141 -                _now_iso(),                                   
+      142 -            ),                                                
+      143 -        )                                                     
+      132 +        async with db.cursor() as cur:                        
+      133 +            await cur.execute(                                
+      134 +                """                                           
+      135 +                INSERT INTO diagnostics (user_id, completed_at
+          +, diagnostico_json,                                           
+      136 +                                         conversation_json, is
+          +_demo, created_at)                                            
+      137 +                VALUES (%s, %s, %s, %s, %s, %s)               
+      138 +                RETURNING diagnostic_id                       
+      139 +                """,                                          
+      140 +                (                                             
+      141 +                    user_id,                                  
+      142 +                    completed_at,                             
+      143 +                    json.dumps(diagnostico, ensure_ascii=False
+          +),                                                            
+      144 +                    json.dumps(conversation, ensure_ascii=Fals
+          +e),                                                           
+      145 +                    is_demo,                                  
+      146 +                    _now_iso(),                               
+      147 +                ),                                            
+      148 +            )                                                 
+      149 +            row = await cur.fetchone()                        
+      150 +            diag_id = int(row["diagnostic_id"]) if row else 0 
+      151          await db.commit()
+      145 -        diag_id = cursor.lastrowid or 0                       
+      152      logger.info(f"[DB] diagnostic saved id={diag_id} user={use
+           r_id} is_demo={is_demo}")
+      153      return diag_id
+      154  
+     ...
+      159      None si el usuario no existe.
+      160      """
+      161      async with get_db() as db:
+      156 -        user_row = await (                                    
+      157 -            await db.execute("SELECT * FROM users WHERE user_i
+          -d = ?", (user_id,))                                           
+      158 -        ).fetchone()                                          
+      159 -        if not user_row:                                      
+      160 -            return None                                       
+      162 +        async with db.cursor() as cur:                        
+      163 +            await cur.execute("SELECT * FROM users WHERE user_
+          +id = %s", (user_id,))                                         
+      164 +            user_row = await cur.fetchone()                   
+      165 +            if not user_row:                                  
+      166 +                return None                                   
+      167  
+      162 -        diag_row = await (                                    
+      163 -            await db.execute(                                 
+      164 -                "SELECT diagnostico_json FROM diagnostics WHER
+          -E user_id = ? "                                               
+      168 +            await cur.execute(                                
+      169 +                "SELECT diagnostico_json FROM diagnostics WHER
+          +E user_id = %s "                                              
+      170                  "ORDER BY created_at DESC LIMIT 1",
+      171                  (user_id,),
+      172              )
+      168 -        ).fetchone()                                          
+      173 +            diag_row = await cur.fetchone()                   
+      174  
+      175          diagnostico = None
+      176          if diag_row:
+     ...
+      198  async def list_user_diagnostics(user_id: str) -> list[dict]:
+      199      """Lista ligera para historial (sin el JSON completo, solo
+            metadatos)."""
+      200      async with get_db() as db:
+      196 -        rows = await (                                        
+      197 -            await db.execute(                                 
+      201 +        async with db.cursor() as cur:                        
+      202 +            await cur.execute(                                
+      203                  """
+      204                  SELECT diagnostic_id, completed_at, is_demo, c
+           reated_at
+      205                  FROM diagnostics
+      201 -                WHERE user_id = ?                             
+      206 +                WHERE user_id = %s                            
+      207                  ORDER BY created_at DESC
+      208                  """,
+      209                  (user_id,),
+      210              )
+      206 -        ).fetchall()                                          
+      211 +            rows = await cur.fetchall()                       
+      212          return [dict(r) for r in rows]
+      213  
+      214  
+      215  async def get_diagnostic(diagnostic_id: int) -> Optional[dict]
+           :
+      216      """Devuelve un diagnostico completo por su id."""
+      217      async with get_db() as db:
+      213 -        row = await (                                         
+      214 -            await db.execute(                                 
+      215 -                "SELECT * FROM diagnostics WHERE diagnostic_id
+          - = ?",                                                        
+      218 +        async with db.cursor() as cur:                        
+      219 +            await cur.execute(                                
+      220 +                "SELECT * FROM diagnostics WHERE diagnostic_id
+          + = %s",                                                       
+      221                  (diagnostic_id,),
+      222              )
+      218 -        ).fetchone()                                          
+      223 +            row = await cur.fetchone()                        
+      224          if not row:
+      225              return None
+      226          return {
+
+● Write(~\OneDrive\Documentos\Mente
+       Viva\menteviva-backend\app\services\session_repo.py)
+  ⎿  Added 35 lines, removed 32 lines
+      38          overall_score = int(analysis["overall_score"])
+      39  
+      40      async with get_db() as db:
+      41 -        cursor = await db.execute(                             
+      42 -            """                                                
+      43 -            INSERT INTO practice_sessions (                    
+      44 -                user_id, avatar_id, level, started_at, ended_at
+         -,                                                              
+      45 -                duration_seconds, total_exchanges, overall_scor
+         -e,                                                             
+      46 -                analysis_json, conversation_json, created_at   
+      47 -            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)         
+      48 -            """,                                               
+      49 -            (                                                  
+      50 -                user_id,                                       
+      51 -                avatar_id,                                     
+      52 -                level,                                         
+      53 -                started_at,                                    
+      54 -                ended_at,                                      
+      55 -                duration_seconds,                              
+      56 -                total_exchanges,                               
+      57 -                overall_score,                                 
+      58 -                json.dumps(analysis, ensure_ascii=False) if ana
+         -lysis else None,                                               
+      59 -                json.dumps(conversation, ensure_ascii=False),  
+      60 -                _now_iso(),                                    
+      61 -            ),                                                 
+      62 -        )                                                      
+      41 +        async with db.cursor() as cur:                         
+      42 +            await cur.execute(                                 
+      43 +                """                                            
+      44 +                INSERT INTO practice_sessions (                
+      45 +                    user_id, avatar_id, level, started_at, ende
+         +d_at,                                                          
+      46 +                    duration_seconds, total_exchanges, overall_
+         +score,                                                         
+      47 +                    analysis_json, conversation_json, created_a
+         +t                                                              
+      48 +                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %
+         +s, %s)                                                         
+      49 +                RETURNING session_id                           
+      50 +                """,                                           
+      51 +                (                                              
+      52 +                    user_id,                                   
+      53 +                    avatar_id,                                 
+      54 +                    level,                                     
+      55 +                    started_at,                                
+      56 +                    ended_at,                                  
+      57 +                    duration_seconds,                          
+      58 +                    total_exchanges,                           
+      59 +                    overall_score,                             
+      60 +                    json.dumps(analysis, ensure_ascii=False) if
+         + analysis else None,                                           
+      61 +                    json.dumps(conversation, ensure_ascii=False
+         +),                                                             
+      62 +                    _now_iso(),                                
+      63 +                ),                                             
+      64 +            )                                                  
+      65 +            row = await cur.fetchone()                         
+      66 +            sid = int(row["session_id"]) if row else 0         
+      67          await db.commit()
+      64 -        sid = cursor.lastrowid or 0                            
+      68      logger.info(
+      69          f"[DB] practice_session saved id={sid} user={user_id} a
+          vatar={avatar_id} "
+      70          f"level={level} score={overall_score}"
+     ...
+       75  async def list_user_sessions(user_id: str, limit: int = 50) ->
+            list[dict]:
+       76      """Lista ligera para el dashboard — sin la conversacion co
+           mpleta."""
+       77      async with get_db() as db:
+       75 -        rows = await (                                        
+       76 -            await db.execute(                                 
+       78 +        async with db.cursor() as cur:                        
+       79 +            await cur.execute(                                
+       80                  """
+       81                  SELECT session_id, user_id, avatar_id, level, 
+           started_at, ended_at,
+       82                         duration_seconds, total_exchanges, over
+           all_score, created_at
+       83                  FROM practice_sessions
+       81 -                WHERE user_id = ?                             
+       84 +                WHERE user_id = %s                            
+       85                  ORDER BY created_at DESC
+       83 -                LIMIT ?                                       
+       86 +                LIMIT %s                                      
+       87                  """,
+       88                  (user_id, limit),
+       89              )
+       87 -        ).fetchall()                                          
+       90 +            rows = await cur.fetchall()                       
+       91          return [dict(r) for r in rows]
+       92  
+       93  
+       94  async def get_session(session_id: int) -> Optional[dict]:
+       95      """Devuelve una sesion completa con analisis y conversacio
+           n parseados."""
+       96      async with get_db() as db:
+       94 -        row = await (                                         
+       95 -            await db.execute(                                 
+       96 -                "SELECT * FROM practice_sessions WHERE session
+          -_id = ?",                                                     
+       97 +        async with db.cursor() as cur:                        
+       98 +            await cur.execute(                                
+       99 +                "SELECT * FROM practice_sessions WHERE session
+          +_id = %s",                                                    
+      100                  (session_id,),
+      101              )
+       99 -        ).fetchone()                                          
+      102 +            row = await cur.fetchone()                        
+      103          if not row:
+      104              return None
+      105          return {
+
+● Ahora actualizo main.py para cerrar el pool en shutdown, y arreglo los
+  scripts.
+
+● Update(~\OneDrive\Documentos\Mente Viva\menteviva-backend\app\main.py)
+  ⎿  Added 1 line, removed 1 line
+       7  from fastapi import FastAPI, Request
+       8  from fastapi.middleware.cors import CORSMiddleware
+       9  from app.config import settings
+      10 -from app.db import init_db                                     
+      10 +from app.db import init_db, close_pool                         
+      11  from app.routers import auth, conversation, avatars, profiles, 
+          sessions
+      12  
+      13  # ============ CONFIGURAR LOGGING ============
+● Sigo con main.py shutdown y los scripts.
+
+● Update(~\OneDrive\Documentos\Mente Viva\menteviva-backend\app\main.py)
+  ⎿  Added 5 lines
+      76      await init_db()
+      77  
+      78  
+      79 +@app.on_event("shutdown")                                      
+      80 +async def shutdown_db():                                       
+      81 +    await close_pool()                                         
+      82 +                                                               
+      83 +                                                               
+      84  @app.get("/health")
+      85  async def health():
+      86      return {"status": "ok"}
+
+● Write(~\OneDrive\Documentos\Mente
+       Viva\menteviva-backend\scripts\inspect_users.py)
+  ⎿  Added 21 lines, removed 16 lines
+       1 +"""Lista usuarios + detecta emails duplicados. Postgres (psycop
+         +g async)."""                                                   
+       2  import asyncio
+       3  import sys
+       4  from pathlib import Path
+       5  
+       6  sys.path.insert(0, str(Path(__file__).parent.parent))
+       7  
+       7 -import aiosqlite                                               
+       8 -from app.db import DB_PATH                                     
+       8 +from app.db import get_db, close_pool  # noqa: E402            
+       9  
+      10  
+      11  async def main():
+      12 -    async with aiosqlite.connect(DB_PATH) as db:               
+      13 -        db.row_factory = aiosqlite.Row                         
+      14 -        cursor = await db.execute("SELECT user_id, email, nombr
+         -e FROM users")                                                 
+      15 -        rows = await cursor.fetchall()                         
+      16 -        print(f"users count: {len(rows)}")                     
+      17 -        for r in rows:                                         
+      18 -            print(f"  {r['user_id'][:8]} email={r['email']!r} n
+         -ombre={r['nombre']!r}")                                        
+      12 +    try:                                                       
+      13 +        async with get_db() as db:                             
+      14 +            async with db.cursor() as cur:                     
+      15 +                await cur.execute("SELECT user_id, email, nombr
+         +e FROM users")                                                 
+      16 +                rows = await cur.fetchall()                    
+      17 +                print(f"users count: {len(rows)}")             
+      18 +                for r in rows:                                 
+      19 +                    uid = r["user_id"]                         
+      20 +                    print(f"  {uid[:8]} email={r['email']!r} no
+         +mbre={r['nombre']!r}")                                         
+      21  
+      20 -        cursor = await db.execute(                             
+      21 -            "SELECT email, COUNT(*) as n FROM users GROUP BY em
+         -ail HAVING n > 1"                                              
+      22 -        )                                                      
+      23 -        dups = await cursor.fetchall()                         
+      24 -        print(f"emails duplicados: {len(dups)}")               
+      25 -        for r in dups:                                         
+      26 -            print(f"  email={r['email']!r} count={r['n']}")    
+      22 +                await cur.execute(                             
+      23 +                    "SELECT email, COUNT(*) AS n FROM users "  
+      24 +                    "GROUP BY email HAVING COUNT(*) > 1"       
+      25 +                )                                              
+      26 +                dups = await cur.fetchall()                    
+      27 +                print(f"emails duplicados: {len(dups)}")       
+      28 +                for r in dups:                                 
+      29 +                    print(f"  email={r['email']!r} count={r['n'
+         +]}")                                                           
+      30 +    finally:                                                   
+      31 +        await close_pool()                                     
+      32  
+      33  
+      34  if __name__ == "__main__":
+
+● Write(~\OneDrive\Documentos\Mente
+       Viva\menteviva-backend\scripts\test_db_migrator.py)
+  ⎿  Added 30 lines, removed 15 lines
+       1 -"""Smoke test: aplicar migraciones sobre la DB y verificar colu
+         -mnas."""                                                       
+       1 +"""Smoke test: aplicar migraciones sobre Postgres y verificar c
+         +olumnas."""                                                    
+       2  import asyncio
+       3  import sys
+       4  from pathlib import Path
+       5  
+       6  sys.path.insert(0, str(Path(__file__).parent.parent))
+       7  
+       8 -from app.db import init_db, get_db  # noqa: E402               
+       8 +from app.db import init_db, get_db, close_pool  # noqa: E402   
+       9  
+      10  
+      11  async def main():
+      12      await init_db()
+      13 -    async with get_db() as db:                                 
+      14 -        cursor = await db.execute(                             
+      15 -            "SELECT version, applied_at FROM schema_version ORD
+         -ER BY version"                                                 
+      16 -        )                                                      
+      17 -        for row in await cursor.fetchall():                    
+      18 -            print(f"  v{row['version']} applied {row['applied_a
+         -t']}")                                                         
+      13 +    try:                                                       
+      14 +        async with get_db() as db:                             
+      15 +            async with db.cursor() as cur:                     
+      16 +                await cur.execute(                             
+      17 +                    "SELECT version, applied_at FROM schema_ver
+         +sion ORDER BY version"                                         
+      18 +                )                                              
+      19 +                rows = await cur.fetchall()                    
+      20 +                for row in rows:                               
+      21 +                    print(f"  v{row['version']} applied {row['a
+         +pplied_at']}")                                                 
+      22  
+      20 -        cursor = await db.execute("PRAGMA table_info(users)")  
+      21 -        cols = [r["name"] for r in await cursor.fetchall()]    
+      22 -        print(f"  users cols: {cols}")                         
+      23 +                # Postgres equivalent de PRAGMA table_info     
+      24 +                await cur.execute(                             
+      25 +                    "SELECT column_name FROM information_schema
+         +.columns "                                                     
+      26 +                    "WHERE table_schema = 'public' AND table_na
+         +me = 'users' "                                                 
+      27 +                    "ORDER BY ordinal_position"                
+      28 +                )                                              
+      29 +                cols = [r["column_name"] for r in await cur.fet
+         +chall()]                                                       
+      30 +                print(f"  users cols: {cols}")                 
+      31  
+      24 -        cursor = await db.execute("PRAGMA index_list(users)")  
+      25 -        indices = [r["name"] for r in await cursor.fetchall()] 
+      26 -        print(f"  users indices: {indices}")                   
+      27 -    print("OK")                                                
+      32 +                # Postgres equivalent de PRAGMA index_list     
+      33 +                await cur.execute(                             
+      34 +                    "SELECT indexname FROM pg_indexes "        
+      35 +                    "WHERE schemaname = 'public' AND tablename 
+         += 'users' "                                                    
+      36 +                    "ORDER BY indexname"                       
+      37 +                )                                              
+      38 +                indices = [r["indexname"] for r in await cur.fe
+         +tchall()]                                                      
+      39 +                print(f"  users indices: {indices}")           
+      40 +        print("OK")                                            
+      41 +    finally:                                                   
+      42 +        await close_pool()                                     
+      43  
+      44  
+      45  if __name__ == "__main__":
+
+● Verifico que no quede ningún otro consumidor de aiosqlite o lastrowid.
+
+  Searched for 1 pattern (ctrl+o to expand)
+
+● Limpio (solo comentarios). Verifico inject_test_diagnostic.py (script de la
+  lista que no revisé).
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(~\OneDrive\Documentos\Mente
+        Viva\menteviva-backend\scripts\inject_test_diagnostic.py)
+  ⎿  Added 5 lines, removed 5 lines
+       5  
+       6  sys.path.insert(0, str(Path(__file__).parent.parent))
+       7  
+       8 -from app.db import get_db  # noqa: E402                        
+       8 +from app.db import get_db, close_pool  # noqa: E402            
+       9  from app.services.user_repo import save_diagnostic  # noqa: E40
+          2
+      10  
+      11  TEST_EMAIL = "preview-test-2026@menteviva.dev"
+     ...
+      13  
+      14  async def main():
+      15      async with get_db() as db:
+      16 -        row = await (                                          
+      17 -            await db.execute(                                  
+      18 -                "SELECT user_id FROM users WHERE email = ?",   
+      16 +        async with db.cursor() as cur:                         
+      17 +            await cur.execute(                                 
+      18 +                "SELECT user_id FROM users WHERE email = %s",  
+      19                  (TEST_EMAIL,),
+      20              )
+      21 -        ).fetchone()                                           
+      21 +            row = await cur.fetchone()                         
+      22          if not row:
+      23              print(f"User {TEST_EMAIL} no encontrado")
+      24              sys.exit(1)
+
+● Update(~\OneDrive\Documentos\Mente
+        Viva\menteviva-backend\scripts\inject_test_diagnostic.py)
+  ⎿  Added 1 line
+      43      }
+      44      diag_id = await save_diagnostic(user_id=uid, diagnostico=di
+          ag, conversation=[])
+      45      print(f"saved diag_id: {diag_id}")
+      46 +    await close_pool()                                         
+      47  
+      48  
+      49  if __name__ == "__main__":
+
+● Verifico .env y aplico cambios de Poetry.
+
+● Bash(if [ -f "menteviva-backend/.env" ]; then grep -E
+      "^(DATABASE_URL|GROQ|ELEVEN)" menteviva-backend/.env | sed
+      's/=.*/=<set>/'; else echo ".env no existe"; fi)
+  ⎿  GROQ_API_KEY=<set>
+     ELEVENLABS_API_KEY=<set>
+
+● No hay DATABASE_URL en .env. Le añado el default explícito (Docker dev) y
+  corro poetry install.
+
+● Bash(echo "" >> menteviva-backend/.env && echo "# Postgres dev local
+      (docker-compose.dev.yml)" >> menteviva-backend/.env && echo
+      "DATABASE_URL=postgresql://menteviva…)
+  ⎿  # Postgres dev local (docker-compose.dev.yml)
+     DATABASE_URL=<set>
+
+● Bash(cd menteviva-backend && poetry lock 2>&1 | tail -20)
+  ⎿  Resolving dependencies...
+
+     Writing lock file
+  ⎿  (timeout 3m)
+
+● Bash(cd menteviva-backend && poetry install --no-root 2>&1 | tail -20)
+  ⎿  Error: Exit code 1
+     /usr/bin/bash: line 1: cd: menteviva-backend: No such file or directory
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      poetry install 2>&1 | tail -25)
+  ⎿  Installing dependencies from lock file
+
+     Package operations: 4 installs, 0 updates, 0 removals
+     … +5 lines (ctrl+o to expand)
+  ⎿  (timeout 3m)
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      poetry show aiosqlite 2>&1 | head -5)
+  ⎿  Package aiosqlite not found
+
+● Limpio. Pruebo el migrator contra el Postgres dev.
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      poetry run python -m scripts.test_db_migrator 2>&1 | tail -30)
+  ⎿  error connecting in 'pool-1': Psycopg cannot use the 'ProactorEventLoo
+     p' to run in async mode. Please use a compatible event loop, for insta
+     nce by running 'asyncio.run(..., loop_factory=asyncio.SelectorEventLoo
+     … +35 lines (ctrl+o to expand)
+  ⎿  (timeout 1m)
+
+● Windows asyncio + psycopg incompatibilidad — el ProactorEventLoop por default
+  no funciona con psycopg async. Hay que forzar SelectorEventLoop. Lo arreglo en
+   app/__init__.py para que se aplique antes de que uvicorn cree el loop.
+
+  Read 1 file (ctrl+o to expand)
+
+● Write(~\OneDrive\Documentos\Mente Viva\menteviva-backend\app\__init__.py)  ⎿  Added 11 lines
+       3  """
+       4  
+       5  __version__ = "0.1.0"
+       6 +                                                               
+       7 +# Windows: psycopg async requiere SelectorEventLoop. El default
+         + de Python 3.8+                                                
+       8 +# en Windows es ProactorEventLoop, que rompe la integracion con
+         + libpq. Esto se                                                
+       9 +# fija a nivel de policy ANTES de que uvicorn (o cualquier asyn
+         +cio.run) cree                                                  
+      10 +# su loop, asi que vive en el __init__ del paquete que uvicorn 
+         +importa primero.                                               
+      11 +# En Linux (epoll) no aplica — el if lo deja como no-op.       
+      12 +import asyncio                                                 
+      13 +import sys                                                     
+      14 +                                                               
+      15 +if sys.platform == "win32":                                    
+      16 +    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventL
+         +oopPolicy())                                                   
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      poetry run python -m scripts.test_db_migrator 2>&1 | tail -20)
+  ⎿    v1 applied 2026-05-15 02:39:44.725667+00:00
+       v2 applied 2026-05-15 02:39:44.959903+00:00
+       users cols: ['user_id', 'nombre', 'email', 'rol_objetivo', 'industri
+     … +5 lines (ctrl+o to expand)
+
+● Migración OK. Schema completo en Postgres con las 2 migrations aplicadas.
+  Ahora pruebo el flujo de repos con un smoke real.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(~\OneDrive\Documentos\Mente
+        Viva\menteviva-backend\scripts\test_session_repo.py)
+  ⎿  Added 1 line, removed 1 line
+       5  
+       6  sys.path.insert(0, str(Path(__file__).parent.parent))
+       7  
+       8 -from app.db import init_db  # noqa: E402                       
+       8 +from app.db import init_db, close_pool  # noqa: E402           
+       9  from app.models.user_profile import Registro, UserProfile  # no
+          qa: E402
+      10  from app.services.session_repo import (  # noqa: E402
+      11      get_session,
+
+● Update(~\OneDrive\Documentos\Mente
+        Viva\menteviva-backend\scripts\test_session_repo.py)
+  ⎿  Added 1 line
+      58      print(f"full keys: {list(full.keys())}")
+      59      print(f"full overall_score: {full['overall_score']}")
+      60      print(f"full level: {full['level']}")
+      61 +    await close_pool()                                         
+      62      print("OK")
+      63  
+      64  
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      poetry run python -m scripts.test_session_repo 2>&1 | tail -15)
+  ⎿  saved id=1
+     list count=1
+     sample: {'session_id': 1, 'user_id': 'test-user-001', 'avatar_id': 'ro
+     … +10 lines (ctrl+o to expand)
+  ⎿  (timeout 1m)
+
+● Session repo OK contra Postgres. Subo el backend completo para validar startup
+   + endpoints.
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      poetry run uvicorn app.main:app --port 8000 --host 127.0.0.1 2>&1)
+  ⎿  Running in the background (↓ to manage)
+
+● Bash(sleep 4 && curl -s http://127.0.0.1:8000/health && echo "" && curl -s
+      http://127.0.0.1:8000/api/avatars | head -c 200 && echo "")
+  ⎿  {
+       "status": "ok"
+     }
+     … +3 lines (ctrl+o to expand)
+  ⎿  (timeout 15s)
+
+  Read 1 file (ctrl+o to expand)
+
+● uvicorn fuerza ProactorEventLoop en Windows DESPUÉS de que app/__init__.py
+  setea la policy. Hay que crear un entry-point que setee la policy ANTES de
+  invocar uvicorn.
+
+● Bash(curl -s -X POST http://127.0.0.1:8000/api/auth/sync -H "Content-Type:
+      application/json" -d '{"id_token":"fake"}' 2>&1 | head -c 200; echo "")
+  ⎿  {
+       "detail": "Authorization header requerido (Bearer <id_token>)"
+     }
+
+● Bash(kill %1 2>&1; sleep 1; cat "C:/Users/pcdec/OneDrive/Documentos/Mente
+      Viva/start.bat" 2>/dev/null | head -30)
+  ⎿  /usr/bin/bash: line 1: kill: %1: no such job
+     @echo off
+     title Mente Viva - Launcher
+     … +28 lines (ctrl+o to expand)
+
+● Background command "Start backend (background)" failed with exit code 3
+
+  Read 1 file (ctrl+o to expand)
+
+● Creo app/__main__.py que setea la policy + corre uvicorn programáticamente, y
+  actualizo start.bat.
+
+● Write(~\OneDrive\Documentos\Mente Viva\menteviva-backend\app\__main__.py)
+  ⎿  Wrote 55 lines to ..\menteviva-backend\app\__main__.py
+      2 """Entry point del backend.
+      3 Por que existe este modulo en lugar de invocar uvicorn directo:
+      4 
+      5 En Windows, psycopg async NO funciona con `ProactorEventLoop` (de
+        fault de Python
+      7 `WindowsProactorEventLoopPolicy` antes de crear el loop, sobreesc
+        ribiendo
+      8 cualquier policy que hayamos puesto en `app/__init__.py`. La unic
+        a forma de
+      9 ganarle a uvicorn es setear la policy ANTES de importar uvicorn.
+     … +55 lines (ctrl+o to expand)
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      poetry run python -c "import uvicorn.loops.asyncio as m; import inspect;
+      print(inspect.g…)
+  ⎿  import asyncio
+     import logging
+     import sys
+     … +8 lines (ctrl+o to expand)
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      poetry run python -c "import uvicorn.config as m; import inspect;
+      print(inspect.getsourc…)
+  ⎿      def setup_event_loop(self) -> None:
+             loop_setup: Callable | None = import_from_string(LOOP_SETUPS[s
+     elf.loop])
+     … +2 lines (ctrl+o to expand)
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      MENTEVIVA_RELOAD=false poetry run python -m app 2>&1 | head -40 &
+      BGPID=$!…)
+  ⎿  {
+       "status": "ok"
+     }
+     … +16 lines (ctrl+o to expand)
+  ⎿  (timeout 20s)
+
+● python -m app funciona — pool de Postgres abre OK, sin errores de
+  ProactorEventLoop. El error de bind es porque hay un uvicorn zombi del intento
+   anterior. Lo mato y vuelvo a probar limpio.
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva" && powershell
+      -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000 -ErrorAction
+      SilentlyContinue | ForEa…)
+  ⎿  1
+
+● Bash(powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000
+      -ErrorAction SilentlyContinue | Select-Object
+      LocalAddress,LocalPort,OwningProcess,State")
+  ⎿  LocalAddress LocalPort OwningProcess  State
+     ------------ --------- -------------  -----
+     127.0.0.1         8000         23508 Listen
+
+● Bash(powershell -NoProfile -Command "Get-Process -Id 23508 | Select-Object
+      Id,ProcessName,StartTime")
+  ⎿     Id ProcessName StartTime
+        -- ----------- ---------
+     23508 python      14/05/2026 05:03:28 p. m.
+
+● Bash(powershell -NoProfile -Command "Stop-Process -Id 23508 -Force;
+      Start-Sleep -Seconds 1; (Get-NetTCPConnection -LocalPort 8000 -ErrorAction
+       SilentlyContinue | Mea…)
+  ⎿  1
+
+● Bash(powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000
+      -ErrorAction SilentlyContinue | Select-Object
+      LocalAddress,LocalPort,OwningProcess")
+  ⎿  LocalAddress LocalPort OwningProcess
+     ------------ --------- -------------
+     127.0.0.1         8000         15428
+
+● Bash(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter
+      \"ProcessId = 15428\" | Select-Object -ExpandProperty CommandLine")
+  ⎿  (No output)
+
+● Bash(powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000
+      -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id
+      \$_.OwningProcess -Force…)
+  ⎿  1
+
+● Bash(powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 8000
+      -ErrorAction SilentlyContinue | Select-Object
+      LocalAddress,LocalPort,OwningProcess,State")
+  ⎿  LocalAddress LocalPort OwningProcess  State
+     ------------ --------- -------------  -----
+     127.0.0.1         8000         15428 Listen
+
+● Bash(docker ps --format "table {{.Names}}\t{{.Ports}}")
+  ⎿  NAMES              PORTS
+     menteviva-pg-dev   0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+
+● Bash(taskkill /F /PID 15428 2>&1 ; sleep 1; powershell -NoProfile -Command
+      "Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue |
+      Select-Object LocalA…)
+  ⎿  Error: Argumento u opci�n no v�lido - "F:/".
+     Escriba "TASKKILL /?" para su uso.
+     … +3 lines (ctrl+o to expand)
+
+● Bash(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter
+      \"Name = 'python.exe'\" | Select-Object
+      ProcessId,ParentProcessId,CreationDate,@{Name='Cmd…)
+  ⎿  ProcessId ParentProcessId CreationDate              Cmd
+
+     --------- --------------- ------------              ---
+     … +11 lines (ctrl+o to expand)
+
+● Bash(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter
+      \"Name = 'python.exe'\" | Where-Object { \$_.CommandLine -match
+      'uvicorn|app\.main|module=…)
+  ⎿  (No output)
+
+● Bash(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter
+      \"Name = 'python.exe'\" | ForEach-Object { Write-Output (\"{0} :: {1}\" -f
+       \$_.ProcessId,…)
+  ⎿  4952 :: "C:\Python\python.exe"  "C:\Users\pcdec\AppData\Roaming\Python
+     \Python312\Scripts\mcp-atlassian.exe"
+     9940 :: "C:\Python\python.exe"  "C:\Users\pcdec\AppData\Roaming\Python
+     … +12 lines (ctrl+o to expand)
+
+● Bash(powershell -NoProfile -Command "Stop-Process -Id 16636,2548,30200 -Force
+      -ErrorAction SilentlyContinue; Start-Sleep -Seconds 2;
+      (Get-NetTCPConnection -LocalPort…)
+  ⎿  0
+
+● Port 8000 limpio. Levanto el backend con python -m app y valido el flujo
+  completo.
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      MENTEVIVA_RELOAD=false poetry run python -m app 2>&1)
+  ⎿  Running in the background (↓ to manage)
+
+● Bash(sleep 5 && curl -s http://127.0.0.1:8000/health && echo "" && tail -10
+      "C:/Users/pcdec/AppData/Local/Temp/claude/C--Users-pcdec-OneDrive-Document
+      os-Mente-Viva/b…)
+  ⎿  {
+       "status": "ok"
+     }
+     … +17 lines (ctrl+o to expand)
+  ⎿  (timeout 15s)
+
+● Backend funcionando con Postgres. Pool abre, schema OK, sin errores. Pruebo
+  con un usuario real (insert + read).
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      poetry run python -m scripts.inspect_users 2>&1)
+  ⎿  users count: 1
+       test-use email=None nombre='Test User'
+     emails duplicados: 0
+
+● Actualizo start.bat para usar python -m app.
+
+● Update(~\OneDrive\Documentos\Mente Viva\start.bat)
+  ⎿  File must be read first
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(~\OneDrive\Documentos\Mente Viva\start.bat)
+  ⎿  Added 1 line, removed 1 line
+      37  )
+      38  
+      39  echo [1/2] Iniciando Backend (FastAPI - Puerto 8000)...
+      40 -start "Mente Viva - Backend" cmd /k "cd /d "%~dp0menteviva-back
+         -end" && poetry run uvicorn app.main:app --reload --port 8000"  
+      40 +start "Mente Viva - Backend" cmd /k "cd /d "%~dp0menteviva-back
+         +end" && poetry run python -m app"                              
+      41  
+      42  :: Esperar un poco para que el backend inicie
+      43  timeout /t 3 /nobreak >nul
+
+● Actualizo CLAUDE.md para reflejar que el entry point es python -m app (no
+  uvicorn directo), por la idiosincrasia de Windows + psycopg.
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(~\OneDrive\Documentos\Mente Viva\CLAUDE.md)
+  ⎿  Added 7 lines, removed 1 line
+      36  ```bash
+      37  cd menteviva-backend
+      38  poetry install
+      39 -poetry run uvicorn app.main:app --reload --port 8000           
+      39 +poetry run python -m app                  # entry point preferi
+         +do: setea SelectorEventLoop en Windows                         
+      40 +# Tambien funciona en Linux/Mac (en Windows uvicorn directo rom
+         +pe con psycopg async).                                         
+      41  # Health:   http://localhost:8000/health
+      42  # OpenAPI:  http://localhost:8000/docs
+      43 +                                                               
+      44 +# Postgres dev (Docker, ver docker-compose.dev.yml):           
+      45 +docker compose -f docker-compose.dev.yml up -d                 
+      46 +# Connection string default en .env:                           
+      47 +#   DATABASE_URL=postgresql://menteviva:dev@127.0.0.1:5433/ment
+         +eviva                                                          
+      48  ```
+      49  
+      50  ### Frontend only
+
+● Bash(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter
+      \"Name = 'python.exe'\" | Where-Object { \$_.CommandLine -match
+      'app|spawn_main' } | ForEa…)
+  ⎿  0
+
+● Background command "Start backend foreground bg" failed with exit code 127
+
+● Backend detenido. Marco la tarea como completada y actualizo el TODO.
+
+● Update(~\OneDrive\Documentos\Mente Viva\docs\TODO_PILOTO.md)
+  ⎿  Added 10 lines, removed 6 lines
+      11  **Meta: poder dar un link a un cliente esta semana.**
+      12  
+      13  ### 0.1 Backend listo para Postgres (~2h) — Plan 04
+      14 -- [ ] Auditar `app/db/connection.py`, `migrator.py`, `migration
+         -s/*.sql` (¿SQLite-isms?)                                       
+      15 -- [ ] `poetry add "psycopg[binary]"`                           
+      16 -- [ ] Refactor `connection.py` para leer `DATABASE_URL` (defaul
+         -t SQLite legacy para no romper)                                
+      17 -- [ ] Setear `DATABASE_URL=postgresql+psycopg://menteviva:dev@1
+         -27.0.0.1:5433/menteviva` en `.env`                             
+      18 -- [ ] Correr migración contra Postgres dev (Docker ya levantado
+         -)                                                              
+      19 -- [ ] Smoke local: registro + diagnóstico + práctica escriben r
+         -ows en Postgres dev                                            
+      14 +- [x] Auditar `app/db.py`, `services/user_repo.py`, `services/s
+         +ession_repo.py` (SQLite-isms identificados)                    
+      15 +- [x] `poetry add "psycopg[binary,pool]"` + remove `aiosqlite` 
+      16 +- [x] Refactor `app/db.py` a psycopg async + `AsyncConnectionPo
+         +ol`, schema con `GENERATED BY DEFAULT AS IDENTITY`             
+      17 +- [x] Refactor `user_repo.py` y `session_repo.py`: `?` → `%s`, 
+         +`cursor.lastrowid` → `RETURNING`                               
+      18 +- [x] `DATABASE_URL` en `app/config.py` + `.env` (default Docke
+         +r dev)                                                         
+      19 +- [x] Fix Windows `WindowsSelectorEventLoopPolicy` para psycopg
+         + async → entry point `app/__main__.py`                         
+      20 +- [x] Actualizar `start.bat` y `CLAUDE.md` a `python -m app`   
+      21 +- [x] Migración corre limpia contra Postgres dev (schema_versio
+         +n v0/v1/v2 OK)                                                 
+      22 +- [x] Smoke `test_session_repo.py` y `inspect_users.py` contra 
+         +Postgres dev OK                                                
+      23 +- [ ] Smoke end-to-end via browser: registro + diagnóstico + pr
+         +áctica (pendiente prueba humana)                               
+      24  
+      25  ### 0.2 Servir frontend desde uvicorn (~1h) — Plan 03
+      26  - [ ] `app/main.py`: bloque `StaticFiles` + SPA fallback (`/ass
+          ets/*`, `/vad/*`, `/avatars/*`, catch-all `index.html`)
+
+● Plan 04 (Postgres-ready) ✅ código completo. Resumen:
+
+  Cambios aplicados:
+  - pyproject.toml: aiosqlite → psycopg[binary,pool] ^3.2
+  - app/db.py reescrito: psycopg async + AsyncConnectionPool (min=2, max=10),
+  schema con BIGINT GENERATED BY DEFAULT AS IDENTITY, BOOLEAN y TIMESTAMPTZ
+  nativos, FKs sin PRAGMA, migrations tolerantes a DuplicateColumn/Object/Table
+  - services/user_repo.py y services/session_repo.py: ? → %s, cursor.lastrowid →
+   RETURNING <pk>, db.row_factory=Row → pool con row_factory=dict_row
+  - scripts/inspect_users.py, test_db_migrator.py, test_session_repo.py,
+  inject_test_diagnostic.py actualizados
+  - app/__init__.py + nuevo app/__main__.py: setean
+  WindowsSelectorEventLoopPolicy antes de que uvicorn cree su loop (sin esto,
+  psycopg async crashea en Windows)
+  - start.bat y CLAUDE.md: nuevo entry point poetry run python -m app
+  - .env: añadido
+  DATABASE_URL=postgresql://menteviva:dev@127.0.0.1:5433/menteviva
+
+  Validado contra Docker Postgres dev:
+  - init_db() aplica schema base + 2 migrations en orden, idempotente ✅
+  - test_db_migrator.py muestra cols/índices correctos en Postgres ✅
+  - test_session_repo.py: insert + read de una sesión completa ✅
+  - inspect_users.py ✅
+  - Backend levanta en :8000, /health OK, /api/avatars devuelve roster ✅
+
+  Pendiente (no bloquea más código):
+  - Smoke end-to-end via browser (registro Firebase + diagnóstico + práctica
+  completa). Necesita que arranquemos backend+frontend juntos — lo dejo cuando
+  quieras validar tú con UI.
+
+  ¿Sigo con 0.2 StaticFiles + SPA fallback?
+
+✻ Cogitated for 2h 19m 51s
+
+> prueba con chrome dev tools genera todo de 0 registrate de 0                  
+
+● Voy a:
+  1. Wipear los datos de Postgres (empezar de cero)
+  2. Levantar backend + frontend
+  3. Abrir Chrome y hacer registro completo
+
+● Bash(docker exec menteviva-pg-dev psql -U menteviva -d menteviva -c "TRUNCATE
+      practice_sessions, diagnostics, users RESTART IDENTITY CASCADE;" && docker
+       exec mentevi…)
+  ⎿  TRUNCATE TABLE
+      users
+     -------
+     … +2 lines (ctrl+o to expand)
+
+● DB en cero. Levanto backend y frontend.
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      MENTEVIVA_RELOAD=false poetry run python -m app 2>&1)
+  ⎿  Running in the background (↓ to manage)
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-frontend" &&
+      npm run dev 2>&1)
+  ⎿  Running in the background (↓ to manage)
+
+● Bash(sleep 6 && curl -s http://127.0.0.1:8000/health && echo "" && curl -sI
+      http://127.0.0.1:5173/ | head -3)
+  ⎿  {
+       "status": "ok"
+     }
+     … +3 lines (ctrl+o to expand)
+  ⎿  (timeout 20s)
+
+● Ambos arriba. Voy a Chrome.
+  Read 1 file (ctrl+o to expand)
+
+● Vite tomó 5174 (5173 ocupado por sesión anterior). Reviso qué hay en 5173 y
+  limpio si es necesario.
+
+● Bash(powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 5173
+      -ErrorAction SilentlyContinue | Select-Object LocalAddress,OwningProcess")
+  ⎿  LocalAddress OwningProcess
+     ------------ -------------
+     ::1                      0
+     … +11 lines (ctrl+o to expand)
+
+● Bash(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter
+      \"ProcessId=23716\" | Select-Object Name,@{N='Cmd';E={\$_.CommandLine}} |
+      Format-List")
+  ⎿  Name : node.exe
+     Cmd  : "node"   "C:\Users\pcdec\OneDrive\Documentos\Mente
+            Viva\menteviva-frontend\node_modules\.bin\\..\vite\bin\vite.js"
+
+● Mato el vite zombi (puerto 5173 ocupado) y vite nuevo se queda en 5174 — que
+  es válido (CORS y proxy lo soportan). Sigo en 5174.
+
+● Página de registro abre. Lleno el form con datos de prueba.
+
+● Registro OK — pasó a /diagnostico/setup. Verifico que el user llegó a
+  Postgres.
+
+● Bash(docker exec menteviva-pg-dev psql -U menteviva -d menteviva -c "SELECT
+      user_id, email, nombre, rol_objetivo, industria, auth_provider FROM
+      users;")
+  ⎿             user_id            |               email               |
+       nombre     |      rol_objetivo       |  industria  | auth_provider
+     ------------------------------+-----------------------------------+---
+     … +4 lines (ctrl+o to expand)
+● Firebase auth + Postgres OK. Sigo al diagnóstico.
+
+● Diagnóstico inició, WebSocket conectó, Sofía está hablando. Captura para
+  verificar el avatar y reviso consola por errores.
+
+  Read 1 file (ctrl+o to expand)
+
+● Diagnóstico también se guardó. Verifico en Postgres y cierro la tarea.
+
+● Bash(docker exec menteviva-pg-dev psql -U menteviva -d menteviva -c "SELECT
+      diagnostic_id, user_id, is_demo, LEFT(diagnostico_json, 80) AS
+      diag_preview FROM diagnost…)
+  ⎿   diagnostic_id |           user_id            | is_demo |
+                           diag_preview
+     ---------------+------------------------------+---------+-------------
+     … +4 lines (ctrl+o to expand)
+
+● Update(~\OneDrive\Documentos\Mente Viva\docs\TODO_PILOTO.md)
+  ⎿  Added 2 lines, removed 1 line
+      20  - [x] Actualizar `start.bat` y `CLAUDE.md` a `python -m app`
+      21  - [x] Migración corre limpia contra Postgres dev (schema_versio
+          n v0/v1/v2 OK)
+      22  - [x] Smoke `test_session_repo.py` y `inspect_users.py` contra 
+          Postgres dev OK
+      23 -- [ ] Smoke end-to-end via browser: registro + diagnóstico + pr
+         -áctica (pendiente prueba humana)                               
+      23 +- [x] Smoke end-to-end via Chrome DevTools: registro nuevo de c
+         +ero → Firebase + Postgres upsert + diagnóstico WS + TTS + diagn
+         +ostic row guardado (ver `smoke-e2e-postgres-diagnostico.png`)  
+      24 +- [ ] Smoke con conversación real humana (no automatizada): hab
+         +lar 3-5 turnos con Sofia + completar práctica con Roberto      
+      25  
+      26  ### 0.2 Servir frontend desde uvicorn (~1h) — Plan 03
+      27  - [ ] `app/main.py`: bloque `StaticFiles` + SPA fallback (`/ass
+          ets/*`, `/vad/*`, `/avatars/*`, catch-all `index.html`)
+
+● Smoke E2E ✅ todo funcionó.
+
+  Resultado del flujo desde cero (Postgres vacío → registro):
+
+  ┌───────────────────────────────────┬────────────────────────────┬────────┐
+  │               Paso                │        Verificación        │ Status │
+  ├───────────────────────────────────┼────────────────────────────┼────────┤
+  │ Registro Firebase                 │ POST /api/auth/register    │ ✅     │
+  │                                   │ 200                        │        │
+  ├───────────────────────────────────┼────────────────────────────┼────────┤
+  │                                   │ [DB] firebase user         │        │
+  │ INSERT en Postgres users          │ registrado                 │ ✅     │
+  │                                   │ uid=eyVa95XnC8...          │        │
+  ├───────────────────────────────────┼────────────────────────────┼────────┤
+  │ Pantalla setup diagnóstico        │ Heading "Hola, Eric Smoke  │ ✅     │
+  │                                   │ E2E"                       │        │
+  ├───────────────────────────────────┼────────────────────────────┼────────┤
+  │ WebSocket                         │ accepted + connection open │ ✅     │
+  │ /api/conversation/entrevistador   │                            │        │
+  ├───────────────────────────────────┼────────────────────────────┼────────┤
+  │ Upsert en sesión WS               │ [DB] upsert user eyVa...   │ ✅     │
+  ├───────────────────────────────────┼────────────────────────────┼────────┤
+  │ Avatar Sofia 3D renderiza         │ Screenshot OK (brazos      │ ✅     │
+  │                                   │ abajo, no T-pose)          │        │
+  ├───────────────────────────────────┼────────────────────────────┼────────┤
+  │                                   │ [Greeting] Stream          │        │
+  │ TTS Sofia greeting                │ cacheado: 24 chunks,       │ ✅     │
+  │                                   │ 194395 bytes               │        │
+  ├───────────────────────────────────┼────────────────────────────┼────────┤
+  │ INSERT en diagnostics con         │ [DB] diagnostic saved id=1 │ ✅     │
+  │ RETURNING                         │  is_demo=True              │        │
+  ├───────────────────────────────────┼────────────────────────────┼────────┤
+  │ Console                           │ Solo 1 warn benigno de     │ ✅     │
+  │                                   │ HTMLAudio unlock           │        │
+  └───────────────────────────────────┴────────────────────────────┴────────┘
+
+  Postgres validado en producción de código:
+  - Pool psycopg async abre con 2 conexiones (no más database is locked)
+  - Schema con BIGINT GENERATED BY DEFAULT AS IDENTITY funciona —
+  diagnostic_id=1 asignado correctamente vía RETURNING
+  - Migraciones idempotentes corren en startup sin recrear nada
+  - WindowsSelectorEventLoopPolicy se aplica antes de uvicorn (no más
+  ProactorEventLoop crash)
+
+  El diagnostic salió como is_demo=True porque no hablé con Sofia (test
+  automatizado). Para validar el flujo con conversación real necesitas hacer una
+   sesión hablando tú — el código ya está probado.
+
+  ¿Sigo con 0.2 StaticFiles + SPA fallback? (después del refactor de DB, el
+  siguiente bloqueador del deploy es servir todo desde un solo proceso).
+
+✻ Worked for 11m 1s
+
+※ recap: Refactoré el backend a Postgres (Plan 04 hecho) y validé un registro de cero vía Chrome DevTools — Firebase + Postgres + diagnóstico WS funcionaron limpio. Siguiente paso: ejecutar 0.2, StaticFiles + SPA fallback en app/main.py.
+
+> si                                                                            
+
+● Arrancando 0.2. Primero paro los servers, audito el frontend para verificar
+  que useWebSocket construye URL relativa cuando VITE_WS_URL está vacío.
+
+● Bash(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter
+      \"Name = 'python.exe' OR Name = 'node.exe'\" | Where-Object {
+      \$_.CommandLine -match 'app|…)
+  ⎿  OK
+
+  Searched for 2 patterns, listed 1 directory (ctrl+o to expand)
+
+● Background command "Start frontend Vite" failed with exit code 127
+
+● Background command "Start backend" failed with exit code 127
+
+● useWebSocket.ts ya construye URL relativa correctamente cuando VITE_WS_URL
+  vacío. Ahora agrego StaticFiles + SPA fallback a main.py.
+
+  Read 1 file (ctrl+o to expand)
+● Update(~\OneDrive\Documentos\Mente Viva\menteviva-backend\app\main.py)
+  ⎿  Added 2 lines
+       6  
+       7  from fastapi import FastAPI, Request
+       8  from fastapi.middleware.cors import CORSMiddleware
+       9 +from fastapi.responses import FileResponse, JSONResponse       
+      10 +from fastapi.staticfiles import StaticFiles                    
+      11  from app.config import settings
+      12  from app.db import init_db, close_pool
+      13  from app.routers import auth, conversation, avatars, profiles, 
+          sessions
+
+● Update(~\OneDrive\Documentos\Mente Viva\menteviva-backend\app\main.py)
+  ⎿  Added 71 lines
+       86  @app.get("/health")
+       87  async def health():
+       88      return {"status": "ok"}
+       89 +                                                              
+       90 +                                                              
+       91 +# ============ SERVIR FRONTEND dist/ (SPA con fallback) ======
+          +======                                                        
+       92 +#                                                             
+       93 +# En prod (un solo proceso) uvicorn sirve el `dist/` del front
+          +end. Cualquier                                                
+       94 +# ruta que no sea /api/* ni /health cae al index.html para que
+          + React Router                                                 
+       95 +# maneje rutas client-side (/dashboard, /diagnostico, etc.).  
+       96 +#                                                             
+       97 +# Importante: este bloque va AL FINAL del archivo. FastAPI eva
+          +lua rutas en                                                  
+       98 +# orden de declaracion — los routers /api/* y /health ya estan
+          + registrados                                                  
+       99 +# antes, asi que el catch-all no los pisa.                    
+      100 +#                                                             
+      101 +# main.py vive en:  menteviva-backend/app/main.py             
+      102 +# dist/ vive en:    menteviva-frontend/dist/                  
+      103 +DIST_DIR = Path(__file__).resolve().parent.parent.parent / "me
+          +nteviva-frontend" / "dist"                                    
+      104 +                                                              
+      105 +                                                              
+      106 +class CachedStaticFiles(StaticFiles):                         
+      107 +    """StaticFiles con Cache-Control inmutable. Vite emite fil
+          +enames con hash                                               
+      108 +    en /assets/* asi que son safe para cachear long-lived. El 
+          +index.html (SPA                                               
+      109 +    fallback) NO debe usar esta clase — siempre se quiere fres
+          +h."""                                                         
+      110 +                                                              
+      111 +    async def get_response(self, path: str, scope):  # type: i
+          +gnore[override]                                               
+      112 +        response = await super().get_response(path, scope)    
+      113 +        if response.status_code == 200:                       
+      114 +            response.headers["Cache-Control"] = "public, max-a
+          +ge=31536000, immutable"                                       
+      115 +        return response                                       
+      116 +                                                              
+      117 +                                                              
+      118 +if DIST_DIR.exists() and (DIST_DIR / "index.html").exists():  
+      119 +    logger.info(f"[StaticFiles] Sirviendo SPA desde {DIST_DIR}
+          +")                                                            
+      120 +                                                              
+      121 +    # Assets con hash en el nombre (Vite emite index-AbC123.js
+          +, etc.) -> cache largo.                                       
+      122 +    app.mount(                                                
+      123 +        "/assets",                                            
+      124 +        CachedStaticFiles(directory=DIST_DIR / "assets"),     
+      125 +        name="assets",                                        
+      126 +    )                                                         
+      127 +                                                              
+      128 +    # Subdirs sin hash (los nombres son estables). Cache moder
+          +ado por default                                               
+      129 +    # del StaticFiles (sin header explicito, el browser hace c
+          +onditional GET).                                              
+      130 +    for sub in ("vad", "avatars"):                            
+      131 +        sub_dir = DIST_DIR / sub                              
+      132 +        if sub_dir.exists():                                  
+      133 +            app.mount(f"/{sub}", StaticFiles(directory=sub_dir
+          +), name=sub)                                                  
+      134 +                                                              
+      135 +    # SPA fallback (catch-all). FastAPI evalua en orden, asi q
+          +ue esta ruta                                                  
+      136 +    # solo gana cuando ningun router /api/* hizo match antes. 
+      137 +    @app.get("/{full_path:path}", include_in_schema=False)    
+      138 +    async def spa_fallback(full_path: str):                   
+      139 +        # Defensa-en-profundidad: si alguien pega un /api/* qu
+          +e no esta                                                     
+      140 +        # registrado, devolvemos 404 explicito en lugar del in
+          +dex.html (que                                                 
+      141 +        # confundiria al cliente).                            
+      142 +        if full_path.startswith("api/") or full_path == "healt
+          +h":                                                           
+      143 +            return JSONResponse({"detail": "Not Found"}, statu
+          +s_code=404)                                                   
+      144 +        # Archivos sueltos del dist root (favicon, vite.svg, m
+          +anifest, etc.)                                                
+      145 +        candidate = DIST_DIR / full_path                      
+      146 +        if full_path and candidate.is_file():                 
+      147 +            return FileResponse(candidate)                    
+      148 +        # Cualquier otra ruta -> index.html, sin cache para qu
+          +e el browser                                                  
+      149 +        # siempre vea el bundle nuevo tras un deploy.         
+      150 +        return FileResponse(                                  
+      151 +            DIST_DIR / "index.html",                          
+      152 +            media_type="text/html",                           
+      153 +            headers={"Cache-Control": "no-cache, no-store, mus
+          +t-revalidate"},                                               
+      154 +        )                                                     
+      155 +else:                                                         
+      156 +    logger.warning(                                           
+      157 +        f"[StaticFiles] dist/ no existe en {DIST_DIR} — modo A
+          +PI-only "                                                     
+      158 +        f"(probablemente estamos en dev con Vite sirviendo el 
+          +frontend en :5173)."                                          
+      159 +    )                                                         
+
+● Ahora .env.production para el frontend con URLs relativas.
+
+  Read 1 file, listed 2 directories (ctrl+o to expand)
+
+● Write(.env.production)
+  ⎿  Wrote 18 lines to .env.production
+         mismo origen,duccion: el backend uvicorn sirve el dist/ desde el
+      2 # asi que VITE_API_URL y VITE_WS_URL quedan VACIOS -> el frontend
+      3 # relativas (fetch("/api/...") y new WebSocket("wss://<host>/api/
+        ...")).
+      4 #
+        kend separado) estuviera split en dos hosts (frontend en CDN, bac
+      6 # habria que setear ambos aqui. Para el piloto (un solo proceso b
+      7 # Tunnel) las dejamos vacias.
+      8 VITE_API_URL=
+      9 VITE_WS_URL=
+     … +14 lines (ctrl+o to expand)
+
+● Compilo el frontend y arranco backend con todo desde un mismo origen.
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-frontend" &&
+      npm run build 2>&1 | tail -30)
+  ⎿  > menteviva-frontend@0.1.0 build
+     > tsc && vite build
+     … +16 lines (ctrl+o to expand)
+  ⎿  (timeout 3m)
+
+● Build OK. Verifico estructura del dist y levanto backend solo (sin vite) para
+  confirmar que sirve el SPA.
+
+  Listed 1 directory (ctrl+o to expand)
+
+● dist/ correcto: assets/, avatars/, vad/, index.html, vite.svg. Levanto backend
+   solo y testeo todas las rutas.
+
+● Bash(cd "/c/Users/pcdec/OneDrive/Documentos/Mente Viva/menteviva-backend" &&
+      MENTEVIVA_RELOAD=false poetry run python -m app 2>&1)
+  ⎿  Running in the background (↓ to manage)
+
+● Bash(sleep 5 && echo "=== /health ===" && curl -s http://127.0.0.1:8000/health
+       && echo "" && echo "=== HEAD / ===" && curl -sI http://127.0.0.1:8000/ |
+      head -6 && ec…)
+  ⎿  === /health ===
+     {
+       "status": "ok"
+     … +29 lines (ctrl+o to expand)
+  ⎿  (timeout 20s)
+
+● Bash(echo "=== GET / (should be index.html) ===" && curl -s -D -
+      http://127.0.0.1:8000/ -o /tmp/index.html 2>&1 | head -8 && echo "" &&
+      echo "=== first line of body…)
+  ⎿  === GET / (should be index.html) ===
+     HTTP/1.1 200 OK
+     date: Fri, 15 May 2026 04:30:49 GMT
+     … +26 lines (ctrl+o to expand)
+
+● Todo correcto:
+
+  - / y /dashboard → mismo index.html (SPA fallback) con Cache-Control: no-cache
+  - /assets/index-*.js → Cache-Control: public, max-age=31536000, immutable
+  (cache largo)
+  - /vite.svg → servido como image/svg+xml
+  - /api/avatars → JSON
+  - /api/zzz → JSON 404
+  - /health → JSON OK
+
+  Pruebo /avatars/roberto.png (mount sub) y un PNG de assets.
+
+● Bash(echo "=== /avatars/roberto.png ===" && curl -sI
+      http://127.0.0.1:8000/avatars/roberto.png | head -4 && echo "" && echo
+      "=== /vad/ ==="  && ls "C:/Users/pcdec/On…)
+  ⎿  === /avatars/roberto.png ===
+     HTTP/1.1 200 OK
+     date: Fri, 15 May 2026 05:35:44 GMT
+     … +10 lines (ctrl+o to expand)
+
+  Listed 1 directory (ctrl+o to expand)
+
+● Bash(echo "=== /vad/silero_vad_v5.onnx ===" && curl -sI
+      http://127.0.0.1:8000/vad/silero_vad_v5.onnx | head -4 && echo "" && echo
+      "=== /vad/ort-wasm-simd-threaded.wa…)
+  ⎿  === /vad/silero_vad_v5.onnx ===
+     HTTP/1.1 200 OK
+     date: Fri, 15 May 2026 05:35:54 GMT
+     … +8 lines (ctrl+o to expand)
+
+● Todo OK. Apago backend y verifico el deploy script para incluir el build.
+
+● Bash(powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter
+      \"Name = 'python.exe'\" | Where-Object { \$_.CommandLine -match
+      'spawn_main|module=app' }…)
+  ⎿  OK
+
+  Listed 1 directory (ctrl+o to expand)
+
+● Creo deploy.sh para el server Linux que incluye el build del frontend.
+● Write(~\OneDrive\Documentos\Mente Viva\deploy.sh)
+  ⎿  Wrote 50 lines to ..\deploy.sh
+      2 # Deploy script para el server piloto (Linux). Asume:
+      3 # - El repo esta clonado en /opt/menteviva (o ajustar REPO_DIR).
+      4 # - systemd unit `menteviva-backend.service` corre uvicorn (ver D
+        EPLOY_PILOTO.md).
+      5 # - El user que ejecuta esto puede `sudo systemctl restart`.
+      6 #
+      7 # Uso:    ./deploy.sh
+      8 # Logs:   tail -f /opt/menteviva/menteviva-backend/logs/menteviva
+        .log
+      9 set -euo pipefail
+     … +47 lines (ctrl+o to expand)
+
+● Update(~\OneDrive\Documentos\Mente Viva\docs\TODO_PILOTO.md)
+  ⎿  Added 8 lines, removed 4 lines
+      24  - [ ] Smoke con conversación real humana (no automatizada): hab
+          lar 3-5 turnos con Sofia + completar práctica con Roberto
+      25  
+      26  ### 0.2 Servir frontend desde uvicorn (~1h) — Plan 03
+      27 -- [ ] `app/main.py`: bloque `StaticFiles` + SPA fallback (`/ass
+         -ets/*`, `/vad/*`, `/avatars/*`, catch-all `index.html`)        
+      28 -- [ ] `menteviva-frontend/.env.production` con `VITE_API_URL=` 
+         -y `VITE_WS_URL=` vacíos                                        
+      29 -- [ ] Validar `useWebSocket.ts` construye `wss://<host>` cuando
+         - vacío                                                         
+      30 -- [ ] Smoke local: `npm run build && uvicorn` → http://127.0.0.
+         -1:8000 todo end-to-end sin Vite                                
+      27 +- [x] `app/main.py`: bloque `StaticFiles` + SPA fallback (`/ass
+         +ets/*`, `/vad/*`, `/avatars/*`, catch-all `index.html`)        
+      28 +- [x] `CachedStaticFiles` para `/assets/*` con `Cache-Control: 
+         +max-age=31536000, immutable`; `index.html` con `no-cache`      
+      29 +- [x] `menteviva-frontend/.env.production` con `VITE_API_URL=` 
+         +y `VITE_WS_URL=` vacíos                                        
+      30 +- [x] `useWebSocket.ts` ya construía `${proto}//${window.locati
+         +on.host}` cuando vacío — sin cambios                           
+      31 +- [x] Build OK (`npm run build` produce `dist/{index.html, asse
+         +ts/, avatars/, vad/, vite.svg}`)                               
+      32 +- [x] Smoke local validado: `/`, `/dashboard`, `/assets/index-*
+         +.js`, `/avatars/roberto.png`, `/vad/*.wasm`, `/api/avatars`, `/
+         +api/zzz_404` todos responden correctamente desde un solo origen
+         + (`:8000`)                                                     
+      33 +- [x] `deploy.sh` creado en root: pull + poetry install + migra
+         +tor + npm build + systemctl restart + smoke /health            
+      34 +- [ ] Smoke E2E browser sobre `:8000` (sin Vite): registro + di
+         +agnóstico + práctica end-to-end                                
+      35  
+      36  ### 0.3 Repo en GitHub (~30 min) — Plan 01
+      37  - [ ] Crear repo `menteviva` privado en GitHub
+
+● Plan 0.2 (StaticFiles + SPA fallback) ✅
+
+  Cambios:
+  - app/main.py: bloque StaticFiles + CachedStaticFiles + SPA catch-all que
+  distingue /api/* vs estáticos vs index.html
+  - menteviva-frontend/.env.production con VITE_API_URL= y VITE_WS_URL= vacíos
+  - useWebSocket.ts ya construía URL relativa, sin cambios
+  - deploy.sh nuevo en root: pull → poetry → migrador → npm build → systemctl
+  restart → smoke /health
+
+  Smoke validado (solo :8000, sin Vite):
+
+  ┌───────────────────────────────────┬─────────────────────────────────────┐
+  │             Endpoint              │              Resultado              │
+  ├───────────────────────────────────┼─────────────────────────────────────┤
+  │ GET /health                       │ {"status":"ok"}                     │
+  ├───────────────────────────────────┼─────────────────────────────────────┤
+  │ GET /                             │ index.html, Cache-Control: no-cache │
+  ├───────────────────────────────────┼─────────────────────────────────────┤
+  │ GET /dashboard                    │ mismo index.html (SPA fallback)     │
+  ├───────────────────────────────────┼─────────────────────────────────────┤
+  │ GET /assets/index-CZg0jvSR.js     │ 200, Cache-Control: public,         │
+  │                                   │ max-age=31536000, immutable         │
+  ├───────────────────────────────────┼─────────────────────────────────────┤
+  │ GET /avatars/roberto.png          │ 200, image/png                      │
+  ├───────────────────────────────────┼─────────────────────────────────────┤
+  │ GET                               │ 200, application/wasm               │
+  │ /vad/ort-wasm-simd-threaded.wasm  │                                     │
+  ├───────────────────────────────────┼─────────────────────────────────────┤
+  │ GET /api/avatars                  │ JSON roster                         │
+  ├───────────────────────────────────┼─────────────────────────────────────┤
+  │ GET /api/zzz_no_existe            │ {"detail":"Not Found"} (sin fugar   │
+  │                                   │ al SPA)                             │
+  └───────────────────────────────────┴─────────────────────────────────────┘
+
+  Pendiente (no bloquea código):
+  - Smoke E2E browser contra :8000 sin Vite. El refactor está validado por curl
+  pero conviene confirmar con UI cuando puedas (ya cerraste Chrome DevTools).
+
+  Estado P0 ruta crítica:
+  - ✅ 0.1 Postgres-ready
+  - ✅ 0.2 StaticFiles + SPA fallback
+  - ⏳ 0.3 Repo GitHub (estás avanzando)
+  - ⏳ 0.4 Setup Neon (tienes acceso)
+  - ⏳ 0.5 Deploy server empresa
+  - ⏳ 0.6 Fix Sofía Fase 5 + validación Sofia/María
+
+  ¿Sigo con 0.6 (fix Sofía + scripts validación gpt-oss-20b) mientras esperas la
+   OpenAI key para 1.1?
+
+✻ Cooked for 1h 8m 53s
