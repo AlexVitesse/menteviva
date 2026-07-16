@@ -35,8 +35,8 @@ def main() -> None:
 
     import uvicorn  # importar DESPUES de fijar la policy
 
-    host = os.getenv("MENTEVIVA_HOST", "127.0.0.1")
-    port = int(os.getenv("MENTEVIVA_PORT", "8000"))
+    host = os.getenv("MENTEVIVA_HOST", "0.0.0.0")
+    port = int(os.getenv("MENTEVIVA_PORT", os.getenv("PORT", "8000")))
     reload = os.getenv("MENTEVIVA_RELOAD", "true").lower() in {"1", "true", "yes"}
 
     uvicorn.run(
