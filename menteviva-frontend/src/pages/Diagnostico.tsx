@@ -25,7 +25,9 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import { useGeminiLive } from "../hooks/useGeminiLive";
 import { useSimliAvatar } from "../hooks/useSimliAvatar";
 import { useOssAvatar } from "../hooks/useOssAvatar";
+import { useOssAvatarWs } from "../hooks/useOssAvatarWs";
 import { getAvatarProvider } from "../utils/avatarProvider";
+import { getAvatarTransport } from "../utils/avatarTransport";
 import { useSessionStore } from "../stores/sessionStore";
 import { ENTREVISTADOR_AVATAR } from "../utils/entrevistador";
 import { formatDuration, isSecureOriginForMic } from "../utils/audio";
@@ -148,16 +150,22 @@ export function Diagnostico() {
   // eventos speaking/silent del proveedor reemplazan al onSpeakingChange del
   // player local para el indicador "Sofia esta hablando".
   const avatarProvider = useMemo(() => (IS_GEMINI ? getAvatarProvider() : "none"), []);
+  // Transporte del provider OSS: "webrtc" (default, producción) | "ws" (interino
+  // RunPod, sin WebRTC). Ver utils/avatarTransport.ts.
+  const avatarTransport = useMemo(() => getAvatarTransport(), []);
   const handleVideoSpeaking = useCallback(
     (speaking: boolean) => setStatus(speaking ? "generating_audio" : "ready"),
     [setStatus]
   );
-  // Ambos hooks se instancian SIEMPRE (reglas de hooks); solo se conecta el que
-  // corresponde al provider. El inactivo queda inerte (connect() nunca se llama).
+  // Todos los hooks se instancian SIEMPRE (reglas de hooks); solo se conecta el
+  // que corresponde al provider/transporte. Los inactivos quedan inertes.
   const simli = useSimliAvatar({ onSpeakingChange: handleVideoSpeaking });
   const oss = useOssAvatar({ onSpeakingChange: handleVideoSpeaking });
+  const ossWs = useOssAvatarWs({ onSpeakingChange: handleVideoSpeaking });
+  // Variante OSS activa según el transporte.
+  const ossActive = avatarTransport === "ws" ? ossWs : oss;
   const videoAvatar =
-    avatarProvider === "simli" ? simli : avatarProvider === "oss" ? oss : null;
+    avatarProvider === "simli" ? simli : avatarProvider === "oss" ? ossActive : null;
   const videoEnabled = videoAvatar !== null;
 
   // Modo Gemini Live (audio nativo continuo). Se instancia siempre (reglas de
@@ -249,9 +257,10 @@ export function Diagnostico() {
       });
       return () => {
         gemini.disconnect();
-        // Desconectar ambos: el inactivo es no-op (nunca se conecto).
+        // Desconectar todos: el inactivo es no-op (nunca se conecto).
         simli.disconnect();
         oss.disconnect();
+        ossWs.disconnect();
       };
     }
     connect();
