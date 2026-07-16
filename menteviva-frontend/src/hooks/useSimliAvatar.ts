@@ -79,8 +79,8 @@ export function useSimliAvatar({ onSpeakingChange }: UseSimliAvatarOptions = {})
     });
     client.on("speaking", () => speakingCbRef.current?.(true));
     client.on("silent", () => speakingCbRef.current?.(false));
-    client.on("error", (detail) => console.error("[Simli] error:", detail));
-    client.on("startup_error", (msg) => {
+    client.on("error", (detail: unknown) => console.error("[Simli] error:", detail));
+    client.on("startup_error", (msg: unknown) => {
       console.error("[Simli] startup_error:", msg);
       setFailed(true);
     });

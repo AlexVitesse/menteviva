@@ -135,6 +135,7 @@ class Settings(BaseSettings):
     chatlab_token: str = ""
     app_name: str = "Mente Viva API"
     debug: bool = False
+    port: int = 8000
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://localhost:5174",
