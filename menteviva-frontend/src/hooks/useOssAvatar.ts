@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { base64ToInt16 } from "../utils/pcm";
 import type { GeminiAudioSink } from "./useGeminiLive";
 
@@ -192,8 +192,19 @@ export function useOssAvatar({ onSpeakingChange }: UseOssAvatarOptions = {}) {
   const disconnect = useCallback(() => {
     connectedRef.current = false;
     setConnected(false);
+    const dc = dcRef.current;
+    // v2 (multi-sesion): avisar "bye" ANTES de cerrar para liberar el cupo de
+    // sesion de inmediato, sin esperar el timeout de ICE. Importa ahora que
+    // varias sesiones comparten GPU.
+    if (dc?.readyState === "open") {
+      try {
+        dc.send(JSON.stringify({ type: "bye" }));
+      } catch {
+        /* noop */
+      }
+    }
     try {
-      dcRef.current?.close();
+      dc?.close();
     } catch {
       /* noop */
     }
@@ -206,6 +217,26 @@ export function useOssAvatar({ onSpeakingChange }: UseOssAvatarOptions = {}) {
       /* noop */
     }
   }, []);
+
+  // Cierre limpio en unmount y en beforeunload (best-effort): manda "bye" para
+  // devolver el cupo aunque el usuario cierre la pestaña o navegue fuera.
+  useEffect(() => {
+    const sendBye = () => {
+      const dc = dcRef.current;
+      if (dc?.readyState === "open") {
+        try {
+          dc.send(JSON.stringify({ type: "bye" }));
+        } catch {
+          /* noop */
+        }
+      }
+    };
+    window.addEventListener("beforeunload", sendBye);
+    return () => {
+      window.removeEventListener("beforeunload", sendBye);
+      disconnect();
+    };
+  }, [disconnect]);
 
   // Sink estable (identidad constante) para pasarle a useGeminiLive.
   const sink: GeminiAudioSink = useMemo(

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { base64ToInt16, concatInt16, pcm16ToWavBlob } from "../utils/pcm";
 import type { GeminiAudioSink } from "./useGeminiLive";
 
@@ -243,6 +243,14 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
     setConnected(false);
     const ws = wsRef.current;
     wsRef.current = null;
+    // v2 (multi-sesion): "bye" ANTES de cerrar para liberar el cupo de inmediato.
+    if (ws?.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify({ type: "bye" }));
+      } catch {
+        /* noop */
+      }
+    }
     try {
       ws?.close();
     } catch {
@@ -269,6 +277,26 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
     canvasRef.current = null;
     ctx2dRef.current = null;
   }, []);
+
+  // Cierre limpio en unmount y en beforeunload (best-effort): "bye" para devolver
+  // el cupo aunque el usuario cierre la pestaña o navegue fuera.
+  useEffect(() => {
+    const sendBye = () => {
+      const ws = wsRef.current;
+      if (ws?.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ type: "bye" }));
+        } catch {
+          /* noop */
+        }
+      }
+    };
+    window.addEventListener("beforeunload", sendBye);
+    return () => {
+      window.removeEventListener("beforeunload", sendBye);
+      disconnect();
+    };
+  }, [disconnect]);
 
   // Sink estable (identidad constante) para pasarle a useGeminiLive.
   const sink: GeminiAudioSink = useMemo(

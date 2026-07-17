@@ -19,6 +19,7 @@ Los secretos (SIMLI_API_KEY, AVATAR_SERVICE_URL) viven SOLO en el backend: el
 navegador solo ve tokens efimeros / URLs de senalizacion ya resueltas.
 """
 
+import asyncio
 import logging
 
 import httpx
@@ -35,6 +36,12 @@ router = APIRouter()
 # STUN publico por defecto para el camino OSS. El avatar-service puede sobrescribir
 # los ice_servers en su respuesta de /session; si no, el backend inyecta este.
 DEFAULT_ICE_SERVERS = [{"urls": "stun:stun.l.google.com:19302"}]
+
+# v2: el avatar-service es multi-sesion. Un 409 en POST /session ya NO significa
+# "una a la vez", sino que se alcanzo MAX_SESSIONS concurrentes (capacidad
+# temporal). Reintentamos con backoff corto; si persiste devolvemos 503 y el
+# frontend cae al fallback 2D/Simli.
+_CAP_BACKOFFS = (0.4, 0.8)  # segundos entre reintentos (2 reintentos)
 
 
 class AvatarSessionRequest(BaseModel):
@@ -59,12 +66,29 @@ async def _oss_session(avatar_id: str) -> dict:
         "max_session_seconds": settings.avatar_max_session_seconds,
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(f"{base}/session", json=payload)
-    except httpx.HTTPError as e:
-        logger.error(f"[AvatarOSS] error de red pidiendo sesion: {e}")
-        raise HTTPException(status_code=502, detail="No se pudo contactar al avatar-service")
+    resp = None
+    for attempt in range(len(_CAP_BACKOFFS) + 1):
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(f"{base}/session", json=payload)
+        except httpx.HTTPError as e:
+            logger.error(f"[AvatarOSS] error de red pidiendo sesion: {e}")
+            raise HTTPException(status_code=502, detail="No se pudo contactar al avatar-service")
+
+        # 409 = servicio lleno (MAX_SESSIONS). Reintento con backoff; si persiste, 503.
+        if resp.status_code != 409:
+            break
+        if attempt < len(_CAP_BACKOFFS):
+            logger.info(
+                f"[AvatarOSS] servicio lleno (409), reintento {attempt + 1}/{len(_CAP_BACKOFFS)}"
+            )
+            await asyncio.sleep(_CAP_BACKOFFS[attempt])
+            continue
+        logger.warning(f"[AvatarOSS] servicio lleno (409) tras reintentos: {resp.text[:200]}")
+        raise HTTPException(
+            status_code=503,
+            detail="El avatar-service esta lleno (capacidad maxima). Reintenta en unos segundos.",
+        )
 
     if resp.status_code != 200:
         logger.error(f"[AvatarOSS] sesion rechazada {resp.status_code}: {resp.text[:200]}")
