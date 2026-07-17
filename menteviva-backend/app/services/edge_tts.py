@@ -11,8 +11,8 @@ Dos entry points:
   el audio.
 """
 
-import logging
 import asyncio
+import logging
 import re
 from typing import AsyncIterator
 
@@ -81,7 +81,9 @@ async def text_to_speech(text: str, avatar_id: str = "roberto") -> bytes:
             logger.info(f"[TTS-ElevenLabs] OK ({len(audio_bytes)} bytes, intento {attempt})")
             return audio_bytes
         except Exception as e:
-            logger.warning(f"[TTS-ElevenLabs] Error intento {attempt}: {type(e).__name__}: {e}")
+            logger.warning(
+                "[TTS-ElevenLabs] Error intento %s type=%s", attempt, type(e).__name__
+            )
             if attempt < MAX_RETRIES:
                 await asyncio.sleep(RETRY_DELAY * attempt)
 

@@ -23,13 +23,16 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from app.config import settings
 from app.models.user_profile import Registro
 from app.services.firebase_auth import get_firebase_user, verify_firebase_token
+from app.services.telemetry import active_alerts, snapshot
 from app.services.user_repo import (
     get_user_profile,
     register_firebase_user,
     touch_last_login,
 )
+from app.services.ws_tickets import issue_ws_ticket
 
 logger = logging.getLogger("menteviva")
 router = APIRouter()
@@ -90,3 +93,18 @@ async def auth_sync(uid: str = Depends(verify_firebase_token)):
         )
     await touch_last_login(uid)
     return profile.model_dump()
+
+
+@router.post("/auth/ws-ticket")
+async def create_ws_ticket(uid: str = Depends(verify_firebase_token)):
+    """Emite un ticket WebSocket efimero, opaco y de un solo uso."""
+    ticket, expires_in = await issue_ws_ticket(uid)
+    return {"ticket": ticket, "expires_in": expires_in}
+
+
+@router.get("/auth/operational-metrics")
+async def operational_metrics(uid: str = Depends(verify_firebase_token)):
+    """Contadores agregados sin PII para diagnostico operativo."""
+    if uid not in settings.chatlab_operators:
+        raise HTTPException(status_code=403, detail="Se requiere rol de operador.")
+    return {"metrics": await snapshot(), "alerts": await active_alerts()}

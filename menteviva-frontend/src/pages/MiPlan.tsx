@@ -14,9 +14,8 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useSessionStore } from "../stores/sessionStore";
+import { apiFetch } from "../lib/api";
 import type { PracticeSessionSummary } from "../types";
-
-const API_URL = import.meta.env.VITE_API_URL || "";
 
 const AVATAR_LABELS: Record<string, string> = {
   roberto: "Roberto Garza · Director de Operaciones",
@@ -36,8 +35,7 @@ export function MiPlan() {
       setLoadingSessions(false);
       return;
     }
-    fetch(`${API_URL}/api/user/${userProfile.user_id}/sessions`)
-      .then((r) => r.json())
+    apiFetch<{ sessions: PracticeSessionSummary[] }>("/api/me/sessions")
       .then((data) => setSessions(data.sessions ?? []))
       .catch((err) => console.error("[MiPlan] sesiones fallo:", err))
       .finally(() => setLoadingSessions(false));
@@ -259,7 +257,7 @@ function SessionRow({ session }: { session: PracticeSessionSummary }) {
   const date = new Date(session.created_at + "Z"); // SQLite escribe UTC sin zona
   const score = session.overall_score;
   const scoreColor =
-    score == null
+    score === null || score === undefined
       ? "text-muted"
       : score >= 80
       ? "text-green-400"
@@ -298,13 +296,13 @@ function SessionRow({ session }: { session: PracticeSessionSummary }) {
               month: "short",
             })}
           </span>
-          {minutes != null && (
+          {minutes !== null && (
             <span className="flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {minutes} min
             </span>
           )}
-          {session.total_exchanges != null && (
+          {session.total_exchanges !== null && session.total_exchanges !== undefined && (
             <span className="flex items-center gap-1">
               <TrendingUp className="w-3 h-3" />
               {session.total_exchanges} intercambios

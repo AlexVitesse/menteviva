@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SimliClient, LogLevel } from "simli-client";
 import { base64ToInt16, Pcm24to16Resampler } from "../utils/pcm";
 import type { GeminiAudioSink } from "./useGeminiLive";
+import { apiFetch } from "../lib/api";
 
 /**
  * useSimliAvatar: avatar fotorrealista en video (Simli, WebRTC).
@@ -17,8 +18,6 @@ import type { GeminiAudioSink } from "./useGeminiLive";
  * (failed / sink inactivo), useGeminiLive cae solo al player local y la UI
  * debe renderizar el avatar 3D.
  */
-
-const API_URL = import.meta.env.VITE_API_URL || "";
 
 interface UseSimliAvatarOptions {
   /** Notifica cuando el avatar empieza/termina de hablar (eventos de Simli). */
@@ -52,26 +51,24 @@ export function useSimliAvatar({ onSpeakingChange }: UseSimliAvatarOptions = {})
       throw new Error("SimliAvatar no esta montado (refs de video/audio vacios)");
     }
 
-    const resp = await fetch(`${API_URL}/api/simli/session-token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ avatar_id: avatarId }),
-    }).catch((e) => {
+    let sessionToken: string;
+    try {
+      const response = await apiFetch<{ session_token: string }>(
+        "/api/simli/session-token",
+        { method: "POST", json: { avatar_id: avatarId } }
+      );
+      sessionToken = response.session_token;
+    } catch (error) {
       setFailed(true);
-      throw e;
-    });
-    if (!resp.ok) {
-      setFailed(true);
-      throw new Error(`session-token HTTP ${resp.status}`);
+      throw error;
     }
-    const { session_token } = await resp.json();
 
     // transport_mode "livekit" (6o arg) es CRÍTICO: el default compilado del SDK
     // es "p2p", que exige iceServers y lanza "Ice Servers Required for P2P Mode"
     // al pasar null -> el constructor revienta y el avatar nunca conecta. livekit
     // rutea por la infra de Simli (sin ICE, sin problemas de NAT). Verificado con
     // /__simli-test: el video 512x512 renderiza.
-    const client = new SimliClient(session_token, video, audio, null, LogLevel.ERROR, "livekit");
+    const client = new SimliClient(sessionToken, video, audio, null, LogLevel.ERROR, "livekit");
     client.on("start", () => {
       // "start" dispara al renderizar el primer frame: ya hay cara visible.
       connectedRef.current = true;

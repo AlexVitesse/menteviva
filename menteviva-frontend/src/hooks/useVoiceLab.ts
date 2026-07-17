@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PCMStreamPlayer, int16BufferToBase64, pcm16Rms } from "../utils/pcm";
+import { getWebSocketTicket } from "../lib/api";
+import { parseServerEvent } from "../types/wsProtocol";
 
 /**
  * useVoiceLab: sesion de voz en tiempo real para el VoiceLab (banco de pruebas
@@ -72,6 +74,7 @@ export function useVoiceLab({
   onEnded,
 }: UseVoiceLabOptions) {
   const wsRef = useRef<WebSocket | null>(null);
+  const connectionGenerationRef = useRef(0);
   const playerRef = useRef<PCMStreamPlayer | null>(null);
 
   // Captura de mic.
@@ -143,6 +146,14 @@ export function useVoiceLab({
 
   const connect = useCallback(async () => {
     if (!avatarId) return;
+    const current = wsRef.current;
+    if (
+      current?.readyState === WebSocket.CONNECTING ||
+      current?.readyState === WebSocket.OPEN
+    ) {
+      return;
+    }
+    const generation = ++connectionGenerationRef.current;
 
     audioGateOpenRef.current = false;
     echoFloorRef.current = ECHO_FLOOR_INIT;
@@ -175,13 +186,27 @@ export function useVoiceLab({
     await player.resume();
 
     const token = tokenRef.current;
-    const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+    let ticket = "";
+    try {
+      ticket = await getWebSocketTicket();
+    } catch {
+      // Compatibilidad temporal: un laboratorio local puede seguir usando el
+      // token compartido aunque Firebase no este configurado.
+    }
+    const params = new URLSearchParams();
+    if (token) params.set("token", token);
+    if (ticket) params.set("ticket", ticket);
+    const qs = params.size ? `?${params.toString()}` : "";
     const wsUrl = `${getWsBaseUrl()}/api/chat/voice/${avatarId}${qs}`;
     console.log("[VoiceLab] Connecting to:", wsUrl.replace(/token=[^&]*/, "token=***"));
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (generation !== connectionGenerationRef.current || wsRef.current !== ws) {
+        ws.close();
+        return;
+      }
       console.log("[VoiceLab] Connected");
       cbRef.current.onStatusChange?.("ready");
       // El system_instruction se fija con este init (el backend abre la sesion
@@ -191,7 +216,14 @@ export function useVoiceLab({
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      if (generation !== connectionGenerationRef.current || wsRef.current !== ws) return;
+      let data;
+      try {
+        data = parseServerEvent(event.data);
+      } catch {
+        cbRef.current.onError?.("El servidor envió un mensaje inválido.");
+        return;
+      }
       switch (data.type) {
         case "status":
           cbRef.current.onStatusChange?.(data.status);
@@ -256,6 +288,8 @@ export function useVoiceLab({
 
     ws.onclose = (e) => {
       console.log("[VoiceLab] Closed:", e.code, e.reason || "(no reason)");
+      if (generation !== connectionGenerationRef.current || wsRef.current !== ws) return;
+      wsRef.current = null;
       flushPendingAssistant();
       cbRef.current.onStatusChange?.("disconnected");
       // 1008 = token invalido/faltante (policy violation).
@@ -267,6 +301,7 @@ export function useVoiceLab({
     };
     ws.onerror = (e) => {
       console.error("[VoiceLab] WS error:", e);
+      if (generation !== connectionGenerationRef.current || wsRef.current !== ws) return;
       cbRef.current.onStatusChange?.("disconnected");
     };
   }, [avatarId, flushPendingAssistant]);
@@ -360,6 +395,7 @@ export function useVoiceLab({
   }, [stopMic]);
 
   const disconnect = useCallback(() => {
+    connectionGenerationRef.current += 1;
     if (gateTimerRef.current) {
       window.clearTimeout(gateTimerRef.current);
       gateTimerRef.current = null;
@@ -370,12 +406,17 @@ export function useVoiceLab({
     playerRef.current = null;
     setAnalyser(null);
     setHasGreeted(false);
-    wsRef.current?.close();
+    const ws = wsRef.current;
     wsRef.current = null;
+    ws?.close();
   }, [stopMic, flushPendingAssistant]);
 
   useEffect(() => {
-    return () => disconnect();
+    window.addEventListener("menteviva:logout", disconnect);
+    return () => {
+      window.removeEventListener("menteviva:logout", disconnect);
+      disconnect();
+    };
   }, [disconnect]);
 
   return { connect, startMic, stopMic, setMicMuted, endSession, disconnect, analyser, hasGreeted };

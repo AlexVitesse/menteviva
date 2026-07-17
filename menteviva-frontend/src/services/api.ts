@@ -1,10 +1,9 @@
 import type { Avatar } from "../types";
+import { apiFetch } from "../lib/api";
 
 // VITE_API_URL vacio (default) -> URLs relativas. Vite proxea /api al backend
 // y, al acceder via tunnel, todo viaja por la misma URL. Override solo si
 // se quiere apuntar a un backend remoto especifico.
-const API_URL = import.meta.env.VITE_API_URL || "";
-
 export interface ApiResponse<T> {
   data: T | null;
   error: string | null;
@@ -15,13 +14,7 @@ export interface ApiResponse<T> {
  */
 export async function fetchAvatars(): Promise<ApiResponse<Avatar[]>> {
   try {
-    const response = await fetch(`${API_URL}/api/avatars`);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
+    const data = await apiFetch<{ avatars: Avatar[] }>("/api/avatars");
     return { data: data.avatars, error: null };
   } catch (error) {
     console.error("Error fetching avatars:", error);
@@ -37,13 +30,7 @@ export async function fetchAvatars(): Promise<ApiResponse<Avatar[]>> {
  */
 export async function fetchAvatarById(id: string): Promise<ApiResponse<Avatar>> {
   try {
-    const response = await fetch(`${API_URL}/api/avatars/${id}`);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
+    const data = await apiFetch<Avatar>(`/api/avatars/${encodeURIComponent(id)}`);
     return { data: data, error: null };
   } catch (error) {
     console.error("Error fetching avatar:", error);
@@ -59,8 +46,8 @@ export async function fetchAvatarById(id: string): Promise<ApiResponse<Avatar>> 
  */
 export async function healthCheck(): Promise<boolean> {
   try {
-    const response = await fetch(`${API_URL}/health`);
-    return response.ok;
+    await apiFetch<{ status: string }>("/health");
+    return true;
   } catch {
     return false;
   }

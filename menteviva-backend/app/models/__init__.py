@@ -2,24 +2,24 @@
 Modelos de datos de Mente Viva.
 """
 
-from app.models.avatar import Avatar, AvatarResponse, AvatarListResponse
+from app.models.avatar import Avatar, AvatarListResponse, AvatarResponse
 from app.models.message import (
+    AssistantAudioResponse,
+    AssistantTokenResponse,
+    ErrorResponse,
     Message,
-    WebSocketMessage,
+    SessionEndResponse,
     StatusMessage,
     UserMessageResponse,
-    AssistantTokenResponse,
-    AssistantAudioResponse,
-    SessionEndResponse,
-    ErrorResponse,
+    WebSocketMessage,
 )
 from app.models.session import ConversationSession, SessionMetrics
 from app.models.user_profile import (
-    UserProfile,
-    Registro,
     Diagnostico,
-    Strength,
     Gap,
+    Registro,
+    Strength,
+    UserProfile,
     VerbalPatterns,
 )
 

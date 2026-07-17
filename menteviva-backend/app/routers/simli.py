@@ -12,10 +12,11 @@ Docs: https://docs.simli.com/api-reference/compose-session-token
 import logging
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.config import settings
+from app.services.firebase_auth import verify_firebase_token
 
 logger = logging.getLogger("menteviva")
 
@@ -67,16 +68,16 @@ async def mint_simli_session(avatar_id: str) -> dict:
                 headers={"x-simli-api-key": settings.simli_api_key},
             )
     except httpx.HTTPError as e:
-        logger.error(f"[Simli] error de red pidiendo session token: {e}")
+        logger.error("[Simli] error de red pidiendo session token type=%s", type(e).__name__)
         raise HTTPException(status_code=502, detail="No se pudo contactar a Simli")
 
     if resp.status_code != 200:
-        logger.error(f"[Simli] token rechazado {resp.status_code}: {resp.text[:200]}")
+        logger.error("[Simli] token rechazado status=%s", resp.status_code)
         raise HTTPException(status_code=502, detail="Simli rechazo la creacion de sesion")
 
     token = resp.json().get("session_token", "")
     if not token or token == "FAIL TOKEN":
-        logger.error(f"[Simli] respuesta sin token valido: {resp.text[:200]}")
+        logger.error("[Simli] respuesta sin token valido")
         raise HTTPException(status_code=502, detail="Simli no devolvio un token valido")
 
     logger.info(f"[Simli] session token emitido (avatar={avatar_id}, face={face_id[:8]}...)")
@@ -84,13 +85,14 @@ async def mint_simli_session(avatar_id: str) -> dict:
 
 
 @router.post("/simli/session-token")
-async def create_simli_session_token(req: SimliTokenRequest):
+async def create_simli_session_token(
+    req: SimliTokenRequest,
+    _uid: str = Depends(verify_firebase_token),
+):
     """Endpoint legacy de session token de Simli.
 
-    El token caduca solo (maxSessionLength/maxIdleTime), asi que exponer este
-    endpoint sin auth es aceptable para el piloto — lo unico que permite es
-    abrir una sesion de video que consume minutos de NUESTRA cuenta, igual
-    que el WS de conversacion consume Gemini/Groq.
+    Requiere Firebase porque cada token permite consumir minutos facturables
+    de la cuenta del proyecto.
 
     Se conserva intacto (aunque el router unificado /api/avatar/session ya
     cubre el camino simli) hasta validar el OSS en produccion.

@@ -24,7 +24,6 @@ from app.prompts.entrevistador import (
 )
 from app.prompts.roberto import get_roberto_prompt
 
-
 AVATARS = {
     "entrevistador": {
         "id": "entrevistador",

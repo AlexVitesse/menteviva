@@ -15,7 +15,6 @@ from typing import Optional
 
 from app.models.user_profile import UserProfile
 
-
 _PROMPT_PATH = Path(__file__).parent / "entrevistador_prompt.md"
 ENTREVISTADOR_PROMPT_TEMPLATE: str = _PROMPT_PATH.read_text(encoding="utf-8")
 

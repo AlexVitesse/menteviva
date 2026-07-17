@@ -9,6 +9,10 @@ __pycache__/
 dist/
 build/
 *.egg-info/
+coverage/
+coverage.xml
+test-results/
+playwright-report/
 
 # Environment
 .env

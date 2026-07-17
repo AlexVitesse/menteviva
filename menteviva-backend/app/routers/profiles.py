@@ -7,8 +7,9 @@ GET /api/diagnostic/{diagnostic_id}     -> un diagnostico especifico + conversac
 """
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.services.firebase_auth import verify_firebase_token
 from app.services.user_repo import (
     get_diagnostic,
     get_user_profile,
@@ -19,22 +20,47 @@ logger = logging.getLogger("menteviva")
 router = APIRouter()
 
 
-@router.get("/user/{user_id}")
-async def read_user_profile(user_id: str):
-    profile = await get_user_profile(user_id)
+@router.get("/me")
+async def read_my_profile(uid: str = Depends(verify_firebase_token)):
+    profile = await get_user_profile(uid)
     if not profile:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return profile.model_dump()
 
 
-@router.get("/user/{user_id}/diagnostics")
-async def read_user_diagnostics(user_id: str):
-    return {"diagnostics": await list_user_diagnostics(user_id)}
+@router.get("/me/diagnostics")
+async def read_my_diagnostics(uid: str = Depends(verify_firebase_token)):
+    return {"diagnostics": await list_user_diagnostics(uid)}
 
 
 @router.get("/diagnostic/{diagnostic_id}")
-async def read_diagnostic(diagnostic_id: int):
-    diag = await get_diagnostic(diagnostic_id)
+async def read_diagnostic(
+    diagnostic_id: int,
+    uid: str = Depends(verify_firebase_token),
+):
+    diag = await get_diagnostic(diagnostic_id, uid)
     if not diag:
         raise HTTPException(status_code=404, detail="Diagnostico no encontrado")
     return diag
+
+
+# Compatibilidad temporal con clientes anteriores. La identidad efectiva sigue
+# siendo la del token; un path con otro UID se responde como recurso inexistente.
+@router.get("/user/{user_id}", deprecated=True)
+async def read_user_profile_legacy(
+    user_id: str,
+    uid: str = Depends(verify_firebase_token),
+):
+    if user_id != uid:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return await read_my_profile(uid)
+
+
+@router.get("/user/{user_id}/diagnostics", deprecated=True)
+async def read_user_diagnostics_legacy(
+    user_id: str,
+    uid: str = Depends(verify_firebase_token),
+):
+    if user_id != uid:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return await read_my_diagnostics(uid)

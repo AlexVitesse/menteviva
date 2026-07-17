@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { base64ToInt16 } from "../utils/pcm";
 import type { GeminiAudioSink } from "./useGeminiLive";
+import { apiFetch } from "../lib/api";
 
 /**
  * useOssAvatar: avatar de video self-hosted (avatar-service OSS, WebRTC).
@@ -25,8 +26,6 @@ import type { GeminiAudioSink } from "./useGeminiLive";
  * servicio falla (failed / sink inactivo), useGeminiLive cae solo al player
  * local y la UI debe renderizar el avatar 2D.
  */
-
-const API_URL = import.meta.env.VITE_API_URL || "";
 
 interface UseOssAvatarOptions {
   /**
@@ -88,19 +87,16 @@ export function useOssAvatar({ onSpeakingChange }: UseOssAvatarOptions = {}) {
     }
 
     // 1) Sesion efimera mediada por el backend (secretos server-side).
-    const resp = await fetch(`${API_URL}/api/avatar/session`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ avatar_id: avatarId }),
-    }).catch((e) => {
+    let session: AvatarSessionOss;
+    try {
+      session = await apiFetch<AvatarSessionOss>("/api/avatar/session", {
+        method: "POST",
+        json: { avatar_id: avatarId },
+      });
+    } catch (error) {
       setFailed(true);
-      throw e;
-    });
-    if (!resp.ok) {
-      setFailed(true);
-      throw new Error(`avatar/session HTTP ${resp.status}`);
+      throw error;
     }
-    const session = (await resp.json()) as AvatarSessionOss;
     if (session.provider !== "oss") {
       // El backend no esta en modo oss: caer al fallback (2D) sin reventar.
       setFailed(true);

@@ -294,7 +294,7 @@ export function Diagnostico() {
     }
     connect();
     return () => disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [sessionStarted]);
 
   useEffect(() => {

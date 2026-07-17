@@ -1,16 +1,19 @@
 import logging
 import sys
-from pathlib import Path
-from datetime import datetime
+import uuid
+from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+
 from app.config import settings
-from app.db import init_db, close_pool
-from app.routers import auth, conversation, avatars, profiles, sessions, simli, avatar, chat_text
+from app.db import close_pool, init_db
+from app.routers import auth, avatar, avatars, chat_text, conversation, profiles, sessions, simli
+from app.services.telemetry import increment
 
 # ============ CONFIGURAR LOGGING ============
 
@@ -42,15 +45,28 @@ console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(logging.Formatter(LOG_FORMAT, DATE_FORMAT))
 
 # Agregar handlers
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+if not logger.handlers:
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+else:
+    file_handler.close()
 
 # También capturar logs de uvicorn
-logging.getLogger("uvicorn.access").handlers = [file_handler, console_handler]
+logging.getLogger("uvicorn.access").handlers = list(logger.handlers)
 
 # ============ CREAR APP ============
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await init_db()
+    try:
+        yield
+    finally:
+        await close_pool()
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 logger.info("=" * 60)
 logger.info(f"Iniciando {settings.app_name}")
@@ -66,6 +82,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Propaga un identificador opaco para correlacionar requests y errores."""
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception("[HTTP] fallo no controlado request_id=%s", request_id)
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": "Error interno", "request_id": request_id},
+        )
+    response.headers["X-Request-ID"] = request_id
+    if response.status_code >= 500:
+        await increment("http_5xx")
+    logger.info(
+        f"[HTTP] request_id={request_id} method={request.method} "
+        f"path={request.url.path} status={response.status_code}"
+    )
+    return response
+
 app.include_router(avatars.router, prefix="/api", tags=["avatars"])
 app.include_router(conversation.router, prefix="/api", tags=["conversation"])
 app.include_router(profiles.router, prefix="/api", tags=["profiles"])
@@ -74,16 +112,6 @@ app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(simli.router, prefix="/api", tags=["simli"])
 app.include_router(avatar.router, prefix="/api", tags=["avatar"])
 app.include_router(chat_text.router, prefix="/api", tags=["chat-text"])
-
-
-@app.on_event("startup")
-async def startup_db():
-    await init_db()
-
-
-@app.on_event("shutdown")
-async def shutdown_db():
-    await close_pool()
 
 
 @app.get("/health")

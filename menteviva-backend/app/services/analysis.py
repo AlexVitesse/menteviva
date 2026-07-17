@@ -332,7 +332,6 @@ async def analyze_conversation(
         )
 
         result_text = response.choices[0].message.content
-        logger.debug(f"[Analysis] Respuesta raw: {result_text[:500]}...")
 
         # Parsear JSON
         analysis = json.loads(result_text)
@@ -362,11 +361,11 @@ async def analyze_conversation(
         return analysis
 
     except json.JSONDecodeError as e:
-        logger.error(f"[Analysis] Error parseando JSON: {e}")
+        logger.error("[Analysis] Error parseando JSON type=%s", type(e).__name__)
         return _empty_analysis("Error al procesar el analisis")
     except Exception as e:
-        logger.error(f"[Analysis] Error en analisis: {e}", exc_info=True)
-        return _empty_analysis(f"Error: {str(e)}")
+        logger.error("[Analysis] Error en analisis: %s", type(e).__name__, exc_info=True)
+        return _empty_analysis("Error temporal generando el analisis")
 
 
 def _format_conversation(conversation: list[dict], max_chars: int = 24000) -> str:
@@ -467,7 +466,7 @@ def _demo_analysis(avatar_id: str, kpis_config: dict, exchanges: int, duration_s
 
     strengths = [
         f"Buena base en {sorted_skills[0]['name'].lower()}",
-        f"Actitud profesional y receptiva durante la conversacion",
+        "Actitud profesional y receptiva durante la conversacion",
     ]
 
     improvements = [
@@ -858,8 +857,8 @@ def _drop_absence_gaps(gaps: list[dict]) -> list[dict]:
         has_quote = any(q in ev_raw for q in _QUOTE_MARKERS)
         if not has_quote and any(ev.startswith(p) for p in _ABSENCE_EVIDENCE_PREFIXES):
             logger.info(
-                f"[UserProfile] Descartado gap '{g.get('skill')}' por evidencia "
-                f"de ausencia: \"{ev[:80]}\""
+                "[UserProfile] Descartado gap por evidencia de ausencia skill=%s",
+                g.get("skill"),
             )
             continue
         filtered.append(g)
@@ -932,8 +931,8 @@ async def generate_user_profile(
     - Exito: devuelve el dict del LLM tras validarlo contra Diagnostico.
     """
     logger.info(
-        f"[UserProfile] Generando diagnostico - usuario: {registro.nombre}, "
-        f"rol: {registro.rol_objetivo}, intercambios: {len(conversation) // 2}"
+        "[UserProfile] Generando diagnostico intercambios=%d",
+        len(conversation) // 2,
     )
 
     actual_exchanges = len(conversation) // 2
@@ -979,7 +978,6 @@ async def generate_user_profile(
             response_format={"type": "json_object"},
         )
         result_text = response.choices[0].message.content
-        logger.debug(f"[UserProfile] Raw response: {result_text[:500]}...")
 
         parsed = json.loads(result_text)
 
@@ -1004,7 +1002,10 @@ async def generate_user_profile(
         try:
             validated = Diagnostico(**parsed)
         except Exception as e:
-            logger.error(f"[UserProfile] JSON no cumple schema Diagnostico: {e}")
+            logger.error(
+                "[UserProfile] JSON no cumple schema Diagnostico type=%s",
+                type(e).__name__,
+            )
             return _demo_diagnostico(
                 reason_in_blind_spot=(
                     "No pudimos estructurar el diagnostico esta vez. "
@@ -1020,12 +1021,12 @@ async def generate_user_profile(
         return validated.model_dump()
 
     except json.JSONDecodeError as e:
-        logger.error(f"[UserProfile] JSON decode error: {e}")
+        logger.error("[UserProfile] JSON decode error type=%s", type(e).__name__)
         return _demo_diagnostico(
             reason_in_blind_spot="Error procesando la respuesta. Intenta de nuevo."
         )
     except Exception as e:
-        logger.error(f"[UserProfile] Error general: {e}", exc_info=True)
+        logger.error("[UserProfile] Error general type=%s", type(e).__name__)
         return _demo_diagnostico(
             reason_in_blind_spot="Error temporal generando diagnostico. Intenta de nuevo."
         )

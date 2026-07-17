@@ -9,16 +9,24 @@
 # Detener:  docker compose -f docker/docker-compose.yml down
 
 services:
+  edge:
+    image: nginx:1.27-alpine
+    ports:
+      - "8743:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
   backend:
     build:
       # Context = raiz del repo para que el Dockerfile vea ambos sub-apps.
       context: ..
       dockerfile: docker/Dockerfile
     container_name: menteviva-app
-    ports:
-      # Host 8743 (puerto poco comun, elegido para no chocar con otros
-      # proyectos que suelen usar 3000/5000/8000/8080/9000) -> 8000 del contenedor.
-      - "8743:8000"
+    expose:
+      - "8000"
     env_file:
       # Trae GROQ/GEMINI/ELEVENLABS/SIMLI/FIREBASE_* desde el .env real.
       - ../menteviva-backend/.env

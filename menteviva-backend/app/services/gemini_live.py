@@ -25,7 +25,7 @@ import asyncio
 import logging
 import struct
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from threading import Lock
 
 from google import genai
@@ -544,8 +544,8 @@ async def generate_text(
             last_err = e
             if i < attempts - 1 and _should_try_next_key(e):
                 logger.warning(
-                    f"[GeminiText] key {i + 1}/{attempts} fallo ({str(e)[:120]}); "
-                    f"reintentando con la siguiente key"
+                    f"[GeminiText] key {i + 1}/{attempts} fallo "
+                    f"type={type(e).__name__}; reintentando con la siguiente key"
                 )
                 continue
             raise
@@ -674,10 +674,12 @@ async def analyze_vocal_tone(audio_pcm16_16k: bytes) -> str | None:
             if i < attempts - 1 and _should_try_next_key(e):
                 logger.warning(
                     f"[GeminiVocalTone] key {i + 1}/{attempts} fallo "
-                    f"({str(e)[:120]}); reintentando con la siguiente key"
+                    f"type={type(e).__name__}; reintentando con la siguiente key"
                 )
                 continue
-            logger.warning(f"[GeminiVocalTone] fallo, se omite la señal: {e}")
+            logger.warning(
+                "[GeminiVocalTone] fallo, se omite la señal type=%s", type(e).__name__
+            )
             return None
 
         usage = getattr(resp, "usage_metadata", None)

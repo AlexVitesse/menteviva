@@ -23,11 +23,12 @@ import asyncio
 import logging
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.config import settings
 from app.routers.simli import AVATAR_FACES, DEFAULT_FACE_ID, mint_simli_session
+from app.services.firebase_auth import verify_firebase_token
 
 logger = logging.getLogger("menteviva")
 
@@ -72,7 +73,7 @@ async def _oss_session(avatar_id: str) -> dict:
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.post(f"{base}/session", json=payload)
         except httpx.HTTPError as e:
-            logger.error(f"[AvatarOSS] error de red pidiendo sesion: {e}")
+            logger.error("[AvatarOSS] error de red pidiendo sesion type=%s", type(e).__name__)
             raise HTTPException(status_code=502, detail="No se pudo contactar al avatar-service")
 
         # 409 = servicio lleno (MAX_SESSIONS). Reintento con backoff; si persiste, 503.
@@ -84,26 +85,26 @@ async def _oss_session(avatar_id: str) -> dict:
             )
             await asyncio.sleep(_CAP_BACKOFFS[attempt])
             continue
-        logger.warning(f"[AvatarOSS] servicio lleno (409) tras reintentos: {resp.text[:200]}")
+        logger.warning("[AvatarOSS] servicio lleno (409) tras reintentos")
         raise HTTPException(
             status_code=503,
             detail="El avatar-service esta lleno (capacidad maxima). Reintenta en unos segundos.",
         )
 
     if resp.status_code != 200:
-        logger.error(f"[AvatarOSS] sesion rechazada {resp.status_code}: {resp.text[:200]}")
+        logger.error("[AvatarOSS] sesion rechazada status=%s", resp.status_code)
         raise HTTPException(status_code=502, detail="El avatar-service rechazo la sesion")
 
     try:
         data = resp.json()
     except ValueError:
-        logger.error(f"[AvatarOSS] respuesta no-JSON: {resp.text[:200]}")
+        logger.error("[AvatarOSS] respuesta no-JSON")
         raise HTTPException(status_code=502, detail="El avatar-service devolvio una respuesta invalida")
 
     session_id = data.get("session_id")
     signaling_url = data.get("signaling_url")
     if not session_id or not signaling_url:
-        logger.error(f"[AvatarOSS] respuesta incompleta: {data}")
+        logger.error("[AvatarOSS] respuesta incompleta")
         raise HTTPException(status_code=502, detail="El avatar-service no devolvio session_id/signaling_url")
 
     logger.info(f"[AvatarOSS] sesion creada (avatar={avatar_id}, session={str(session_id)[:8]}...)")
@@ -118,7 +119,10 @@ async def _oss_session(avatar_id: str) -> dict:
 
 
 @router.post("/avatar/session")
-async def create_avatar_session(req: AvatarSessionRequest):
+async def create_avatar_session(
+    req: AvatarSessionRequest,
+    _uid: str = Depends(verify_firebase_token),
+):
     """Crea una sesion de avatar segun el proveedor configurado.
 
     Endpoint agnostico del motor: el frontend lee `provider` de la respuesta y

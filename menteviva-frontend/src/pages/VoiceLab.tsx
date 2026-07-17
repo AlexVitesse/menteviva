@@ -819,7 +819,7 @@ export function VoiceLab() {
       endingRef.current = true;
       voiceLab.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [sessionStarted]);
 
   // ── Countdown del cierre ──────────────────────────────────────────────

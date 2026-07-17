@@ -153,7 +153,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   clearUserProfile: () => {
     clearStoredProfile();
-    set({ userProfile: null, needsRegistration: false, authError: null });
+    window.dispatchEvent(new Event("menteviva:logout"));
+    set({
+      userProfile: null,
+      needsRegistration: false,
+      authError: null,
+      messages: [],
+      metrics: null,
+      serverError: null,
+      status: "disconnected",
+      diagnosticoVars: null,
+      selectedAvatar: null,
+    });
   },
 
   setUserProfileFromAuth: (profile) => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { base64ToInt16, concatInt16, pcm16ToWavBlob } from "../utils/pcm";
+import { apiFetch } from "../lib/api";
 import type { GeminiAudioSink } from "./useGeminiLive";
 
 /**
@@ -32,7 +33,6 @@ import type { GeminiAudioSink } from "./useGeminiLive";
  * reproducimos nosotros vía el <audio>, evitando doble audio).
  */
 
-const API_URL = import.meta.env.VITE_API_URL || "";
 const OUTPUT_SAMPLE_RATE = 24000; // PCM de Gemini (ver useGeminiLive / gemini_live.py)
 
 interface UseOssAvatarWsOptions {
@@ -98,15 +98,10 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
     }
 
     // 1) Sesion mediada por el backend (idéntico al path WebRTC).
-    const resp = await fetch(`${API_URL}/api/avatar/session`, {
+    const session = await apiFetch<AvatarSessionOss>("/api/avatar/session", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ avatar_id: avatarId }),
+      json: { avatar_id: avatarId },
     });
-    if (!resp.ok) {
-      throw new Error(`avatar/session HTTP ${resp.status}`);
-    }
-    const session = (await resp.json()) as AvatarSessionOss;
     if (session.provider !== "oss") {
       throw new Error(`avatar/session provider inesperado: ${session.provider}`);
     }
