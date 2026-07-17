@@ -68,6 +68,11 @@ export function Diagnostico() {
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [requestingPermission, setRequestingPermission] = useState(false);
   const [showEscape, setShowEscape] = useState(false);
+  // Fase de conexion (post-permiso): overlay con spinner hasta que Sofia salude.
+  // `forceEnter` deja pasar manualmente (escape); `showConnectingEscape` muestra
+  // ese boton tras unos segundos por si la conexion tarda de mas.
+  const [forceEnter, setForceEnter] = useState(false);
+  const [showConnectingEscape, setShowConnectingEscape] = useState(false);
   const [closingCountdown, setClosingCountdown] = useState<number | null>(null);
   // Toggle visual de "tu camara" — placeholder, no abre webcam real.
   // Match con la UI de Simulation.tsx para que ambas vistas se vean iguales.
@@ -182,6 +187,30 @@ export function Diagnostico() {
   // (generating_audio), no en isPlaying del useAudioPlayer (que aqui no se usa).
   const geminiSpeaking = IS_GEMINI && status === "generating_audio";
 
+  // "Conectando": desde que arranca la sesion (mic concedido) hasta que Sofia
+  // saluda. useGeminiLive garantiza `hasGreeted` en <=6s (fallback), asi que
+  // esta fase es ACOTADA. Mantiene el overlay con spinner y SIN boton -> no se
+  // puede re-disparar el inicio (evita el doble-connect/cuelgue). `forceEnter`
+  // permite entrar a mano si algo tarda de mas.
+  const preparing =
+    IS_GEMINI &&
+    sessionStarted &&
+    !gemini.hasGreeted &&
+    !forceEnter &&
+    !serverError &&
+    status !== "disconnected";
+
+  // Escape de seguridad: si la conexion tarda >10s, ofrecer entrar igual (nunca
+  // dejar el overlay bloqueando indefinidamente).
+  useEffect(() => {
+    if (!preparing) {
+      setShowConnectingEscape(false);
+      return;
+    }
+    const t = window.setTimeout(() => setShowConnectingEscape(true), 10000);
+    return () => window.clearTimeout(t);
+  }, [preparing]);
+
   const doEndSession = useCallback(() => {
     if (IS_GEMINI) gemini.endSession();
     else endSession();
@@ -277,6 +306,9 @@ export function Diagnostico() {
   }, [sessionStarted]);
 
   async function handleStartSession() {
+    // Guard: el boton ya se deshabilita por requestingPermission, pero esto corta
+    // cualquier doble-invocacion (evita re-disparar el arranque / doble-connect).
+    if (requestingPermission || sessionStarted) return;
     setRequestingPermission(true);
     setPermissionError(null);
     setShowEscape(false);
@@ -741,7 +773,7 @@ export function Diagnostico() {
           </motion.div>
         )}
 
-        {!sessionStarted && (
+        {(!sessionStarted || preparing) && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -753,51 +785,75 @@ export function Diagnostico() {
               animate={{ scale: 1, y: 0 }}
               className="w-full max-w-md bg-card rounded-2xl border border-white/5 p-8 text-center"
             >
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet/20 flex items-center justify-center">
-                <Mic className="w-8 h-8 text-violet-light" />
-              </div>
-              <h2 className="font-syne text-2xl font-bold mb-2">Listo para empezar</h2>
-              <p className="text-muted text-sm mb-6">
-                Vamos a pedirte permiso de microfono para que Sofia pueda
-                escucharte. La entrevista dura unos {diagnosticoVars?.minutos ?? 25} minutos.
-                No necesitas presionar nada — solo habla naturalmente cuando quieras.
-              </p>
+              {preparing ? (
+                /* Fase de conexion: spinner, SIN boton de inicio (no re-disparar). */
+                <>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet/20 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 text-violet-light animate-spin" />
+                  </div>
+                  <h2 className="font-syne text-2xl font-bold mb-2">Conectando con Sofía…</h2>
+                  <p className="text-muted text-sm mb-6">
+                    Preparando el avatar y la voz. Esto toma unos segundos — no
+                    cierres la ventana.
+                  </p>
+                  {showConnectingEscape && (
+                    <button
+                      onClick={() => setForceEnter(true)}
+                      className="w-full font-syne font-bold text-xs py-2 rounded-[10px] border border-white/20 text-muted hover:text-cream hover:border-white/40 transition-colors"
+                    >
+                      Entrar de todas formas
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet/20 flex items-center justify-center">
+                    <Mic className="w-8 h-8 text-violet-light" />
+                  </div>
+                  <h2 className="font-syne text-2xl font-bold mb-2">Listo para empezar</h2>
+                  <p className="text-muted text-sm mb-6">
+                    Vamos a pedirte permiso de microfono para que Sofia pueda
+                    escucharte. La entrevista dura unos {diagnosticoVars?.minutos ?? 25} minutos.
+                    No necesitas presionar nada — solo habla naturalmente cuando quieras.
+                  </p>
 
-              {permissionError && (
-                <div className="flex items-start gap-2 bg-warning/10 border border-warning/30 rounded-lg p-3 mb-4 text-left">
-                  <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-                  <p className="text-xs text-cream">{permissionError}</p>
-                </div>
+                  {permissionError && (
+                    <div className="flex items-start gap-2 bg-warning/10 border border-warning/30 rounded-lg p-3 mb-4 text-left">
+                      <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                      <p className="text-xs text-cream">{permissionError}</p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleStartSession}
+                    disabled={requestingPermission}
+                    className="w-full font-syne font-bold text-sm py-3 rounded-[10px] bg-violet text-white hover:bg-violet-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {requestingPermission ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Pidiendo permiso...
+                      </>
+                    ) : (
+                      "Iniciar entrevista"
+                    )}
+                  </button>
+
+                  {showEscape && requestingPermission && (
+                    <button
+                      onClick={handleForceStart}
+                      className="w-full mt-3 font-syne font-bold text-xs py-2 rounded-[10px] border border-white/20 text-muted hover:text-cream hover:border-white/40 transition-colors"
+                    >
+                      Continuar de todas formas
+                    </button>
+                  )}
+
+                  <p className="text-[11px] text-muted mt-4">
+                    En movil (Android/iOS): el navegador solo permite el microfono sobre HTTPS.
+                    Accede via un tunnel (ngrok, cloudflared) o desde localhost en desktop.
+                  </p>
+                </>
               )}
-
-              <button
-                onClick={handleStartSession}
-                disabled={requestingPermission}
-                className="w-full font-syne font-bold text-sm py-3 rounded-[10px] bg-violet text-white hover:bg-violet-light transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {requestingPermission ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Pidiendo permiso...
-                  </>
-                ) : (
-                  "Iniciar entrevista"
-                )}
-              </button>
-
-              {showEscape && requestingPermission && (
-                <button
-                  onClick={handleForceStart}
-                  className="w-full mt-3 font-syne font-bold text-xs py-2 rounded-[10px] border border-white/20 text-muted hover:text-cream hover:border-white/40 transition-colors"
-                >
-                  Continuar de todas formas
-                </button>
-              )}
-
-              <p className="text-[11px] text-muted mt-4">
-                En movil (Android/iOS): el navegador solo permite el microfono sobre HTTPS.
-                Accede via un tunnel (ngrok, cloudflared) o desde localhost en desktop.
-              </p>
             </motion.div>
           </motion.div>
         )}
