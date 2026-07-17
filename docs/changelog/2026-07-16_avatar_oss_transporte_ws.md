@@ -64,6 +64,22 @@ reproduce el WAV acumulado al llegar el **primer frame de la locución** (armado
 por `speaking`, disparado por el frame) → audio y video arrancan juntos. Fallback:
 si llega `silent` sin ningún frame, se reproduce igual para no quedar mudos.
 
+## Endurecimiento anti-cuelgue (tras reporte "le doy al botón y se queda colgado")
+Diagnostico hace `await videoAvatar.connect()` ANTES de `gemini.connect()`. Si el
+`connect` del avatar se cuelga, Sofía nunca arranca y el video queda en
+"Conectando…" para siempre. Dos causas posibles y sus fixes en `useOssAvatarWs`:
+- **`await ws.onopen` sin timeout**: si el WS no abre (servicio de sesión única
+  ocupado) colgaba indefinido. Ahora hay **timeout de 12 s** → `connect()` rechaza,
+  Diagnostico cae a 2D y **Gemini sí arranca** (Sofía con voz, sin video).
+- **Carrera de doble-connect**: la pre-conexión del botón y el effect de
+  `sessionStarted` podían pasar ambos el guard (que dependía de `wsRef`, seteado
+  tarde) y abrir DOS sesiones contra un servicio de una-sola. Se agregó un guard
+  de reentrancia **síncrono** (`connectingRef`) que corta el 2º `connect`.
+
+Nota operativa: durante el desarrollo el HMR de Vite recargó `Diagnostico.tsx`
+varias veces con la página abierta; si el síntoma persiste, **hard refresh**
+(Ctrl+Shift+R) para descartar estado stale del tab.
+
 ## Pendiente (E2E de conversación real)
 - Probarlo dentro del flujo `/diagnostico` (con Gemini alimentando el sink) para
   validar sincronía con voz real, barge-in e indicador "Sofía habla".

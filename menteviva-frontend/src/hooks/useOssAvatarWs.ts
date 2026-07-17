@@ -63,6 +63,11 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
   // ~4s ANTES del primer frame (latencia de inferencia MuseTalk); reproducir en
   // "speaking" desincronizaría el audio del video. Reproducimos en el 1er frame.
   const armedRef = useRef(false);
+  // Guard de reentrancia SINCRONO: wsRef.current se setea tarde (tras el fetch de
+  // sesion), asi que dos connect() concurrentes (pre-conexion del boton + effect
+  // de sessionStarted) podrian pasar el guard y abrir DOS sesiones — fatal contra
+  // un servicio de sesion unica. Este flag corta el 2o connect de inmediato.
+  const connectingRef = useRef(false);
 
   const [connected, setConnected] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -71,12 +76,24 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
   speakingCbRef.current = onSpeakingChange;
 
   const connect = useCallback(async (avatarId: string) => {
-    if (wsRef.current) return; // ya conectado o conectando
+    if (wsRef.current || connectingRef.current) return; // ya conectado/conectando
+    connectingRef.current = true;
+    try {
+      await _connect(avatarId);
+    } catch (e) {
+      setFailed(true);
+      throw e;
+    } finally {
+      connectingRef.current = false;
+    }
+  }, []);
 
+  // Cuerpo real de connect (separado para envolverlo en el guard de reentrancia
+  // + limpieza de connectingRef sin repetir en cada salida).
+  const _connect = useCallback(async (avatarId: string) => {
     const video = videoRef.current;
     const audio = audioRef.current;
     if (!video || !audio) {
-      setFailed(true);
       throw new Error("OssAvatarWs no esta montado (refs de video/audio vacios)");
     }
 
@@ -85,17 +102,12 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ avatar_id: avatarId }),
-    }).catch((e) => {
-      setFailed(true);
-      throw e;
     });
     if (!resp.ok) {
-      setFailed(true);
       throw new Error(`avatar/session HTTP ${resp.status}`);
     }
     const session = (await resp.json()) as AvatarSessionOss;
     if (session.provider !== "oss") {
-      setFailed(true);
       throw new Error(`avatar/session provider inesperado: ${session.provider}`);
     }
 
@@ -193,11 +205,27 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
       speakingCbRef.current?.(false);
     };
 
-    // 3) Esperar a que abra (para que connect() resuelva como el gemelo WebRTC).
+    // 3) Esperar apertura CON TIMEOUT: connect() DEBE resolver/rechazar acotado.
+    // Diagnostico hace `await videoAvatar.connect()` ANTES de gemini.connect(), asi
+    // que un WS que no abre (servicio de sesion unica ocupado) congelaria TODA la
+    // sesion (Sofia nunca arranca y el video queda en "Conectando..."). Con el
+    // timeout, connect() rechaza -> Diagnostico cae a 2D y Gemini SI arranca.
     await new Promise<void>((resolve, reject) => {
-      ws.onopen = () => resolve();
+      const timer = window.setTimeout(() => {
+        try {
+          ws.close();
+        } catch {
+          /* noop */
+        }
+        wsRef.current = null;
+        reject(new Error(`avatar WS ${wsUrl} open timeout`));
+      }, 12000);
+      ws.onopen = () => {
+        window.clearTimeout(timer);
+        resolve();
+      };
       ws.onerror = () => {
-        setFailed(true);
+        window.clearTimeout(timer);
         try {
           ws.close();
         } catch {
