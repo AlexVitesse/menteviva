@@ -808,8 +808,11 @@ async def conversation_websocket(
                 })
                 await websocket.close(code=1008, reason="Protocolo WebSocket invalido")
                 return
+            # Solo el tipo en produccion (el mensaje puede arrastrar prompt o PII);
+            # con DEBUG el traceback completo, sin el no hay forma de diagnosticar.
             logger.error(
-                "[WS-Gemini] Error avatar=%s type=%s", avatar_id, type(e).__name__
+                "[WS-Gemini] Error avatar=%s type=%s", avatar_id, type(e).__name__,
+                exc_info=settings.debug,
             )
             try:
                 await websocket.send_json({

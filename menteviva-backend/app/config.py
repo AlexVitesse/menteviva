@@ -125,6 +125,9 @@ class Settings(BaseSettings):
     # VPS). Vive SOLO en el backend — el navegador nunca la ve; el backend hace
     # POST {avatar_service_url}/session y devuelve la signaling_url ya resuelta.
     avatar_service_url: str = ""
+    # Bearer compartido para POST /session. Debe coincidir con
+    # AVATAR_SERVICE_TOKEN del pod y nunca se envia al navegador.
+    avatar_service_token: str = ""
     # Espejo de simli_max_session_seconds para el camino OSS (limite duro de sesion).
     avatar_max_session_seconds: int = 1800
 

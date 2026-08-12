@@ -119,8 +119,10 @@ despliegues en Vercel:
 
 ## 7. Lo que NO hace este setup (post-piloto)
 
-- **Reset de password**: el código no expone "olvidé mi contraseña" todavía.
-  Firebase tiene `sendPasswordResetEmail`; agregarlo cuando haya feedback.
+- ~~**Reset de password**~~: ya está — link "¿Olvidaste tu contraseña?" en
+  `Login.tsx` con `sendPasswordResetEmail` (correo y página de reset hosteados
+  por Firebase). Requiere que la plantilla *Password reset* esté habilitada en
+  Console → Authentication → Templates (lo está por defecto).
 - **Email verification**: no exigimos verificar email para entrar. Después
   agregamos el flag `email_verified` como requisito.
 - **OAuth (Google/Apple/Microsoft)**: solo email+password. Activar otros

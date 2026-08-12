@@ -51,6 +51,11 @@ al lado de AvatarAI.
 
 El navegador nunca habla directo con secretos: pide al backend una sesión efímera.
 
+Cuando el servicio esta publicado, el backend incluye un Bearer compartido en la
+llamada a `POST /session` (`AVATAR_SERVICE_TOKEN` en ambos repos). Este token nunca
+se incluye en la respuesta ni en variables `VITE_*`; el navegador usa solamente el
+`session_id` efimero devuelto.
+
 ```
 POST /api/avatar/session
 body: { "avatar_id": "entrevistador" }

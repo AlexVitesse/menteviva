@@ -108,7 +108,12 @@ export function useOssAvatarWs({ onSpeakingChange }: UseOssAvatarWsOptions = {})
 
     // 2) Derivar la URL del WS del host de la signaling_url.
     const u = new URL(session.signaling_url);
-    const wsUrl = (u.protocol === "https:" ? "wss:" : "ws:") + "//" + u.host + "/ws/demo";
+    const wsUrl =
+      (u.protocol === "https:" ? "wss:" : "ws:") +
+      "//" +
+      u.host +
+      "/ws/demo?session_id=" +
+      encodeURIComponent(session.session_id);
 
     // Canvas oculto para pintar los frames JPEG.
     const canvas = document.createElement("canvas");

@@ -32,7 +32,7 @@ cuando algo no funcione, se vea mal, o sea confuso.
 Abre esta dirección en Chrome:
 
 ```
-https://controversy-essential-dish-tower.trycloudflare.com
+https://varied-cattle-tables-shelter.trycloudflare.com
 ```
 
 > ⚠️ Si el link deja de abrir o da error, **avísanos de inmediato** — la

@@ -24,6 +24,10 @@ services:
       # Context = raiz del repo para que el Dockerfile vea ambos sub-apps.
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        VITE_AVATAR_PROVIDER: ${VITE_AVATAR_PROVIDER:-simli}
+        VITE_AVATAR_TRANSPORT: ${VITE_AVATAR_TRANSPORT:-webrtc}
+        VITE_SIMLI_AVATAR: ${VITE_SIMLI_AVATAR:-1}
     container_name: menteviva-app
     expose:
       - "8000"

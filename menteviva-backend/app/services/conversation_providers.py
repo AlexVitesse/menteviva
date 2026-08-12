@@ -24,8 +24,11 @@ class GroqConversationProvider:
 
 
 class GeminiLiveProvider:
-    def open(self, **kwargs):
-        return open_session(**kwargs)
+    def open(self, *args, **kwargs):
+        # Passthrough completo: el caller pasa avatar_id y system_prompt POSICIONALES
+        # (conversation_session.py). Sin *args esto lanzaba TypeError antes de abrir
+        # la sesion, y el except generico lo reportaba como "fallo inesperado".
+        return open_session(*args, **kwargs)
 
 
 groq_provider = GroqConversationProvider()

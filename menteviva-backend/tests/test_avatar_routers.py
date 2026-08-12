@@ -20,6 +20,7 @@ class Response:
 
 class Client:
     response = Response()
+    last_post_kwargs = {}
 
     def __init__(self, **_kwargs):
         pass
@@ -31,6 +32,7 @@ class Client:
         return None
 
     async def post(self, *_args, **_kwargs):
+        type(self).last_post_kwargs = _kwargs
         return self.response
 
 
@@ -84,6 +86,7 @@ async def test_avatar_dispatches_all_configured_modes(monkeypatch):
 @pytest.mark.asyncio
 async def test_oss_session_uses_mock_service(monkeypatch):
     monkeypatch.setattr(settings, "avatar_service_url", "https://avatar.test")
+    monkeypatch.setattr(settings, "avatar_service_token", "shared-secret")
     monkeypatch.setattr(avatar.httpx, "AsyncClient", Client)
     Client.response = Response(data={
         "session_id": "session-1",
@@ -92,6 +95,9 @@ async def test_oss_session_uses_mock_service(monkeypatch):
     result = await avatar._oss_session("entrevistador")
     assert result["provider"] == "oss"
     assert result["ice_servers"] == avatar.DEFAULT_ICE_SERVERS
+    assert Client.last_post_kwargs["headers"] == {
+        "Authorization": "Bearer shared-secret"
+    }
 
 
 @pytest.mark.asyncio

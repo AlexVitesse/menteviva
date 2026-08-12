@@ -59,6 +59,9 @@ async def _oss_session(avatar_id: str) -> dict:
         raise HTTPException(status_code=503, detail="AVATAR_SERVICE_URL no configurada")
 
     base = settings.avatar_service_url.rstrip("/")
+    headers = {}
+    if settings.avatar_service_token:
+        headers["Authorization"] = f"Bearer {settings.avatar_service_token}"
     payload = {
         "avatar_id": avatar_id,
         # face_id: mismo mapeo que Simli por ahora (el avatar-service decide como
@@ -71,7 +74,7 @@ async def _oss_session(avatar_id: str) -> dict:
     for attempt in range(len(_CAP_BACKOFFS) + 1):
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(f"{base}/session", json=payload)
+                resp = await client.post(f"{base}/session", json=payload, headers=headers)
         except httpx.HTTPError as e:
             logger.error("[AvatarOSS] error de red pidiendo sesion type=%s", type(e).__name__)
             raise HTTPException(status_code=502, detail="No se pudo contactar al avatar-service")

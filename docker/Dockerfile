@@ -15,9 +15,14 @@ WORKDIR /build
 COPY menteviva-frontend/package.json menteviva-frontend/package-lock.json ./
 RUN npm ci
 COPY menteviva-frontend/ ./
-# Forzar el avatar realista Simli ON en este build (no esta en .env todavia).
-# Vite expone variables VITE_* presentes en el entorno del proceso de build.
-ENV VITE_SIMLI_AVATAR=1
+# El provider/transport se fijan al construir el bundle de Vite. Los defaults
+# conservan el despliegue Simli actual; el overlay RunPod usa oss + ws.
+ARG VITE_AVATAR_PROVIDER=simli
+ARG VITE_AVATAR_TRANSPORT=webrtc
+ARG VITE_SIMLI_AVATAR=1
+ENV VITE_AVATAR_PROVIDER=${VITE_AVATAR_PROVIDER} \
+    VITE_AVATAR_TRANSPORT=${VITE_AVATAR_TRANSPORT} \
+    VITE_SIMLI_AVATAR=${VITE_SIMLI_AVATAR}
 RUN npm run build
 
 # ---------- Stage 2: backend (FastAPI + uvicorn) ----------
