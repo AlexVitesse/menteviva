@@ -91,13 +91,13 @@ async def list_user_sessions(user_id: str, limit: int = 50) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-async def get_session(session_id: int) -> Optional[dict]:
-    """Devuelve una sesion completa con analisis y conversacion parseados."""
+async def get_session(session_id: int, owner_uid: str) -> Optional[dict]:
+    """Devuelve una sesion completa solo si pertenece al UID autenticado."""
     async with get_db() as db:
         async with db.cursor() as cur:
             await cur.execute(
-                "SELECT * FROM practice_sessions WHERE session_id = %s",
-                (session_id,),
+                "SELECT * FROM practice_sessions WHERE session_id = %s AND user_id = %s",
+                (session_id, owner_uid),
             )
             row = await cur.fetchone()
         if not row:

@@ -133,7 +133,7 @@ async def chat_stream(
             raise
         logger.warning(
             f"[LLM] {primary} disparo tool-use glitch antes del primer token; "
-            f"reintentando. Detalle: {e}"
+            f"reintentando. type={type(e).__name__}"
         )
 
     # Reintento con el MISMO modelo a temperatura mas alta (rompe el patron de
@@ -150,11 +150,11 @@ async def chat_stream(
         # ~1% de los turnos), NO lo enmascaramos como error: caemos al
         # re-enganche igual que en el caso de vacio, para que Sofia no quede muda.
         if yielded > 0 or not _is_tool_use_glitch(e):
-            logger.warning(f"[LLM] reintento de {primary} fallo: {e}")
+            logger.warning("[LLM] reintento de %s fallo type=%s", primary, type(e).__name__)
             raise
         logger.warning(
             f"[LLM] {primary} disparo tool-use glitch tambien en el reintento; "
-            f"usando re-enganche. Detalle: {e}"
+            f"usando re-enganche. type={type(e).__name__}"
         )
     if yielded > 0:
         return
@@ -223,7 +223,7 @@ async def chat_complete(
             raise
         logger.warning(
             f"[LLM] {primary} disparo tool-use glitch en chat_complete; "
-            f"reintento con el mismo modelo. Detalle: {e}"
+            f"reintento con el mismo modelo. type={type(e).__name__}"
         )
         # No caemos a llama: su limite de 6k TPM en free tier < este system
         # prompt (~8.5k tokens) => 413. El glitch es intermitente, reintentar
@@ -240,7 +240,10 @@ async def chat_complete(
         except Exception as e:
             if not _is_tool_use_glitch(e):
                 raise
-            logger.warning(f"[LLM] glitch tambien en reintento de chat_complete: {e}")
+            logger.warning(
+                "[LLM] glitch tambien en reintento de chat_complete type=%s",
+                type(e).__name__,
+            )
             text = ""
 
     text = text or _next_reengage()

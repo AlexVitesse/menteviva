@@ -65,3 +65,10 @@ export async function apiFetch<T = unknown>(
 
   return parsed as T;
 }
+
+export async function getWebSocketTicket(): Promise<string> {
+  const response = await apiFetch<{ ticket: string }>("/api/auth/ws-ticket", {
+    method: "POST",
+  });
+  return response.ticket;
+}

@@ -1,8 +1,8 @@
 import { FormEvent, lazy, Suspense, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { AlertCircle, Brain, Eye, EyeOff, LogIn, Sparkles, UserPlus } from "lucide-react";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { AlertCircle, Brain, Eye, EyeOff, LogIn, MailCheck, Sparkles, UserPlus } from "lucide-react";
+import { sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
 
 import { firebaseAuth, isFirebaseConfigured } from "../lib/firebase";
 
@@ -18,11 +18,13 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const configured = isFirebaseConfigured();
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    setNotice(null);
 
     if (!configured || !firebaseAuth) {
       setError(
@@ -45,6 +47,38 @@ export function Login() {
       navigate("/", { replace: true });
     } catch (err) {
       setError(translateFirebaseError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleReset() {
+    setError(null);
+    setNotice(null);
+
+    if (!configured || !firebaseAuth) {
+      setError(
+        "Firebase no está configurado en este build. Avisa al equipo técnico."
+      );
+      return;
+    }
+    if (!email.trim()) {
+      setError("Escribe tu email arriba y te mandamos el enlace para restablecerla.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await sendPasswordResetEmail(firebaseAuth, email.trim());
+      setNotice(_RESET_ENVIADO);
+    } catch (err) {
+      // user-not-found: respondemos igual que en el caso exitoso para no revelar
+      // qué emails existen (es lo que hace Firebase con enumeration protection).
+      if ((err as { code?: string })?.code === "auth/user-not-found") {
+        setNotice(_RESET_ENVIADO);
+      } else {
+        setError(translateFirebaseError(err, "enviar el enlace"));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -133,7 +167,22 @@ export function Login() {
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    disabled={submitting}
+                    className="mt-2 block text-xs text-white/50 underline decoration-white/20 underline-offset-2 transition-colors hover:text-violet-300 disabled:opacity-50"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
                 </div>
+
+                {notice && (
+                  <div className="flex items-start gap-3 rounded-xl border border-teal-500/30 bg-teal-500/10 p-3">
+                    <MailCheck className="mt-0.5 h-4 w-4 shrink-0 text-teal-400" />
+                    <p className="text-xs text-white/80">{notice}</p>
+                  </div>
+                )}
 
                 {error && (
                   <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
@@ -186,7 +235,10 @@ export function Login() {
   );
 }
 
-function translateFirebaseError(err: unknown): string {
+const _RESET_ENVIADO =
+  "Si ese email tiene cuenta, te llegó un enlace para restablecer la contraseña. Revisa tu bandeja y la carpeta de spam.";
+
+function translateFirebaseError(err: unknown, accion = "iniciar sesión"): string {
   const code = (err as { code?: string })?.code ?? "";
   if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found") {
     return "Email o contraseña incorrectos.";
@@ -200,5 +252,5 @@ function translateFirebaseError(err: unknown): string {
   if (code === "auth/network-request-failed") {
     return "Sin conexión. Revisa tu red.";
   }
-  return `No pudimos iniciar sesión: ${(err as Error)?.message ?? "error desconocido"}`;
+  return `No pudimos ${accion}: ${(err as Error)?.message ?? "error desconocido"}`;
 }

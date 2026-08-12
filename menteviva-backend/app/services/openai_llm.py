@@ -3,7 +3,9 @@ Servicio de LLM usando OpenAI (ChatGPT).
 """
 
 import logging
+
 from openai import AsyncOpenAI
+
 from app.config import settings
 from app.services.llm_costs import log_llm_cost
 

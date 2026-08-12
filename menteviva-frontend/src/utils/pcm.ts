@@ -34,6 +34,51 @@ export function pcm16Rms(buf: ArrayBuffer): number {
   return Math.sqrt(sum / n);
 }
 
+/** Concatena varios Int16Array en uno solo (util para juntar una locucion). */
+export function concatInt16(chunks: Int16Array[]): Int16Array {
+  let total = 0;
+  for (const c of chunks) total += c.length;
+  const out = new Int16Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.length;
+  }
+  return out;
+}
+
+/**
+ * Envuelve PCM16 mono en un contenedor WAV (RIFF) para reproducirlo via el
+ * elemento <audio>. Lo usa el transporte WS del avatar OSS (useOssAvatarWs):
+ * ese endpoint solo emite VIDEO, asi que la voz de Gemini se reproduce local.
+ * Little-endian: Int16Array usa el endianness de la plataforma (LE en x86/ARM),
+ * que coincide con el formato WAV.
+ */
+export function pcm16ToWavBlob(pcm: Int16Array, sampleRate: number): Blob {
+  const bytesPerSample = 2;
+  const dataSize = pcm.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const writeStr = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true); // tamano del sub-chunk fmt
+  view.setUint16(20, 1, true); // formato = PCM
+  view.setUint16(22, 1, true); // canales = mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true); // byte rate
+  view.setUint16(32, bytesPerSample, true); // block align
+  view.setUint16(34, 16, true); // bits por sample
+  writeStr(36, "data");
+  view.setUint32(40, dataSize, true);
+  new Int16Array(buffer, 44).set(pcm);
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
 /** string base64 (PCM16) -> Int16Array. */
 export function base64ToInt16(b64: string): Int16Array {
   const binary = atob(b64);

@@ -25,6 +25,7 @@ export interface DiagnosticoSessionVars {
 }
 
 export type SimulationLevel = "principiante" | "intermedio" | "avanzado";
+export type RobertoSalesCase = "descubrimiento" | "objeciones";
 
 interface SessionState {
   // Avatar seleccionado
@@ -35,6 +36,10 @@ interface SessionState {
   // Default principiante. No persiste entre sesiones.
   selectedLevel: SimulationLevel;
   setSelectedLevel: (level: SimulationLevel) => void;
+
+  // Caso fijo de manufactura que Roberto entrenara en esta sesion.
+  selectedRobertoCase: RobertoSalesCase;
+  setSelectedRobertoCase: (salesCase: RobertoSalesCase) => void;
 
   // Configuracion de la sesion de diagnostico (transient, no persiste)
   diagnosticoVars: DiagnosticoSessionVars | null;
@@ -88,6 +93,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   selectedLevel: "principiante",
   setSelectedLevel: (level) => set({ selectedLevel: level }),
+
+  selectedRobertoCase: "descubrimiento",
+  setSelectedRobertoCase: (salesCase) => set({ selectedRobertoCase: salesCase }),
 
   diagnosticoVars: null,
   setDiagnosticoVars: (vars) => set({ diagnosticoVars: vars }),
@@ -153,7 +161,18 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   clearUserProfile: () => {
     clearStoredProfile();
-    set({ userProfile: null, needsRegistration: false, authError: null });
+    window.dispatchEvent(new Event("menteviva:logout"));
+    set({
+      userProfile: null,
+      needsRegistration: false,
+      authError: null,
+      messages: [],
+      metrics: null,
+      serverError: null,
+      status: "disconnected",
+      diagnosticoVars: null,
+      selectedAvatar: null,
+    });
   },
 
   setUserProfileFromAuth: (profile) => {

@@ -6,7 +6,9 @@ Distribuye las llamadas entre múltiples API keys para evitar rate limits.
 
 import logging
 from threading import Lock
+
 from groq import Groq
+
 from app.config import settings
 
 logger = logging.getLogger("menteviva")
@@ -32,7 +34,7 @@ class GroqPool:
         for i, key in enumerate(keys):
             client = Groq(api_key=key)
             self._clients.append(client)
-            logger.info(f"[GroqPool] Cliente {i+1} inicializado (key: ...{key[-6:]})")
+            logger.info("[GroqPool] Cliente %s inicializado", i + 1)
 
         logger.info(f"[GroqPool] Pool inicializado con {len(self._clients)} clientes")
 

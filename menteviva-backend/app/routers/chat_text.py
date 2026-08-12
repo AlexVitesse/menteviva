@@ -30,9 +30,10 @@ import logging
 import re
 import time
 from datetime import datetime, timezone
+from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Depends, Header
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.models import UserProfile
@@ -43,23 +44,41 @@ from app.prompts.entrevistador import (
 )
 from app.prompts.scenarios import get_all_avatars, get_avatar, get_system_prompt
 from app.services.analysis import generate_user_profile
+from app.services.firebase_auth import verify_firebase_token
 from app.services.gemini_live import GEMINI_VOICE_ADDENDUM, generate_text
 from app.services.groq_llm import chat_complete
 from app.services.llm_costs import estimate_cost
 from app.services.openai_llm import chat_complete_openai
+from app.services.telemetry import pseudonymize_uid
 from app.services.user_repo import save_chatlab_conversation, save_diagnostic, upsert_user
 
 logger = logging.getLogger("menteviva")
 
 
-async def verify_chatlab_token(x_chatlab_token: str | None = Header(None, alias="X-ChatLab-Token")):
-    """Verifica el token de acceso si settings.chatlab_token está configurado."""
+async def verify_chatlab_token(
+    x_chatlab_token: str | None = Header(None, alias="X-ChatLab-Token"),
+    authorization: str | None = Header(None),
+):
+    """Autoriza un operador Firebase o, temporalmente, el token compartido."""
+    if authorization and settings.chatlab_operators:
+        uid = await verify_firebase_token(authorization)
+        if uid in settings.chatlab_operators:
+            return uid
+        raise HTTPException(status_code=403, detail="Usuario sin permisos de operador.")
+    if settings.app_environment.lower() == "production":
+        logger.error("[ChatLab] se requiere operador Firebase en production")
+        raise HTTPException(
+            status_code=503,
+            detail="El laboratorio no esta habilitado en este entorno.",
+        )
     if settings.chatlab_token:
         if not x_chatlab_token or x_chatlab_token != settings.chatlab_token:
             raise HTTPException(
                 status_code=401,
                 detail="Token de acceso al ChatLab faltante o inválido."
             )
+        return "shared-token"
+    return "development"
 
 
 router = APIRouter(dependencies=[Depends(verify_chatlab_token)])
@@ -114,8 +133,8 @@ def _strip_stage_directions(text: str) -> str:
 
 
 class ChatMessage(BaseModel):
-    role: str  # "user" | "assistant"
-    content: str
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=8000)
 
 
 class ChatRequest(BaseModel):
@@ -125,7 +144,7 @@ class ChatRequest(BaseModel):
     #   "gemini" -> para el diagnostico: prompt CONCISO + GEMINI_VOICE_ADDENDUM
     #               + modelo Gemini de texto = "como si fuera la voz, pero sin audio".
     provider: str = "groq"  # "groq" | "gemini" | "chatgpt"
-    messages: list[ChatMessage] = []
+    messages: list[ChatMessage] = Field(default_factory=list, max_length=100)
     # Si True, el avatar inicia la conversacion (util cuando messages esta vacio).
     # Inyecta un "nudge" como turno de usuario SOLO para la llamada al LLM; no se
     # devuelve en el historial, el cliente solo guarda la respuesta del avatar.
@@ -245,8 +264,8 @@ def _classify_provider_error(e: Exception, provider: str) -> tuple[int, str]:
             f"Reintenta en un momento."
         )
 
-    # 7) Cualquier otro: 502 con el detalle crudo (no ocultamos el error real).
-    return 502, f"Error del proveedor {provider}: {str(e)[:200]}"
+    # 7) Cualquier otro: no filtrar detalles internos/SDK al navegador.
+    return 502, f"Error inesperado del proveedor {provider}. Reintenta en un momento."
 
 
 @router.get("/chat/avatars")
@@ -278,8 +297,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
             up.setdefault("created_at", "1970-01-01T00:00:00Z")
             up.setdefault("updated_at", "1970-01-01T00:00:00Z")
             user_profile = UserProfile(**up)
-        except Exception as e:
-            logger.warning(f"[ChatText] user_profile invalido, ignorando: {e}")
+        except Exception:
+            logger.warning("[ChatText] user_profile invalido, ignorando")
 
     provider = req.provider if req.provider in ("groq", "gemini", "chatgpt") else "groq"
     is_diagnostico = avatar.get("kind") == "diagnostico"
@@ -383,15 +402,31 @@ async def chat(req: ChatRequest) -> ChatResponse:
     except Exception as e:
         status, detail = _classify_provider_error(e, provider)
         if status >= 500:
-            logger.error(f"[ChatText] error {provider}/{model_used}: {e}", exc_info=True)
+            logger.error(
+                "[ChatText] error %s/%s: %s",
+                provider,
+                model_used,
+                type(e).__name__,
+                exc_info=True,
+            )
         else:
-            logger.warning(f"[ChatText] {status} en {provider}/{model_used}: {e}")
+            logger.warning(
+                "[ChatText] %s en %s/%s: %s",
+                status,
+                provider,
+                model_used,
+                type(e).__name__,
+            )
         raise HTTPException(status_code=status, detail=detail)
 
     # Guardrail: quita acotaciones escénicas ("Silencio.", "(pausa)", etc.) que el
     # modelo a veces emite como texto pese a la regla del prompt. Se limpian del
     # reply que ve la UI (ruta de texto); la voz nativa no pasa por aquí.
     reply = _strip_stage_directions(reply)
+    if is_diagnostico:
+        from app.prompts.entrevistador import sanitize_interviewer_text
+
+        reply = sanitize_interviewer_text(reply)
 
     # Respuesta vacía sin excepción (Gemini/OpenAI pueden devolver "" por bloqueo
     # de contenido o turno de baja señal; Groq ya cae a re-enganche por su cuenta).
@@ -437,7 +472,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
 
 class DiagnosticoRequest(BaseModel):
     """Payload para generar el diagnostico final de una sesion del entrevistador."""
-    messages: list[ChatMessage]
+    messages: list[ChatMessage] = Field(min_length=1, max_length=100)
     # Registro opcional {nombre, rol_objetivo, industria, experience_level}. Si
     # falta algun campo se rellena con un placeholder para que el analisis corra.
     user_profile: dict | None = None
@@ -449,7 +484,7 @@ class DiagnosticoRequest(BaseModel):
     # EXPERIMENTAL (VoiceLab): lectura de tono/nervios que Gemini extrajo del
     # audio crudo (gemini_live.analyze_vocal_tone), reenviada por el cliente
     # desde el session_end del WS de voz. None en ChatLab texto / produccion.
-    vocal_note: str | None = None
+    vocal_note: str | None = Field(None, max_length=4000)
 
 
 class DiagnosticoResponse(BaseModel):
@@ -509,8 +544,8 @@ async def chat_diagnostico(req: DiagnosticoRequest) -> DiagnosticoResponse:
     conversation = [{"role": m.role, "content": m.content} for m in req.messages]
 
     logger.info(
-        f"[ChatText] diagnostico solicitado - intercambios={len(conversation) // 2} "
-        f"registro={registro.nombre}/{registro.rol_objetivo}"
+        "[ChatText] diagnostico solicitado intercambios=%d",
+        len(conversation) // 2,
     )
 
     t0 = time.perf_counter()
@@ -541,10 +576,17 @@ async def chat_diagnostico(req: DiagnosticoRequest) -> DiagnosticoResponse:
             await upsert_user(profile)
             diagnostic_id = await save_diagnostic(user_id, diagnostico, conversation)
             saved = True
-            logger.info(f"[ChatText] diagnostico persistido id={diagnostic_id} user={user_id}")
+            logger.info(
+                "[ChatText] diagnostico persistido id=%s user=%s",
+                diagnostic_id,
+                pseudonymize_uid(user_id),
+            )
         except Exception as e:
-            save_error = str(e)[:200]
-            logger.warning(f"[ChatText] no se pudo persistir el diagnostico: {e}")
+            save_error = "No se pudo persistir el diagnostico."
+            logger.warning(
+                "[ChatText] no se pudo persistir el diagnostico: %s",
+                type(e).__name__,
+            )
 
     return DiagnosticoResponse(
         diagnostico=diagnostico,
@@ -557,8 +599,8 @@ async def chat_diagnostico(req: DiagnosticoRequest) -> DiagnosticoResponse:
 
 class SaveConversationRequest(BaseModel):
     """Payload para persistir una conversacion del ChatLab (auto-guardado)."""
-    session_id: str
-    messages: list[ChatMessage] = []
+    session_id: str = Field(min_length=1, max_length=200)
+    messages: list[ChatMessage] = Field(default_factory=list, max_length=100)
     # Metadatos opcionales para listar/identificar la conversacion en BD.
     name: str | None = None
     avatar_id: str | None = None
@@ -568,10 +610,10 @@ class SaveConversationRequest(BaseModel):
     closed: bool = False
     # Feedback like/dislike por mensaje (alineado por indice con `messages`).
     # Se incrusta en conversation_json para que la calificacion quede en BD.
-    feedback: list[str | None] = []
+    feedback: list[str | None] = Field(default_factory=list, max_length=100)
     # Comentario del dislike ("por que no gusto") por mensaje, alineado por indice
     # con `messages`. Se incrusta junto al feedback en conversation_json.
-    feedback_comments: list[str | None] = []
+    feedback_comments: list[str | None] = Field(default_factory=list, max_length=100)
     # Encuesta de satisfaccion del diagnostico {rating:1-5, comment, submitted_at}.
     # Se guarda en su propia columna (satisfaction_json). None hasta que el
     # usuario la envia.
@@ -634,5 +676,7 @@ async def save_conversation(req: SaveConversationRequest) -> dict:
         )
         return {"saved": True}
     except Exception as e:
-        logger.warning(f"[ChatText] no se pudo persistir la conversacion: {e}")
-        return {"saved": False, "error": str(e)[:200]}
+        logger.warning(
+            "[ChatText] no se pudo persistir la conversacion: %s", type(e).__name__
+        )
+        return {"saved": False, "error": "No se pudo persistir la conversacion."}

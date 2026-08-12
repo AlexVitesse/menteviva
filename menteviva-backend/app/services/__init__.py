@@ -6,6 +6,6 @@ Servicios de Mente Viva.
 - edge_tts: Text-to-Speech con Microsoft Edge TTS
 """
 
-from app.services import groq_whisper, groq_llm, edge_tts
+from app.services import edge_tts, groq_llm, groq_whisper
 
 __all__ = ["groq_whisper", "groq_llm", "edge_tts"]

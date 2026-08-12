@@ -6,9 +6,9 @@ El contrato esta espejeado en menteviva-frontend/src/types/index.ts.
 Cualquier cambio aqui debe reflejarse alla.
 """
 
-from pydantic import BaseModel
 from typing import Literal, Optional
 
+from pydantic import BaseModel
 
 ExperienceLevel = Literal["entry", "junior", "mid", "senior", "lead", "executive"]
 VerbalTendency = Literal["alta", "media", "baja"]

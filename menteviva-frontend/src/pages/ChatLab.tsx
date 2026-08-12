@@ -2079,7 +2079,7 @@ export function ChatLab() {
               {saveInfo && (
                 saveInfo.saved ? (
                   <div className="p-2.5 bg-success/10 border border-success/20 rounded-xl text-[11px] text-success leading-normal">
-                    ✓ Guardado en la base de datos{saveInfo.id != null ? ` (diagnostic_id=${saveInfo.id})` : ""}.
+                    ✓ Guardado en la base de datos{saveInfo.id !== null && saveInfo.id !== undefined ? ` (diagnostic_id=${saveInfo.id})` : ""}.
                   </div>
                 ) : (
                   <div className="p-2.5 bg-danger/10 border border-danger/20 rounded-xl text-[11px] text-danger leading-normal">

@@ -88,6 +88,29 @@ CREATE TABLE IF NOT EXISTS practice_sessions (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON practice_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_created ON practice_sessions(created_at);
+
+CREATE TABLE IF NOT EXISTS ws_tickets (
+    ticket_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ws_tickets_expiry ON ws_tickets(expires_at);
+
+CREATE TABLE IF NOT EXISTS conversation_usage_limits (
+    user_id TEXT PRIMARY KEY,
+    active_sessions INTEGER NOT NULL DEFAULT 0,
+    active_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    hour_window_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    hour_count INTEGER NOT NULL DEFAULT 0,
+    usage_day DATE NOT NULL DEFAULT CURRENT_DATE,
+    daily_seconds DOUBLE PRECISION NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS operational_metrics (
+    metric_name TEXT PRIMARY KEY,
+    metric_value BIGINT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 """
 
 
@@ -170,6 +193,36 @@ MIGRATIONS: list[tuple[int, str, list[str]]] = [
             # vio el usuario aunque luego reintentara con exito. Para medir fiabilidad.
             "ALTER TABLE chatlab_conversations ADD COLUMN IF NOT EXISTS error_count INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE chatlab_conversations ADD COLUMN IF NOT EXISTS errors_json TEXT",
+        ],
+    ),
+    (
+        6,
+        "cuotas distribuidas de conversaciones por Firebase UID",
+        [
+            """
+            CREATE TABLE IF NOT EXISTS conversation_usage_limits (
+                user_id TEXT PRIMARY KEY,
+                active_sessions INTEGER NOT NULL DEFAULT 0,
+                active_updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                hour_window_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                hour_count INTEGER NOT NULL DEFAULT 0,
+                usage_day DATE NOT NULL DEFAULT CURRENT_DATE,
+                daily_seconds DOUBLE PRECISION NOT NULL DEFAULT 0
+            )
+            """,
+        ],
+    ),
+    (
+        7,
+        "telemetria operacional agregada y compartida",
+        [
+            """
+            CREATE TABLE IF NOT EXISTS operational_metrics (
+                metric_name TEXT PRIMARY KEY,
+                metric_value BIGINT NOT NULL DEFAULT 0,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """,
         ],
     ),
 ]

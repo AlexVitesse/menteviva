@@ -19,7 +19,7 @@ import { getAvatar3DFlag, getAvatarModelUrl, getAvatarGender } from "../utils/av
 
 export function Simulation() {
   const navigate = useNavigate();
-  const { selectedAvatar, selectedLevel, messages, status, metrics, serverError, userProfile, setServerError, setMetrics } = useSessionStore();
+  const { selectedAvatar, selectedLevel, selectedRobertoCase, messages, status, metrics, serverError, userProfile, setServerError, setMetrics } = useSessionStore();
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isMicMuted, setIsMicMuted] = useState(false);
   // Ref espejo de isMicMuted: handleVoiceButton lo lee de forma sincrona para no
@@ -72,8 +72,11 @@ export function Simulation() {
     () => ({
       ...(userProfile ? { user_profile: userProfile } : {}),
       level: selectedLevel,
+      ...(selectedAvatar?.id === "roberto"
+        ? { session_vars: { roberto_case: selectedRobertoCase } }
+        : {}),
     }),
-    [userProfile, selectedLevel]
+    [userProfile, selectedLevel, selectedAvatar?.id, selectedRobertoCase]
   );
 
   const { connect, sendAudio, endSession, disconnect } = useWebSocket({

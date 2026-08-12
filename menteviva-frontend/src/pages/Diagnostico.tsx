@@ -19,12 +19,15 @@ import { useMicVAD, utils as vadUtils } from "@ricky0123/vad-react";
 
 import { AnimatedAvatar } from "../components/avatar/AnimatedAvatar";
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
-import { SimliAvatar } from "../components/avatar/SimliAvatar";
+import { VideoAvatar } from "../components/avatar/VideoAvatar";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useGeminiLive } from "../hooks/useGeminiLive";
 import { useSimliAvatar } from "../hooks/useSimliAvatar";
-import { getSimliFlag } from "../utils/simliFlag";
+import { useOssAvatar } from "../hooks/useOssAvatar";
+import { useOssAvatarWs } from "../hooks/useOssAvatarWs";
+import { getAvatarProvider } from "../utils/avatarProvider";
+import { getAvatarTransport } from "../utils/avatarTransport";
 import { useSessionStore } from "../stores/sessionStore";
 import { ENTREVISTADOR_AVATAR } from "../utils/entrevistador";
 import { formatDuration, isSecureOriginForMic } from "../utils/audio";
@@ -65,6 +68,11 @@ export function Diagnostico() {
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [requestingPermission, setRequestingPermission] = useState(false);
   const [showEscape, setShowEscape] = useState(false);
+  // Fase de conexion (post-permiso): overlay con spinner hasta que Sofia salude.
+  // `forceEnter` deja pasar manualmente (escape); `showConnectingEscape` muestra
+  // ese boton tras unos segundos por si la conexion tarda de mas.
+  const [forceEnter, setForceEnter] = useState(false);
+  const [showConnectingEscape, setShowConnectingEscape] = useState(false);
   const [closingCountdown, setClosingCountdown] = useState<number | null>(null);
   // Toggle visual de "tu camara" — placeholder, no abre webcam real.
   // Match con la UI de Simulation.tsx para que ambas vistas se vean iguales.
@@ -141,16 +149,29 @@ export function Diagnostico() {
     initPayload,
   });
 
-  // Avatar fotorrealista Simli (video WebRTC, solo modo Gemini). Su sink
-  // recibe el PCM del avatar y devuelve video+voz lip-synced; los eventos
-  // speaking/silent de Simli reemplazan al onSpeakingChange del player local
-  // para el indicador "Sofia esta hablando".
-  const simliEnabled = useMemo(() => IS_GEMINI && getSimliFlag(), []);
-  const handleSimliSpeaking = useCallback(
+  // Avatar de video (WebRTC, solo modo Gemini). El provider lo elige
+  // getAvatarProvider() (simli | oss | none); ver docs/plans/16_...md §3.1.
+  // Su sink recibe el PCM del avatar y devuelve video+voz lip-synced; los
+  // eventos speaking/silent del proveedor reemplazan al onSpeakingChange del
+  // player local para el indicador "Sofia esta hablando".
+  const avatarProvider = useMemo(() => (IS_GEMINI ? getAvatarProvider() : "none"), []);
+  // Transporte del provider OSS: "webrtc" (default, producción) | "ws" (interino
+  // RunPod, sin WebRTC). Ver utils/avatarTransport.ts.
+  const avatarTransport = useMemo(() => getAvatarTransport(), []);
+  const handleVideoSpeaking = useCallback(
     (speaking: boolean) => setStatus(speaking ? "generating_audio" : "ready"),
     [setStatus]
   );
-  const simli = useSimliAvatar({ onSpeakingChange: handleSimliSpeaking });
+  // Todos los hooks se instancian SIEMPRE (reglas de hooks); solo se conecta el
+  // que corresponde al provider/transporte. Los inactivos quedan inertes.
+  const simli = useSimliAvatar({ onSpeakingChange: handleVideoSpeaking });
+  const oss = useOssAvatar({ onSpeakingChange: handleVideoSpeaking });
+  const ossWs = useOssAvatarWs({ onSpeakingChange: handleVideoSpeaking });
+  // Variante OSS activa según el transporte.
+  const ossActive = avatarTransport === "ws" ? ossWs : oss;
+  const videoAvatar =
+    avatarProvider === "simli" ? simli : avatarProvider === "oss" ? ossActive : null;
+  const videoEnabled = videoAvatar !== null;
 
   // Modo Gemini Live (audio nativo continuo). Se instancia siempre (reglas de
   // hooks); solo se conecta cuando IS_GEMINI. Sofia saluda sola al abrir la
@@ -158,13 +179,37 @@ export function Diagnostico() {
   const gemini = useGeminiLive({
     avatarId: "entrevistador",
     initPayload,
-    audioSink: simliEnabled ? simli.sink : undefined,
+    audioSink: videoAvatar ? videoAvatar.sink : undefined,
     onClosingIntent: handleClosingIntent,
   });
   const [micMuted, setMicMuted] = useState(false);
   // En Gemini el "hablando" de Sofia se refleja en el status del store
   // (generating_audio), no en isPlaying del useAudioPlayer (que aqui no se usa).
   const geminiSpeaking = IS_GEMINI && status === "generating_audio";
+
+  // "Conectando": desde que arranca la sesion (mic concedido) hasta que Sofia
+  // saluda. useGeminiLive garantiza `hasGreeted` en <=6s (fallback), asi que
+  // esta fase es ACOTADA. Mantiene el overlay con spinner y SIN boton -> no se
+  // puede re-disparar el inicio (evita el doble-connect/cuelgue). `forceEnter`
+  // permite entrar a mano si algo tarda de mas.
+  const preparing =
+    IS_GEMINI &&
+    sessionStarted &&
+    !gemini.hasGreeted &&
+    !forceEnter &&
+    !serverError &&
+    status !== "disconnected";
+
+  // Escape de seguridad: si la conexion tarda >10s, ofrecer entrar igual (nunca
+  // dejar el overlay bloqueando indefinidamente).
+  useEffect(() => {
+    if (!preparing) {
+      setShowConnectingEscape(false);
+      return;
+    }
+    const t = window.setTimeout(() => setShowConnectingEscape(true), 10000);
+    return () => window.clearTimeout(t);
+  }, [preparing]);
 
   const doEndSession = useCallback(() => {
     if (IS_GEMINI) gemini.endSession();
@@ -223,14 +268,14 @@ export function Diagnostico() {
     startRef.current = Date.now();
     if (IS_GEMINI) {
       (async () => {
-        // Simli primero: asi el video ya esta arriba cuando llegue el saludo
-        // de Sofia. Si falla, seguimos con el avatar 3D + player local (el
+        // Video primero: asi el avatar ya esta arriba cuando llegue el saludo
+        // de Sofia. Si falla, seguimos con el avatar 2D + player local (el
         // sink queda inactivo y useGeminiLive cae solo al fallback).
-        if (simliEnabled && !simli.failed) {
+        if (videoEnabled && videoAvatar && !videoAvatar.failed) {
           try {
-            await simli.connect("entrevistador");
+            await videoAvatar.connect("entrevistador");
           } catch (e) {
-            console.error("[Diagnostico] Simli fallo, fallback a avatar 3D:", e);
+            console.error("[Diagnostico] avatar de video fallo, fallback a 2D:", e);
           }
         }
         await gemini.connect();
@@ -241,12 +286,15 @@ export function Diagnostico() {
       });
       return () => {
         gemini.disconnect();
+        // Desconectar todos: el inactivo es no-op (nunca se conecto).
         simli.disconnect();
+        oss.disconnect();
+        ossWs.disconnect();
       };
     }
     connect();
     return () => disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [sessionStarted]);
 
   useEffect(() => {
@@ -258,19 +306,22 @@ export function Diagnostico() {
   }, [sessionStarted]);
 
   async function handleStartSession() {
+    // Guard: el boton ya se deshabilita por requestingPermission, pero esto corta
+    // cualquier doble-invocacion (evita re-disparar el arranque / doble-connect).
+    if (requestingPermission || sessionStarted) return;
     setRequestingPermission(true);
     setPermissionError(null);
     setShowEscape(false);
 
-    // Pre-conexion de Simli EN PARALELO al permiso de mic: el WebRTC tarda
-    // unos segundos y asi el video ya esta arriba cuando arranca la sesion.
-    // connect() es idempotente (guard interno), el connect del effect de
+    // Pre-conexion del avatar de video EN PARALELO al permiso de mic: el WebRTC
+    // tarda unos segundos y asi el video ya esta arriba cuando arranca la
+    // sesion. connect() es idempotente (guard interno), el connect del effect de
     // sessionStarted se vuelve no-op. No se pre-conecta al montar para no
     // quemar maxIdleTime si el usuario se queda leyendo el overlay.
-    if (IS_GEMINI && simliEnabled && !simli.failed) {
-      simli
+    if (IS_GEMINI && videoEnabled && videoAvatar && !videoAvatar.failed) {
+      videoAvatar
         .connect("entrevistador")
-        .catch((e) => console.warn("[Diagnostico] pre-conexion Simli fallo:", e));
+        .catch((e) => console.warn("[Diagnostico] pre-conexion avatar de video fallo:", e));
     }
 
     // Bloqueo preventivo: en Chrome movil sobre HTTP (LAN IP), mediaDevices es
@@ -509,11 +560,11 @@ export function Diagnostico() {
         {/* Panel principal con avatar 3D */}
         <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[#2a2a3a] to-[#1a1a2e] h-[40vh] md:h-auto md:flex-1">
           <div className="absolute inset-0 flex items-center justify-center">
-            {simliEnabled && !simli.failed ? (
-              <SimliAvatar
-                videoRef={simli.videoRef}
-                audioRef={simli.audioRef}
-                connected={simli.connected}
+            {videoEnabled && videoAvatar && !videoAvatar.failed ? (
+              <VideoAvatar
+                videoRef={videoAvatar.videoRef}
+                audioRef={videoAvatar.audioRef}
+                connected={videoAvatar.connected}
               />
             ) : use3DAvatar ? (
               <TalkingHeadAvatar
@@ -722,7 +773,7 @@ export function Diagnostico() {
           </motion.div>
         )}
 
-        {!sessionStarted && (
+        {(!sessionStarted || preparing) && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -734,51 +785,75 @@ export function Diagnostico() {
               animate={{ scale: 1, y: 0 }}
               className="w-full max-w-md bg-card rounded-2xl border border-white/5 p-8 text-center"
             >
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet/20 flex items-center justify-center">
-                <Mic className="w-8 h-8 text-violet-light" />
-              </div>
-              <h2 className="font-syne text-2xl font-bold mb-2">Listo para empezar</h2>
-              <p className="text-muted text-sm mb-6">
-                Vamos a pedirte permiso de microfono para que Sofia pueda
-                escucharte. La entrevista dura unos {diagnosticoVars?.minutos ?? 25} minutos.
-                No necesitas presionar nada — solo habla naturalmente cuando quieras.
-              </p>
+              {preparing ? (
+                /* Fase de conexion: spinner, SIN boton de inicio (no re-disparar). */
+                <>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet/20 flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 text-violet-light animate-spin" />
+                  </div>
+                  <h2 className="font-syne text-2xl font-bold mb-2">Conectando con Sofía…</h2>
+                  <p className="text-muted text-sm mb-6">
+                    Preparando el avatar y la voz. Esto toma unos segundos — no
+                    cierres la ventana.
+                  </p>
+                  {showConnectingEscape && (
+                    <button
+                      onClick={() => setForceEnter(true)}
+                      className="w-full font-syne font-bold text-xs py-2 rounded-[10px] border border-white/20 text-muted hover:text-cream hover:border-white/40 transition-colors"
+                    >
+                      Entrar de todas formas
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-violet/20 flex items-center justify-center">
+                    <Mic className="w-8 h-8 text-violet-light" />
+                  </div>
+                  <h2 className="font-syne text-2xl font-bold mb-2">Listo para empezar</h2>
+                  <p className="text-muted text-sm mb-6">
+                    Vamos a pedirte permiso de microfono para que Sofia pueda
+                    escucharte. La entrevista dura unos {diagnosticoVars?.minutos ?? 25} minutos.
+                    No necesitas presionar nada — solo habla naturalmente cuando quieras.
+                  </p>
 
-              {permissionError && (
-                <div className="flex items-start gap-2 bg-warning/10 border border-warning/30 rounded-lg p-3 mb-4 text-left">
-                  <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
-                  <p className="text-xs text-cream">{permissionError}</p>
-                </div>
+                  {permissionError && (
+                    <div className="flex items-start gap-2 bg-warning/10 border border-warning/30 rounded-lg p-3 mb-4 text-left">
+                      <AlertCircle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                      <p className="text-xs text-cream">{permissionError}</p>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleStartSession}
+                    disabled={requestingPermission}
+                    className="w-full font-syne font-bold text-sm py-3 rounded-[10px] bg-violet text-white hover:bg-violet-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {requestingPermission ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Pidiendo permiso...
+                      </>
+                    ) : (
+                      "Iniciar entrevista"
+                    )}
+                  </button>
+
+                  {showEscape && requestingPermission && (
+                    <button
+                      onClick={handleForceStart}
+                      className="w-full mt-3 font-syne font-bold text-xs py-2 rounded-[10px] border border-white/20 text-muted hover:text-cream hover:border-white/40 transition-colors"
+                    >
+                      Continuar de todas formas
+                    </button>
+                  )}
+
+                  <p className="text-[11px] text-muted mt-4">
+                    En movil (Android/iOS): el navegador solo permite el microfono sobre HTTPS.
+                    Accede via un tunnel (ngrok, cloudflared) o desde localhost en desktop.
+                  </p>
+                </>
               )}
-
-              <button
-                onClick={handleStartSession}
-                disabled={requestingPermission}
-                className="w-full font-syne font-bold text-sm py-3 rounded-[10px] bg-violet text-white hover:bg-violet-light transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {requestingPermission ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Pidiendo permiso...
-                  </>
-                ) : (
-                  "Iniciar entrevista"
-                )}
-              </button>
-
-              {showEscape && requestingPermission && (
-                <button
-                  onClick={handleForceStart}
-                  className="w-full mt-3 font-syne font-bold text-xs py-2 rounded-[10px] border border-white/20 text-muted hover:text-cream hover:border-white/40 transition-colors"
-                >
-                  Continuar de todas formas
-                </button>
-              )}
-
-              <p className="text-[11px] text-muted mt-4">
-                En movil (Android/iOS): el navegador solo permite el microfono sobre HTTPS.
-                Accede via un tunnel (ngrok, cloudflared) o desde localhost en desktop.
-              </p>
             </motion.div>
           </motion.div>
         )}

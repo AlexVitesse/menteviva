@@ -15,9 +15,31 @@ Tarifas verificadas 2026-07 en las paginas oficiales de precios. Notas:
 - No incluye descuentos por batch/cache: es el costo on-demand, el peor caso.
 """
 
+import asyncio
 import logging
+from datetime import datetime, timezone
 
 logger = logging.getLogger("menteviva")
+
+
+def _record_cost(provider: str, cost: float) -> None:
+    """Agenda telemetria sin bloquear ni convertir el log en dependencia fatal."""
+    try:
+        from app.services.telemetry import increment
+
+        loop = asyncio.get_running_loop()
+        day = datetime.now(timezone.utc).date().isoformat()
+        loop.create_task(
+            increment(
+                "llm_cost_micro_usd",
+                max(0, round(cost * 1_000_000)),
+                day=day,
+                provider=provider,
+            )
+        )
+    except RuntimeError:
+        # Algunos scripts sincronos no tienen event loop; conservan el log.
+        return
 
 # provider -> {model_id: (input_usd_por_1M, output_usd_por_1M)}
 PRICING: dict[str, dict[str, tuple[float, float]]] = {
@@ -90,6 +112,7 @@ def log_llm_cost(provider: str, model: str, in_tok: int | None, out_tok: int | N
                 f"[costo][{provider}] modelo={model} in={in_tok} out={out_tok} tok "
                 f"-> ~${cost:.6f} USD (${price[0]}/${price[1]} por 1M)"
             )
+            _record_cost(provider, cost)
             return cost
         logger.info(
             f"[costo][{provider}] modelo={model} in={in_tok} out={out_tok} tok "
@@ -97,5 +120,7 @@ def log_llm_cost(provider: str, model: str, in_tok: int | None, out_tok: int | N
         )
         return None
     except Exception as e:  # pragma: no cover - logging best-effort
-        logger.warning(f"[costo][{provider}] no se pudo calcular el costo: {e}")
+        logger.warning(
+            "[costo][%s] no se pudo calcular type=%s", provider, type(e).__name__
+        )
         return None

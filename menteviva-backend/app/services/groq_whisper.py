@@ -6,6 +6,7 @@ Modelo: whisper-large-v3-turbo
 """
 
 import logging
+
 from app.config import settings
 from app.services.groq_pool import get_groq_client
 

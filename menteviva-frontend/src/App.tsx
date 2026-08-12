@@ -26,10 +26,20 @@ import { useFirebaseAuth } from "./hooks/useFirebaseAuth";
  * Se aplica a rutas "protegidas" (dashboard y flujo de practica).
  * /login, /registro y rutas del diagnostico se auto-resuelven (no aplican guard).
  */
-function OnboardingGuard({ children }: { children: React.ReactNode }) {
+function OnboardingGuard({
+  children,
+  authStatus,
+}: {
+  children: React.ReactNode;
+  authStatus: ReturnType<typeof useFirebaseAuth>["status"];
+}) {
   const userProfile = useSessionStore((s) => s.userProfile);
   const needsRegistration = useSessionStore((s) => s.needsRegistration);
   const location = useLocation();
+
+  if (authStatus === "anonymous" || authStatus === "error") {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
 
   // Autenticado en Firebase pero sin fila en la DB: completar registro primero.
   if (needsRegistration) {
@@ -40,6 +50,20 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
   }
   if (!userProfile.diagnostico) {
     return <Navigate to="/diagnostico/setup" replace state={{ from: location.pathname }} />;
+  }
+  return <>{children}</>;
+}
+
+function AuthGuard({
+  children,
+  authStatus,
+}: {
+  children: React.ReactNode;
+  authStatus: ReturnType<typeof useFirebaseAuth>["status"];
+}) {
+  const location = useLocation();
+  if (authStatus === "anonymous" || authStatus === "error") {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
   return <>{children}</>;
 }
@@ -86,23 +110,37 @@ function App() {
   // Listener global de Firebase auth: hidrata sessionStore en login,
   // limpia en logout. Si Firebase no esta configurado, no hace nada y
   // se respeta el flujo legacy de localStorage.
-  useFirebaseAuth();
+  const { ready: authReady, status: authStatus } = useFirebaseAuth();
+  const authError = useSessionStore((s) => s.authError);
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen bg-ink text-cream flex items-center justify-center">
+        <p className="text-sm text-muted" role="status" aria-live="polite">
+          Cargando tu sesión…
+        </p>
+      </div>
+    );
+  }
+  if (authStatus === "error" && authError) {
+    return <AuthErrorScreen message={authError} />;
+  }
 
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/registro" element={<Registro />} />
-        <Route path="/diagnostico/setup" element={<DiagnosticoSetup />} />
-        <Route path="/diagnostico" element={<Diagnostico />} />
-        <Route path="/diagnostico/perfil" element={<DiagnosticoPerfil />} />
-        <Route path="/diagnostico/recomendacion" element={<DiagnosticoRecomendacion />} />
+        <Route path="/diagnostico/setup" element={<AuthGuard authStatus={authStatus}><DiagnosticoSetup /></AuthGuard>} />
+        <Route path="/diagnostico" element={<AuthGuard authStatus={authStatus}><Diagnostico /></AuthGuard>} />
+        <Route path="/diagnostico/perfil" element={<AuthGuard authStatus={authStatus}><DiagnosticoPerfil /></AuthGuard>} />
+        <Route path="/diagnostico/recomendacion" element={<AuthGuard authStatus={authStatus}><DiagnosticoRecomendacion /></AuthGuard>} />
 
         <Route path="/" element={<Root />} />
-        <Route path="/briefing" element={<OnboardingGuard><Briefing /></OnboardingGuard>} />
-        <Route path="/simulation" element={<OnboardingGuard><Simulation /></OnboardingGuard>} />
-        <Route path="/report" element={<OnboardingGuard><Report /></OnboardingGuard>} />
-        <Route path="/mi-plan" element={<OnboardingGuard><MiPlan /></OnboardingGuard>} />
+        <Route path="/briefing" element={<OnboardingGuard authStatus={authStatus}><Briefing /></OnboardingGuard>} />
+        <Route path="/simulation" element={<OnboardingGuard authStatus={authStatus}><Simulation /></OnboardingGuard>} />
+        <Route path="/report" element={<OnboardingGuard authStatus={authStatus}><Report /></OnboardingGuard>} />
+        <Route path="/mi-plan" element={<OnboardingGuard authStatus={authStatus}><MiPlan /></OnboardingGuard>} />
         {/* Banco de pruebas de prompts (solo texto), sin guard de onboarding */}
         <Route path="/chat-lab" element={<ChatLab />} />
         {/* Banco de pruebas de prompts POR VOZ (Gemini Live, sin video) */}

@@ -114,22 +114,25 @@ def parte_deterministica() -> int:
     log("\nFallbacks defensivos")
     fails += check(build_session_state_note(25) is None, "sin señales -> None (no inyectar nada)")
     n = build_session_state_note(None, elapsed_seconds=1400)
-    fails += check(n is not None and "de 25 (" in n, "minutos inválidos -> fallback 25")
+    fails += check(
+        n is not None and 'target="25"' in n,
+        "minutos inválidos -> fallback 25",
+    )
     n = build_session_state_note(25, elapsed_seconds=99999)
-    fails += check(n is not None and "100% de la sesión" in n and "~25 de 25" in n,
+    fails += check(n is not None and 'progress="100"' in n and 'minute="25"' in n,
                    "avance se topa en 100% / minuto 25")
 
     log("\n" + "=" * 70)
     log("PROMPTS — secciones nuevas presentes y sin placeholders rotos")
     log("=" * 70)
     maestro = get_entrevistador_prompt(USER_PROFILE, session_vars={"minutos": 25})
-    fails += check("NOTA DEL SISTEMA (TU RELOJ)" in maestro, "maestro: sección de señalización")
+    fails += check("CONTROL INTERNO DE RITMO" in maestro, "maestro: sección de señalización")
     fails += check("EXCEPCIÓN POR TIEMPO" in maestro, "maestro: excepción por tiempo en CIERRE")
     fails += check("{{" not in maestro.replace("{{nombre}}", ""),
                    "maestro: sin placeholders sin sustituir")
     voz = build_gemini_entrevistador_prompt(USER_PROFILE, session_vars={"minutos": 25})
     fails += check("RITMO Y SEÑALIZACIÓN" in voz, "voz: sección de ritmo/señalización")
-    fails += check("NOTA DEL SISTEMA" in voz, "voz: explica la nota del sistema")
+    fails += check("session_control" in voz, "voz: explica el control interno")
     fails += check("el tiempo se agotó" in voz, "voz: excepción por tiempo en CIERRE")
     return fails
 

@@ -2,6 +2,8 @@ import { useCallback, useRef, useEffect, useState } from "react";
 import { useSessionStore } from "../stores/sessionStore";
 import type { WsInitPayload } from "./useWebSocket";
 import { PCMStreamPlayer, int16BufferToBase64, pcm16Rms } from "../utils/pcm";
+import { getWebSocketTicket } from "../lib/api";
+import { parseServerEvent } from "../types/wsProtocol";
 
 // Echo-gate: mientras el avatar habla, solo dejamos pasar el mic si su energia
 // supera el "piso de eco" * margen. El piso se adapta al eco real (en audifonos
@@ -51,6 +53,12 @@ export interface GeminiAudioSink {
   isActive: () => boolean;
   sendPcm24k: (b64: string) => void;
   interrupt: () => void;
+  /**
+   * Opcional: aviso de fin de turno del avatar (no llegan mas chunks de esta
+   * frase). El sink OSS lo usa para disparar la sintesis sin esperar su
+   * watchdog de silencio; Simli no lo implementa (barra baja del contrato).
+   */
+  endUtterance?: () => void;
 }
 
 interface UseGeminiLiveOptions {
@@ -66,6 +74,7 @@ type AudioCtxCtor = typeof AudioContext;
 
 export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingIntent }: UseGeminiLiveOptions) {
   const wsRef = useRef<WebSocket | null>(null);
+  const connectionGenerationRef = useRef(0);
   const playerRef = useRef<PCMStreamPlayer | null>(null);
   // Ref para que el handler del WS siempre vea el sink actual sin re-conectar.
   const audioSinkRef = useRef(audioSink);
@@ -161,6 +170,35 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
 
   const connect = useCallback(async () => {
     if (!avatarId) return;
+    const current = wsRef.current;
+    if (
+      current?.readyState === WebSocket.CONNECTING ||
+      current?.readyState === WebSocket.OPEN
+    ) {
+      return;
+    }
+
+    const generation = ++connectionGenerationRef.current;
+    setStatus("connecting");
+    setServerError(null);
+    let ticket: string;
+    try {
+      ticket = await getWebSocketTicket();
+    } catch (error) {
+      if (generation !== connectionGenerationRef.current) return;
+      setStatus("disconnected");
+      setServerError(
+        error instanceof Error
+          ? error.message
+          : "No pudimos autorizar la conexión de voz."
+      );
+      return;
+    }
+    if (generation !== connectionGenerationRef.current) return;
+
+    playerRef.current?.close();
+    playerRef.current = null;
+    setAnalyser(null);
 
     // Compuerta cerrada hasta que Sofia salude (1er turn_complete). Respaldo:
     // si el saludo no llega en 6s, la abrimos para no dejar al usuario mudo.
@@ -185,22 +223,37 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
     setAnalyser(player.analyser);
     await player.resume();
 
-    const wsUrl = `${getWsBaseUrl()}/api/conversation/${avatarId}`;
+    const wsUrl = `${getWsBaseUrl()}/api/conversation/${encodeURIComponent(avatarId)}?ticket=${encodeURIComponent(ticket)}`;
     console.log("[GeminiLive] Connecting to:", wsUrl);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (generation !== connectionGenerationRef.current || wsRef.current !== ws) {
+        ws.close();
+        return;
+      }
       console.log("[GeminiLive] Connected");
       setStatus("ready");
       // El system_instruction se fija con este init (el backend abre la sesion
       // Live al recibirlo). Mandamos siempre, aunque no haya profile.
       const p = initPayloadRef.current;
-      ws.send(JSON.stringify({ type: "init", ...(p || {}) }));
+      ws.send(JSON.stringify({
+        type: "init",
+        session_vars: p?.session_vars,
+        level: p?.level,
+      }));
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      if (generation !== connectionGenerationRef.current || wsRef.current !== ws) return;
+      let data;
+      try {
+        data = parseServerEvent(event.data);
+      } catch {
+        setServerError("El servidor envió un mensaje inválido.");
+        return;
+      }
       switch (data.type) {
         case "status":
           setStatus(data.status);
@@ -239,6 +292,10 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
           break;
 
         case "turn_complete": {
+          // Fin de generacion del turno: no llegan mas assistant_audio_chunk.
+          // Avisar al sink OSS para que sintetice sin esperar su watchdog de
+          // silencio (~350 ms). Simli no implementa endUtterance -> no-op.
+          audioSinkRef.current?.endUtterance?.();
           const text = assistantTextRef.current.trim();
           if (text) {
             // Si la voz sigue sonando (player local o Simli), retener el
@@ -270,7 +327,7 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
         case "session_end":
           // Materializar lo retenido antes de navegar al reporte.
           flushPendingAssistant();
-          setMetrics(data.metrics);
+          if (data.metrics) setMetrics(data.metrics);
           break;
 
         case "error":
@@ -282,11 +339,17 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
 
     ws.onclose = (e) => {
       console.log("[GeminiLive] Closed:", e.code, e.reason || "(no reason)");
+      if (generation !== connectionGenerationRef.current || wsRef.current !== ws) return;
+      wsRef.current = null;
       flushPendingAssistant(); // no perder mensajes retenidos al caerse el WS
       setStatus("disconnected");
+      if (e.code === 1008 || e.code === 1009) {
+        setServerError(e.reason || "La conexión fue rechazada por el servidor.");
+      }
     };
     ws.onerror = (e) => {
       console.error("[GeminiLive] WS error:", e);
+      if (generation !== connectionGenerationRef.current || wsRef.current !== ws) return;
       setStatus("disconnected");
     };
   }, [avatarId, setStatus, addMessage, setMetrics, setServerError, flushPendingAssistant]);
@@ -398,6 +461,7 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
   }, [stopMic]);
 
   const disconnect = useCallback(() => {
+    connectionGenerationRef.current += 1;
     if (gateTimerRef.current) {
       window.clearTimeout(gateTimerRef.current);
       gateTimerRef.current = null;
@@ -408,12 +472,17 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
     playerRef.current = null;
     setAnalyser(null);
     setHasGreeted(false);
-    wsRef.current?.close();
+    const ws = wsRef.current;
     wsRef.current = null;
+    ws?.close();
   }, [stopMic, flushPendingAssistant]);
 
   useEffect(() => {
-    return () => disconnect();
+    window.addEventListener("menteviva:logout", disconnect);
+    return () => {
+      window.removeEventListener("menteviva:logout", disconnect);
+      disconnect();
+    };
   }, [disconnect]);
 
   return { connect, startMic, stopMic, setMicMuted, endSession, disconnect, analyser, hasGreeted };

@@ -24,7 +24,6 @@ from app.prompts.entrevistador import (
 )
 from app.prompts.roberto import get_roberto_prompt
 
-
 AVATARS = {
     "entrevistador": {
         "id": "entrevistador",
@@ -162,7 +161,8 @@ def get_system_prompt(
         return get_entrevistador_prompt(user_profile, session_vars)
 
     if avatar.get("supports_levels") and avatar_id == "roberto":
-        base_prompt = get_roberto_prompt(level or "principiante")
+        sales_case = str((session_vars or {}).get("roberto_case", "descubrimiento"))
+        base_prompt = get_roberto_prompt(level or "principiante", sales_case)
     else:
         base_prompt = avatar.get("system_prompt") or ""
 

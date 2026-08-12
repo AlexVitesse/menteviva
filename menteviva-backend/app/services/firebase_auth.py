@@ -51,9 +51,9 @@ def _try_init() -> bool:
     try:
         import firebase_admin
         from firebase_admin import credentials
-    except ImportError as e:
-        _init_error = f"firebase-admin no instalado: {e}"
-        logger.error(f"[firebase_auth] {_init_error}")
+    except ImportError:
+        _init_error = "firebase-admin no instalado"
+        logger.error("[firebase_auth] firebase-admin no instalado")
         return False
 
     cred = None
@@ -61,10 +61,13 @@ def _try_init() -> bool:
         path = settings.firebase_service_account_path
         try:
             cred = credentials.Certificate(path)
-            logger.info(f"[firebase_auth] credenciales cargadas desde {path}")
+            logger.info("[firebase_auth] credenciales cargadas desde archivo")
         except Exception as e:
-            _init_error = f"no pude leer service account JSON en {path}: {e}"
-            logger.error(f"[firebase_auth] {_init_error}")
+            _init_error = "no pude leer service account JSON"
+            logger.error(
+                "[firebase_auth] no pude leer service account JSON type=%s",
+                type(e).__name__,
+            )
             return False
     elif settings.firebase_service_account_json:
         try:
@@ -72,8 +75,11 @@ def _try_init() -> bool:
             cred = credentials.Certificate(data)
             logger.info("[firebase_auth] credenciales cargadas desde env JSON")
         except Exception as e:
-            _init_error = f"no pude parsear FIREBASE_SERVICE_ACCOUNT_JSON: {e}"
-            logger.error(f"[firebase_auth] {_init_error}")
+            _init_error = "no pude parsear FIREBASE_SERVICE_ACCOUNT_JSON"
+            logger.error(
+                "[firebase_auth] no pude parsear credenciales type=%s",
+                type(e).__name__,
+            )
             return False
     else:
         _init_error = (
@@ -93,8 +99,8 @@ def _try_init() -> bool:
         if "already exists" in str(e).lower():
             _initialized = True
             return True
-        _init_error = f"initialize_app fallo: {e}"
-        logger.error(f"[firebase_auth] {_init_error}")
+        _init_error = "initialize_app fallo"
+        logger.error("[firebase_auth] initialize_app fallo type=%s", type(e).__name__)
         return False
 
 
@@ -119,7 +125,7 @@ async def verify_firebase_token(
     if not is_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Firebase Auth no disponible: {_init_error}",
+            detail="Firebase Auth no disponible en este momento.",
         )
 
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -142,10 +148,10 @@ async def verify_firebase_token(
         return decoded["uid"]
     except fb_auth.ExpiredIdTokenError:
         raise HTTPException(401, "Token expirado")
-    except fb_auth.InvalidIdTokenError as e:
-        raise HTTPException(401, f"Token invalido: {e}")
+    except fb_auth.InvalidIdTokenError:
+        raise HTTPException(401, "Token invalido")
     except Exception as e:
-        logger.error(f"[firebase_auth] verify_id_token fallo: {e}")
+        logger.error("[firebase_auth] verify_id_token fallo: %s", type(e).__name__)
         raise HTTPException(401, "Token no verificable")
 
 
@@ -156,7 +162,7 @@ async def get_firebase_user(uid: str) -> dict:
     el email al cliente.
     """
     if not is_configured():
-        raise HTTPException(503, f"Firebase Auth no disponible: {_init_error}")
+        raise HTTPException(503, "Firebase Auth no disponible en este momento.")
     from firebase_admin import auth as fb_auth
 
     record = fb_auth.get_user(uid)

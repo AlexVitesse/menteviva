@@ -11,6 +11,7 @@ from typing import Optional
 
 from app.db import get_db
 from app.models.user_profile import Diagnostico, Registro, UserProfile
+from app.services.telemetry import pseudonymize_uid
 
 
 def _now_iso() -> str:
@@ -49,7 +50,7 @@ async def upsert_user(profile: UserProfile) -> None:
                 ),
             )
         await db.commit()
-    logger.info(f"[DB] upsert user {profile.user_id} ({r.nombre})")
+    logger.info("[DB] upsert user=%s", pseudonymize_uid(profile.user_id))
 
 
 async def register_firebase_user(
@@ -101,7 +102,7 @@ async def register_firebase_user(
                 ),
             )
         await db.commit()
-    logger.info(f"[DB] firebase user registrado uid={firebase_uid} ({registro.nombre})")
+    logger.info("[DB] firebase user registrado uid=%s", pseudonymize_uid(firebase_uid))
     profile = await get_user_profile(firebase_uid)
     if not profile:
         # No deberia pasar; el insert acaba de correr.
@@ -149,7 +150,12 @@ async def save_diagnostic(
             row = await cur.fetchone()
             diag_id = int(row["diagnostic_id"]) if row else 0
         await db.commit()
-    logger.info(f"[DB] diagnostic saved id={diag_id} user={user_id} is_demo={is_demo}")
+    logger.info(
+        "[DB] diagnostic saved id=%s user=%s is_demo=%s",
+        diag_id,
+        pseudonymize_uid(user_id),
+        is_demo,
+    )
     return diag_id
 
 
@@ -275,7 +281,11 @@ async def get_user_profile(user_id: str) -> Optional[UserProfile]:
                 parsed = json.loads(diag_row["diagnostico_json"])
                 diagnostico = Diagnostico(**parsed)
             except Exception as e:
-                logger.error(f"[DB] diagnostico json corrupto user={user_id}: {e}")
+                logger.error(
+                    "[DB] diagnostico json corrupto user=%s error=%s",
+                    pseudonymize_uid(user_id),
+                    type(e).__name__,
+                )
 
         return UserProfile(
             user_id=user_row["user_id"],
@@ -309,13 +319,13 @@ async def list_user_diagnostics(user_id: str) -> list[dict]:
         return [dict(r) for r in rows]
 
 
-async def get_diagnostic(diagnostic_id: int) -> Optional[dict]:
-    """Devuelve un diagnostico completo por su id."""
+async def get_diagnostic(diagnostic_id: int, owner_uid: str) -> Optional[dict]:
+    """Devuelve un diagnostico solo si pertenece al UID autenticado."""
     async with get_db() as db:
         async with db.cursor() as cur:
             await cur.execute(
-                "SELECT * FROM diagnostics WHERE diagnostic_id = %s",
-                (diagnostic_id,),
+                "SELECT * FROM diagnostics WHERE diagnostic_id = %s AND user_id = %s",
+                (diagnostic_id, owner_uid),
             )
             row = await cur.fetchone()
         if not row:

@@ -7,7 +7,9 @@ Endpoints:
 """
 
 import logging
+
 from fastapi import APIRouter, HTTPException
+
 from app.prompts.scenarios import get_all_avatars, get_avatar
 
 logger = logging.getLogger("menteviva")

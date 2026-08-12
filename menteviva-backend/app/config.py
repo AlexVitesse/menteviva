@@ -1,8 +1,11 @@
+from typing import Literal
+
 from pydantic import AliasChoices, Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
     # Groq - Múltiples API keys para rotación (soporta hasta 4 keys)
     groq_api_key: str = ""
     groq_api_key_2: str = ""
@@ -73,7 +76,7 @@ class Settings(BaseSettings):
     gemini_model_text: str = "gemini-2.5-flash"
     # Flag para volver al pipeline Groq+ElevenLabs sin borrar codigo (rollback
     # barato durante el piloto). Lo consume el router cuando exista la rama WS.
-    realtime_provider: str = "groq"  # "groq" | "gemini"
+    realtime_provider: Literal["groq", "gemini"] = "groq"
     # Sensibilidad del VAD de Gemini (tunable por .env sin redeploy). Tradeoff:
     #   start HIGH = capta bien tu voz pero el eco la puede cortar (usa audifonos);
     #   start LOW  = resiste el eco pero a veces no registra que hablaste.
@@ -110,6 +113,24 @@ class Settings(BaseSettings):
     # streaming). 1800s = 30 min: cubre el diagnostico de ~25 min con colchon.
     simli_max_session_seconds: int = 1800
 
+    # ============ Avatar OSS self-hosted (reemplazo de Simli) ============
+    # Selector del proveedor de avatar de video que responde /api/avatar/session
+    # (routers/avatar.py). Ver docs/plans/16_avatar_oss_integracion.md.
+    #   "simli" -> mint de token efimero contra api.simli.ai (comportamiento actual).
+    #   "oss"   -> sesion WebRTC contra el avatar-service self-hosted (MuseTalk).
+    #   "none"  -> sin video; el frontend cae al avatar 2D.
+    # Default "simli" para REGRESION CERO: sin este var en el .env todo sigue igual.
+    avatar_provider: Literal["simli", "oss", "none"] = "simli"
+    # Base URL del avatar-service OSS (p.ej. http://127.0.0.1:8300 o el tunnel del
+    # VPS). Vive SOLO en el backend — el navegador nunca la ve; el backend hace
+    # POST {avatar_service_url}/session y devuelve la signaling_url ya resuelta.
+    avatar_service_url: str = ""
+    # Bearer compartido para POST /session. Debe coincidir con
+    # AVATAR_SERVICE_TOKEN del pod y nunca se envia al navegador.
+    avatar_service_token: str = ""
+    # Espejo de simli_max_session_seconds para el camino OSS (limite duro de sesion).
+    avatar_max_session_seconds: int = 1800
+
     # Firebase Admin SDK. Dos formas de configurar — usa una:
     #  (1) FIREBASE_SERVICE_ACCOUNT_PATH: ruta absoluta o relativa a un JSON
     #      descargado de Firebase Console > Project Settings > Service Accounts.
@@ -132,7 +153,38 @@ class Settings(BaseSettings):
     db_pool_max_size: int = 10
 
     # App
+    app_environment: Literal["development", "staging", "production"] = "development"
     chatlab_token: str = ""
+    # Ticket opaco para autenticar el handshake WebSocket sin poner el ID token
+    # Firebase (duradero) en URLs/logs. Debe alcanzar solo para abrir el socket.
+    ws_ticket_ttl_seconds: int = 45
+    ws_ticket_store: Literal["auto", "memory", "database"] = "auto"
+    resource_limit_store: Literal["auto", "memory", "database"] = "auto"
+    telemetry_store: Literal["auto", "memory", "database"] = "auto"
+    ws_max_audio_bytes: int = 10 * 1024 * 1024
+    ws_max_audio_chunk_bytes: int = 128 * 1024
+    ws_max_text_chars: int = 8000
+    ws_max_history_chars: int = 100_000
+    ws_max_turns: int = 100
+    ws_max_session_seconds: int = 3600
+    ws_max_concurrent_per_uid: int = 1
+    ws_max_sessions_per_hour: int = 20
+    ws_max_daily_minutes_per_uid: int = 120
+    provider_stt_timeout_seconds: float = 45.0
+    provider_llm_timeout_seconds: float = 60.0
+    provider_tts_timeout_seconds: float = 60.0
+    provider_analysis_timeout_seconds: float = 120.0
+    alert_auth_rejections: int = 20
+    alert_limit_rejections: int = 10
+    alert_persistence_failures: int = 1
+    alert_http_5xx: int = 10
+    alert_daily_cost_usd: float = 10.0
+    # Firebase UIDs autorizados a usar ChatLab/VoiceLab, separados por coma.
+    chatlab_operator_uids: str = ""
+
+    @property
+    def chatlab_operators(self) -> set[str]:
+        return {uid.strip() for uid in self.chatlab_operator_uids.split(",") if uid.strip()}
     app_name: str = "Mente Viva API"
     debug: bool = False
     port: int = 8000
@@ -142,9 +194,5 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "https://kbm5qpth-5174.use2.devtunnels.ms",
     ]
-
-    class Config:
-        env_file = ".env"
-
 
 settings = Settings()
