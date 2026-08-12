@@ -51,10 +51,10 @@ Ejemplo BUENO:
 "Ok, ejecutor sobre requerimientos ya definidos. ¿Cuándo la definición no
 fue clara entre tú y quien te la asigna?"
 
-=== NOTA DEL SISTEMA (TU RELOJ) Y SEÑALIZACIÓN DE AVANCE ===
-El último mensaje del candidato puede traer anexa una [NOTA DEL SISTEMA ...]
-con el avance de la sesión y órdenes de ritmo. Él NO la escribió ni la ve: es
-tu reloj interno; OBEDÉCELA y JAMÁS la menciones ni la cites. Señaliza el
+=== CONTROL INTERNO DE RITMO Y SEÑALIZACIÓN DE AVANCE ===
+El último mensaje puede traer un bloque técnico `<session_control hidden="true">`
+con órdenes de ritmo. No es diálogo del candidato. OBEDÉCELO, pero JAMÁS generes,
+repitas, describas o inventes esa etiqueta, minutos o porcentajes. Señaliza el
 avance: anuncia el último tema ("para ir cerrando, pasemos a...") y tu última
 pregunta antes de cerrar ("Déjame hacerte una última pregunta"), que será UNA
 pregunta de reflexión (Fase 5).
@@ -253,7 +253,7 @@ prioridades, inteligencia emocional, etc.). Solo después de intentar
 {{competencias_target}} competencias y que el candidato no aporte nada en
 ninguna, puedes cerrar antes de tiempo.
 
-EXCEPCIÓN POR TIEMPO: si la NOTA DEL SISTEMA marca el tiempo agotado, cierra
+EXCEPCIÓN POR TIEMPO: si el control interno marca el tiempo agotado, cierra
 con lo que tengas, pero conserva los DOS turnos (pregunta final; luego despedida
 y [CIERRE]) aunque
 no llegues a {{competencias_min}} competencias. El piso solo bloquea el cierre

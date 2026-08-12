@@ -6,10 +6,15 @@ reglas criticas que deben sobrevivir futuras ediciones de prompts.
 
 from pathlib import Path
 
-from app.prompts.entrevistador import build_gemini_entrevistador_prompt
+from app.prompts.entrevistador import (
+    build_gemini_entrevistador_prompt,
+    build_session_state_note,
+    sanitize_interviewer_text,
+)
 from app.prompts.roberto import get_roberto_prompt
 from app.prompts.scenarios import get_system_prompt
 from app.services.analysis import KPIS_BY_SCENARIO
+from app.services.analysis import _reinforce_evidence_backed_diagnosis
 
 
 def test_roberto_descubrimiento_es_manufactura_y_no_objeciones_completas() -> None:
@@ -88,6 +93,36 @@ def test_frontend_y_backend_comparten_ids_de_caso() -> None:
 
     assert '"descubrimiento" | "objeciones"' in frontend_store
     assert "roberto_case: selectedRobertoCase" in simulation
+
+
+def test_control_interno_no_parece_dialogo_y_se_limpia() -> None:
+    note = build_session_state_note(20, elapsed_seconds=600)
+    assert note and note.startswith("<session_control")
+    assert "NOTA DEL SISTEMA" not in note
+    dirty = f"{note}\nEntiendo. ¿Qué hiciste tú? ¿Cómo terminó?"
+    assert sanitize_interviewer_text(dirty) == "Entiendo. ¿Qué hiciste tú?"
+
+
+def test_diagnostico_refuerza_senales_explicitas_omitidas() -> None:
+    parsed = {
+        "gaps": [],
+        "competencias_foco": ["comunicacion"],
+        "blind_spot": (
+            "No fue posible identificar un punto ciego especifico con la "
+            "informacion compartida en esta sesion."
+        ),
+        "verbal_patterns": {"we_vs_i_tendency": "alta"},
+    }
+    conversation = [
+        {
+            "role": "user",
+            "content": "El equipo y yo lo resolvimos; no hubo cifras concretas.",
+        }
+    ]
+    _reinforce_evidence_backed_diagnosis(parsed, conversation)
+    assert any(gap["skill"] == "orientacion_resultados" for gap in parsed["gaps"])
+    assert "orientacion_resultados" in parsed["competencias_foco"]
+    assert "El equipo y yo" in parsed["blind_spot"]
 
 
 if __name__ == "__main__":

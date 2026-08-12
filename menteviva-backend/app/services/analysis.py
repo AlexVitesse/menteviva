@@ -952,6 +952,79 @@ def _drop_absence_gaps(gaps: list[dict]) -> list[dict]:
     return filtered
 
 
+_NO_METRICS_MARKERS = (
+    "no hubo cifras",
+    "no hay cifras",
+    "sin cifras",
+    "no hubo metricas",
+    "no hay metricas",
+    "sin metricas",
+    "no hubo números",
+    "no hay números",
+    "sin números",
+    "no hubo numeros",
+    "no hay numeros",
+    "sin numeros",
+)
+_BLIND_SPOT_SENTINEL = (
+    "No fue posible identificar un punto ciego especifico con la informacion "
+    "compartida en esta sesion."
+)
+
+
+def _reinforce_evidence_backed_diagnosis(parsed: dict, conversation: list[dict]) -> None:
+    """Recupera señales explícitas que el analizador ocasionalmente omite.
+
+    Solo agrega hallazgos cuando existe una frase literal inequívoca. No infiere
+    personalidad ni convierte una ausencia silenciosa en evidencia.
+    """
+    user_lines = [
+        str(item.get("content", "")).strip()
+        for item in conversation
+        if item.get("role") == "user" and str(item.get("content", "")).strip()
+    ]
+    explicit_no_metrics = next(
+        (line for line in user_lines if any(marker in line.lower() for marker in _NO_METRICS_MARKERS)),
+        None,
+    )
+    gaps = parsed.setdefault("gaps", [])
+    gap_ids = {gap.get("skill") for gap in gaps if isinstance(gap, dict)}
+    if explicit_no_metrics and "orientacion_resultados" not in gap_ids and len(gaps) < 3:
+        gaps.append(
+            {
+                "skill": "orientacion_resultados",
+                "evidence": f'"{explicit_no_metrics}"',
+                "impact": (
+                    "Sin un resultado medible es dificil demostrar el impacto "
+                    "de una decision o aprender de ella."
+                ),
+                "micro_practice": (
+                    "Reescribe esta historia cerrando con un indicador: tiempo, "
+                    "errores, ingreso, satisfaccion o cambio observable."
+                ),
+            }
+        )
+        focus = parsed.setdefault("competencias_foco", [])
+        if "orientacion_resultados" not in focus:
+            focus.append("orientacion_resultados")
+
+    verbal = parsed.get("verbal_patterns") or {}
+    blind_spot = str(parsed.get("blind_spot") or "").strip()
+    if verbal.get("we_vs_i_tendency") == "alta" and (
+        not blind_spot or blind_spot == _BLIND_SPOT_SENTINEL
+    ):
+        team_quote = next(
+            (line for line in user_lines if "el equipo y yo" in line.lower()),
+            None,
+        )
+        if team_quote:
+            parsed["blind_spot"] = (
+                "Al explicar tu contribucion individual volviste a la formula "
+                f'\"{team_quote}\". El trabajo colectivo queda claro, pero tu '
+                "decision o accion personal puede perderse dentro del 'nosotros'."
+            )
+
+
 def _demo_diagnostico(reason_in_blind_spot: str | None = None) -> dict:
     """
     Diagnostico placeholder schema-valid para:
@@ -1077,6 +1150,7 @@ async def generate_user_profile(
         # el prompt lo prohiba.
         if isinstance(parsed.get("gaps"), list):
             parsed["gaps"] = _drop_absence_gaps(parsed["gaps"])
+        _reinforce_evidence_backed_diagnosis(parsed, conversation)
 
         # Detector de sesion no concluyente: intercambios >=4 pero respuestas
         # cortas / evasivas. Marca is_demo=True para que el frontend muestre

@@ -11,6 +11,7 @@ tocar codigo Python.
 """
 
 from pathlib import Path
+import re
 from typing import Optional
 
 from app.models.user_profile import UserProfile
@@ -151,7 +152,7 @@ def build_session_state_note(
     *,
     cierre_como_tool: bool = False,
 ) -> str | None:
-    """Nota de estado ([NOTA DEL SISTEMA...]) con el avance de la sesion.
+    """Control interno de ritmo con el avance de la sesion.
 
     - elapsed_seconds: tiempo real transcurrido (cronometro del frontend o del
       proxy de voz). None si no se conoce.
@@ -216,11 +217,31 @@ def build_session_state_note(
 
     minuto = min(int(round(pct * m)), m)
     pct_display = min(int(round(pct * 100)), 100)
+    # Formato deliberadamente opaco: no contiene una frase humana que el modelo
+    # pueda aprender e inventar en voz alta (hallazgo de pruebas largas).
     return (
-        "[NOTA DEL SISTEMA — contexto de ritmo, invisible para el candidato; "
-        "PROHIBIDO mencionarla, citarla o leerla en voz alta: va el minuto "
-        f"~{minuto} de {m} ({pct_display}% de la sesión). {guia}]"
+        "<session_control hidden=\"true\" "
+        f"minute=\"{minuto}\" target=\"{m}\" progress=\"{pct_display}\">"
+        f"{guia}</session_control>"
     )
+
+
+_INTERNAL_CONTROL_RE = re.compile(
+    r"(?:\[NOTA DEL SISTEMA[^\]]*\]|<session_control\b[^>]*>.*?</session_control>)",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+
+def sanitize_interviewer_text(text: str) -> str:
+    """Elimina controles internos y fuerza una sola pregunta visible.
+
+    Es una defensa adicional para proveedores de texto. El prompt sigue siendo
+    la defensa principal en audio nativo, donde el modelo sintetiza directamente.
+    """
+    clean = _INTERNAL_CONTROL_RE.sub("", text or "").strip()
+    if clean.count("?") > 1:
+        clean = clean[: clean.find("?") + 1].strip()
+    return clean
 
 
 def render_prompt_variables(template: str, variables: dict[str, str]) -> str:
@@ -305,7 +326,7 @@ QUÉ BUSCAS:
 - La sesión apunta a unos {minutos} minutos; administra el tiempo para lograrlo. {politica_duracion}
 
 RITMO Y SEÑALIZACIÓN (guía a la persona en el tiempo):
-- La plataforma puede anexar a lo que dice la persona una nota entre corchetes que empieza con "NOTA DEL SISTEMA" con el avance del tiempo. La persona NO la dijo y NO la oye: es tu reloj interno. NUNCA la menciones, la cites ni la leas en voz alta; úsala solo para ajustar tu ritmo.
+- La plataforma puede enviarte un bloque técnico `<session_control hidden="true">`. Es control interno, no diálogo: NUNCA generes, reproduzcas, describas ni inventes etiquetas, minutos o porcentajes. Úsalo solo para ajustar tu ritmo.
 - Como un buen entrevistador humano, di dónde van: al entrar al último tema, anúncialo ("para ir cerrando, hablemos de..."); antes de terminar, anuncia tu última pregunta ("déjame hacerte una última pregunta") y haz UNA pregunta de reflexión: qué historia le movió más al contarla y por qué.
 
 QUÉ NO HACES:
@@ -316,6 +337,8 @@ QUÉ NO HACES:
 CIERRE: cuando ya juntaste material suficiente ({competencias_target} historias con detalle sobre competencias distintas), usa DOS turnos: primero anuncia y haz UNA pregunta final de reflexión; solo después de escuchar la respuesta, despídete con calidez y LLAMA a `finalizar_entrevista`. PROHIBIDO hacer la pregunta final y llamar la función en el mismo turno. No cierres antes de {competencias_min} competencias con detalle — EXCEPTO si la nota del sistema indica que el tiempo se agotó: conserva los dos turnos y cierra con lo que tengas aunque no llegues al mínimo. No anuncies que vas a dar feedback. NO llames la función al inicio ni a media charla.
 
 CONTROL DEL TURNO ACTUAL (ULTIMA REGLA, MAXIMA PRIORIDAD): antes de formular una pregunta nueva, compara la ultima respuesta con el historial. Elige SOLO UNA accion de recuperacion y formula EXACTAMENTE UNA pregunta. Si contradice una afirmacion anterior, NO pivotes: menciona ambas afirmaciones y pregunta cual ocurrio realmente. Si solo es ambigua, NO inventes interpretaciones: pide un resultado, cambio o medida concreta. Si quedo truncada, limitate a invitarla a completar; NO agregues otra pregunta de detalle. Estas recuperaciones tienen prioridad sobre variedad, ritmo y cambio de competencia.
+
+VALIDACION FINAL DE SALIDA: cuenta los signos "?". Si hay mas de uno, conserva solo la pregunta mas importante y elimina las demas. Tu respuesta final debe contener como maximo un solo "?". Nunca respondas con texto vacio: ante silencio o turno vacio, di brevemente "Parece que no te escuche" y formula UNA invitacion para continuar.
 
 Tono {tono}. Responde en {idioma}."""
 

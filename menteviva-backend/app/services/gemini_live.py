@@ -560,6 +560,11 @@ async def generate_text(
                 closing = True
 
     text = "".join(text_parts).strip()
+    # Defensa para Gemini texto: nunca exponer controles internos y mantener
+    # el contrato conversacional de una pregunta por turno.
+    from app.prompts.entrevistador import sanitize_interviewer_text
+
+    text = sanitize_interviewer_text(text)
     if return_usage:
         return text, closing, usage_out
     return text, closing

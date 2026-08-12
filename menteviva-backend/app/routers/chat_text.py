@@ -392,6 +392,10 @@ async def chat(req: ChatRequest) -> ChatResponse:
     # modelo a veces emite como texto pese a la regla del prompt. Se limpian del
     # reply que ve la UI (ruta de texto); la voz nativa no pasa por aquí.
     reply = _strip_stage_directions(reply)
+    if is_diagnostico:
+        from app.prompts.entrevistador import sanitize_interviewer_text
+
+        reply = sanitize_interviewer_text(reply)
 
     # Respuesta vacía sin excepción (Gemini/OpenAI pueden devolver "" por bloqueo
     # de contenido o turno de baja señal; Groq ya cae a re-enganche por su cuenta).
