@@ -88,6 +88,7 @@ async def finalize_conversation(
             avatar_id=avatar_id,
             conversation=conversation_history,
             duration_seconds=duration_seconds,
+            sales_case=(session_vars or {}).get("roberto_case"),
         )
     await observe_seconds(
         "provider_latency",

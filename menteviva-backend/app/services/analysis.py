@@ -191,6 +191,83 @@ KPIS_BY_SCENARIO = {
     },
 }
 
+# El mismo personaje de Roberto tiene dos ejercicios fijos de manufactura. El
+# caso de objeciones conserva la rubrica historica de venta industrial; el caso
+# de descubrimiento evalua solo conductas que el usuario tuvo oportunidad de
+# practicar, para no castigarlo por no negociar o cerrar en esa sesion.
+KPIS_BY_SCENARIO["roberto_descubrimiento"] = {
+    "scenario_type": "Descubrimiento Consultivo Industrial — Ingenieria Condor",
+    "methodology": "SPIN · Lean Six Sigma · 5 Porques Toyota · KPIs Industriales",
+    "kpis": [
+        {
+            "id": "encuadre_descubrimiento",
+            "name": "Encuadre del descubrimiento",
+            "weight": 15,
+            "indicators": [
+                "Se presento y acordo explorar la operacion antes de ofrecer una solucion",
+                "Explico el proposito de sus preguntas de forma breve",
+                "Respeto el tiempo y mantuvo una pregunta principal por turno",
+            ],
+            "methodology_refs": ["SPIN — Situacion", "Venta consultiva"],
+        },
+        {
+            "id": "preguntas_operativas",
+            "name": "Preguntas operativas",
+            "weight": 25,
+            "indicators": [
+                "Pregunto por frecuencia, duracion y proceso de los paros",
+                "Exploro responsables, mantenimiento y flujo de la estacion 4",
+                "Uso datos del cliente para formular la siguiente pregunta",
+            ],
+            "methodology_refs": ["SPIN — Situacion y Problema", "Gemba"],
+        },
+        {
+            "id": "causa_raiz",
+            "name": "Exploracion de causa raiz",
+            "weight": 20,
+            "indicators": [
+                "Diferencio sintoma, causa y consecuencia",
+                "Profundizo con por ques encadenados sin sugerir la respuesta",
+                "Evito asumir que la tecnologia era la solucion",
+            ],
+            "methodology_refs": ["5 Porques Toyota", "Lean Manufacturing"],
+        },
+        {
+            "id": "impacto_cuantificado",
+            "name": "Cuantificacion de impacto",
+            "weight": 20,
+            "indicators": [
+                "Uso piezas por hora, valor por pieza, frecuencia y duracion del paro",
+                "Calculo o encamino un costo razonable con datos propios del cliente",
+                "Diferencio impacto productivo de una estimacion no confirmada",
+            ],
+            "methodology_refs": ["SPIN — Implicacion", "COPQ"],
+        },
+        {
+            "id": "escucha_y_sintesis",
+            "name": "Escucha y sintesis",
+            "weight": 10,
+            "indicators": [
+                "Retomo informacion concreta sin repetir mecanicamente",
+                "Resumio el problema y confirmo que lo entendio correctamente",
+                "Adapto el lenguaje al Director de Operaciones",
+            ],
+            "methodology_refs": ["Escucha activa", "SPIN"],
+        },
+        {
+            "id": "siguiente_paso_diagnostico",
+            "name": "Siguiente paso de diagnostico",
+            "weight": 10,
+            "indicators": [
+                "Propuso validar causas antes de desplegar una solucion",
+                "Definio un alcance concreto y de bajo riesgo para la estacion 4",
+                "Acordo responsables o informacion necesaria para continuar",
+            ],
+            "methodology_refs": ["Venta consultiva", "Piloto diagnostico"],
+        },
+    ],
+}
+
 # Alias para mantener referencias antiguas en codigo de rutas/tests viejos.
 SKILLS_BY_SCENARIO = KPIS_BY_SCENARIO
 
@@ -259,7 +336,8 @@ IMPORTANTE:
 async def analyze_conversation(
     avatar_id: str,
     conversation: list[dict],
-    duration_seconds: int = 0
+    duration_seconds: int = 0,
+    sales_case: str | None = None,
 ) -> dict:
     """
     Analiza una conversacion usando el modelo de razonamiento.
@@ -267,7 +345,8 @@ async def analyze_conversation(
     Args:
         avatar_id: ID del avatar (determina el escenario)
         conversation: Lista de mensajes [{"role": "user", "content": "..."}, ...]
-        duration_seconds: Duracion de la sesion en segundos
+        duration_seconds: Duracion de la sesion en segundos.
+        sales_case: caso fijo de Roberto (descubrimiento u objeciones).
 
     Returns:
         Diccionario con el analisis completo
@@ -280,7 +359,12 @@ async def analyze_conversation(
         logger.error(f"[Analysis] Avatar no encontrado: {avatar_id}")
         return _empty_analysis("Avatar no encontrado")
 
-    kpis_config = KPIS_BY_SCENARIO.get(avatar_id)
+    config_id = (
+        "roberto_descubrimiento"
+        if avatar_id == "roberto" and sales_case == "descubrimiento"
+        else avatar_id
+    )
+    kpis_config = KPIS_BY_SCENARIO.get(config_id)
     if not kpis_config:
         logger.error(f"[Analysis] Configuracion de KPIs no encontrada: {avatar_id}")
         return _empty_analysis("Configuracion no encontrada")
@@ -352,6 +436,8 @@ async def analyze_conversation(
 
         # Agregar metadatos
         analysis["avatar_id"] = avatar_id
+        if avatar_id == "roberto":
+            analysis["sales_case"] = sales_case or "objeciones"
         analysis["scenario_type"] = kpis_config["scenario_type"]
         analysis["methodology"] = kpis_config.get("methodology", "")
         analysis["total_exchanges"] = len(conversation) // 2
@@ -865,6 +951,79 @@ def _drop_absence_gaps(gaps: list[dict]) -> list[dict]:
     return filtered
 
 
+_NO_METRICS_MARKERS = (
+    "no hubo cifras",
+    "no hay cifras",
+    "sin cifras",
+    "no hubo metricas",
+    "no hay metricas",
+    "sin metricas",
+    "no hubo números",
+    "no hay números",
+    "sin números",
+    "no hubo numeros",
+    "no hay numeros",
+    "sin numeros",
+)
+_BLIND_SPOT_SENTINEL = (
+    "No fue posible identificar un punto ciego especifico con la informacion "
+    "compartida en esta sesion."
+)
+
+
+def _reinforce_evidence_backed_diagnosis(parsed: dict, conversation: list[dict]) -> None:
+    """Recupera señales explícitas que el analizador ocasionalmente omite.
+
+    Solo agrega hallazgos cuando existe una frase literal inequívoca. No infiere
+    personalidad ni convierte una ausencia silenciosa en evidencia.
+    """
+    user_lines = [
+        str(item.get("content", "")).strip()
+        for item in conversation
+        if item.get("role") == "user" and str(item.get("content", "")).strip()
+    ]
+    explicit_no_metrics = next(
+        (line for line in user_lines if any(marker in line.lower() for marker in _NO_METRICS_MARKERS)),
+        None,
+    )
+    gaps = parsed.setdefault("gaps", [])
+    gap_ids = {gap.get("skill") for gap in gaps if isinstance(gap, dict)}
+    if explicit_no_metrics and "orientacion_resultados" not in gap_ids and len(gaps) < 3:
+        gaps.append(
+            {
+                "skill": "orientacion_resultados",
+                "evidence": f'"{explicit_no_metrics}"',
+                "impact": (
+                    "Sin un resultado medible es dificil demostrar el impacto "
+                    "de una decision o aprender de ella."
+                ),
+                "micro_practice": (
+                    "Reescribe esta historia cerrando con un indicador: tiempo, "
+                    "errores, ingreso, satisfaccion o cambio observable."
+                ),
+            }
+        )
+        focus = parsed.setdefault("competencias_foco", [])
+        if "orientacion_resultados" not in focus:
+            focus.append("orientacion_resultados")
+
+    verbal = parsed.get("verbal_patterns") or {}
+    blind_spot = str(parsed.get("blind_spot") or "").strip()
+    if verbal.get("we_vs_i_tendency") == "alta" and (
+        not blind_spot or blind_spot == _BLIND_SPOT_SENTINEL
+    ):
+        team_quote = next(
+            (line for line in user_lines if "el equipo y yo" in line.lower()),
+            None,
+        )
+        if team_quote:
+            parsed["blind_spot"] = (
+                "Al explicar tu contribucion individual volviste a la formula "
+                f'\"{team_quote}\". El trabajo colectivo queda claro, pero tu '
+                "decision o accion personal puede perderse dentro del 'nosotros'."
+            )
+
+
 def _demo_diagnostico(reason_in_blind_spot: str | None = None) -> dict:
     """
     Diagnostico placeholder schema-valid para:
@@ -989,6 +1148,7 @@ async def generate_user_profile(
         # el prompt lo prohiba.
         if isinstance(parsed.get("gaps"), list):
             parsed["gaps"] = _drop_absence_gaps(parsed["gaps"])
+        _reinforce_evidence_backed_diagnosis(parsed, conversation)
 
         # Detector de sesion no concluyente: intercambios >=4 pero respuestas
         # cortas / evasivas. Marca is_demo=True para que el frontend muestre
