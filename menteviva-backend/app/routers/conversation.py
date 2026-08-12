@@ -262,6 +262,7 @@ async def _finalize_and_analyze(
             avatar_id=avatar_id,
             conversation=conversation_history,
             duration_seconds=duration_seconds,
+            sales_case=(session_vars or {}).get("roberto_case"),
         )
         logger.info(f"[WS-Gemini] Analisis completado - Score: {analysis.get('overall_score', 'N/A')}")
         session_id = None
@@ -1050,6 +1051,7 @@ async def conversation_websocket(websocket: WebSocket, avatar_id: str):
                         avatar_id=avatar_id,
                         conversation=conversation_history,
                         duration_seconds=duration_seconds,
+                        sales_case=(session_vars or {}).get("roberto_case"),
                     )
                     logger.info(f"[WS] Analisis completado - Score: {analysis.get('overall_score', 'N/A')}")
                     # Persistir sesion de practica (mejor esfuerzo — no bloquea respuesta).

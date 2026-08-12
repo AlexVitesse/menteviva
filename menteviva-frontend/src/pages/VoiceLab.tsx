@@ -48,8 +48,6 @@ import {
 import {
   CLIENT_ID,
   fmtDuration,
-  targetExchanges,
-  userTurns,
 } from "./chatlab/helpers";
 import {
   DiagnosticoModal,
@@ -284,8 +282,8 @@ function CallControls({
   onReset,
   hasMessages,
   progressPct,
-  exchanges,
-  progressTarget,
+  elapsedMs,
+  targetSeconds,
 }: {
   isActive: boolean;
   closed: boolean;
@@ -300,8 +298,8 @@ function CallControls({
   onReset: () => void;
   hasMessages: boolean;
   progressPct: number;
-  exchanges: number;
-  progressTarget: number;
+  elapsedMs: number;
+  targetSeconds: number;
 }) {
   return (
     <motion.div
@@ -315,7 +313,7 @@ function CallControls({
         {isActive && (
           <div className="flex items-center gap-3 text-[10px] text-muted font-mono">
             <span className="shrink-0">
-              {exchanges}/{progressTarget} turnos
+              {fmtDuration(elapsedMs)} / {fmtDuration(targetSeconds * 1000)}
             </span>
             <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden">
               <motion.div
@@ -601,20 +599,14 @@ export function VoiceLab() {
     effectiveRegistro.nombre?.trim() && effectiveRegistro.rol_objetivo?.trim()
   );
 
-  const exchanges = userTurns(session.messages);
-  const progressTarget = targetExchanges(
-    session.durationMin ?? DEFAULT_DURATION
-  );
-  const reachedTarget = exchanges >= progressTarget;
-  const progressComplete = session.closed || reachedTarget;
-  const progressPct = progressComplete
-    ? 100
-    : Math.round((exchanges / progressTarget) * 100);
-
   const elapsedMs = session.startedAt
     ? (session.completedAt ?? nowTick) - session.startedAt
     : 0;
   const targetSeconds = (session.durationMin ?? DEFAULT_DURATION) * 60;
+  const progressComplete = session.closed || elapsedMs >= targetSeconds * 1000;
+  const progressPct = progressComplete
+    ? 100
+    : Math.round((elapsedMs / (targetSeconds * 1000)) * 100);
 
   const errorLog = session.errorLog ?? [];
   const token = getChatlabToken();
@@ -1468,8 +1460,8 @@ export function VoiceLab() {
               onReset={handleReset}
               hasMessages={session.messages.length > 0}
               progressPct={progressPct}
-              exchanges={exchanges}
-              progressTarget={progressTarget}
+              elapsedMs={elapsedMs}
+              targetSeconds={targetSeconds}
             />
           </div>
         </div>
