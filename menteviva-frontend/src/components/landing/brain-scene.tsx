@@ -1,4 +1,5 @@
 import { Suspense, useRef, useMemo } from "react"
+import { useReducedMotion } from "framer-motion"
 import { Canvas, useFrame } from "@react-three/fiber"
 import { Float, useGLTF } from "@react-three/drei"
 import * as THREE from "three"
@@ -12,6 +13,7 @@ const BRAIN_SIZE = 2.4
 
 function Brain() {
   const ref = useRef<THREE.Group>(null)
+  const reduce = useReducedMotion()
   const { scene } = useGLTF(BRAIN_URL)
 
   // El glb trae su propio origen (apoyado en y=0) y su propia escala: lo
@@ -28,7 +30,7 @@ function Brain() {
   }, [scene])
 
   useFrame((state) => {
-    if (ref.current) {
+    if (!reduce && ref.current) {
       ref.current.rotation.y = state.clock.elapsedTime * 0.15
     }
   })
@@ -45,6 +47,7 @@ useGLTF.preload(BRAIN_URL)
 // Particulas tipo sinapsis alrededor del cerebro
 function NeuralParticles() {
   const particlesRef = useRef<THREE.Points>(null)
+  const reduce = useReducedMotion()
 
   const { positions, colors } = useMemo(() => {
     const count = 220
@@ -72,7 +75,7 @@ function NeuralParticles() {
   }, [])
 
   useFrame((state) => {
-    if (particlesRef.current) {
+    if (!reduce && particlesRef.current) {
       particlesRef.current.rotation.y = state.clock.elapsedTime * 0.05
       particlesRef.current.rotation.x =
         Math.sin(state.clock.elapsedTime * 0.1) * 0.1
@@ -109,9 +112,10 @@ function NeuralParticles() {
 // Aura suave que rodea el cerebro
 function BrainAura() {
   const auraRef = useRef<THREE.Mesh>(null)
+  const reduce = useReducedMotion()
 
   useFrame((state) => {
-    if (auraRef.current) {
+    if (!reduce && auraRef.current) {
       auraRef.current.rotation.y = state.clock.elapsedTime * 0.1
       const scale = 1 + Math.sin(state.clock.elapsedTime * 0.5) * 0.04
       auraRef.current.scale.set(scale, scale, scale)
@@ -132,8 +136,13 @@ function BrainAura() {
 }
 
 function Brain3D() {
+  const reduce = useReducedMotion()
   return (
-    <Float speed={1.2} rotationIntensity={0.2} floatIntensity={0.5}>
+    <Float
+      speed={reduce ? 0 : 1.2}
+      rotationIntensity={reduce ? 0 : 0.2}
+      floatIntensity={reduce ? 0 : 0.5}
+    >
       <group scale={1.15}>
         <Suspense fallback={null}>
           <Brain />
@@ -165,9 +174,14 @@ function Scene() {
   )
 }
 
-export function BrainScene() {
+/**
+ * El cerebro vive dentro de su propia columna del hero (antes era fondo de
+ * pagina completo, donde el titular lo tapaba). El canvas es transparente:
+ * el color de fondo lo pone la seccion que lo contiene.
+ */
+export function BrainScene({ className = "absolute inset-0" }: { className?: string }) {
   return (
-    <div className="fixed inset-0 z-0">
+    <div className={className}>
       <Canvas
         camera={{ position: [0, 0, 7], fov: 50 }}
         dpr={[1, 1.5]}
@@ -176,7 +190,6 @@ export function BrainScene() {
           powerPreference: "default",
         }}
       >
-        <color attach="background" args={["#08071A"]} />
         <fog attach="fog" args={["#08071A", 6, 18]} />
         <Scene />
       </Canvas>

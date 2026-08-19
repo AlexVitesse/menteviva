@@ -10,6 +10,7 @@ import { Diagnostico } from "./pages/Diagnostico";
 import { DiagnosticoPerfil } from "./pages/DiagnosticoPerfil";
 import { DiagnosticoRecomendacion } from "./pages/DiagnosticoRecomendacion";
 import { Landing } from "./pages/Landing";
+import { Privacidad, Terminos } from "./pages/Legal";
 import { MiPlan } from "./pages/MiPlan";
 import { AvatarSnapshot } from "./pages/__AvatarSnapshot";
 import { ChatLab } from "./pages/ChatLab";
@@ -137,6 +138,8 @@ function App() {
         <Route path="/diagnostico/recomendacion" element={<AuthGuard authStatus={authStatus}><DiagnosticoRecomendacion /></AuthGuard>} />
 
         <Route path="/" element={<Root />} />
+        <Route path="/privacidad" element={<Privacidad />} />
+        <Route path="/terminos" element={<Terminos />} />
         <Route path="/briefing" element={<OnboardingGuard authStatus={authStatus}><Briefing /></OnboardingGuard>} />
         <Route path="/simulation" element={<OnboardingGuard authStatus={authStatus}><Simulation /></OnboardingGuard>} />
         <Route path="/report" element={<OnboardingGuard authStatus={authStatus}><Report /></OnboardingGuard>} />

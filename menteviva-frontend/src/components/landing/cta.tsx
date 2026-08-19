@@ -1,84 +1,72 @@
-import { motion } from "framer-motion"
-import { useInView } from "framer-motion"
 import { useRef } from "react"
+import { motion, useInView, useReducedMotion } from "framer-motion"
 import { useNavigate } from "react-router-dom"
-import { ArrowRight, Sparkles } from "lucide-react"
+import { ArrowRight } from "lucide-react"
+import { CONTACTO } from "../../pages/Legal"
 
 export function CTA() {
   const ref = useRef(null)
   const isInView = useInView(ref, { once: true, margin: "-100px" })
   const navigate = useNavigate()
+  const reduce = useReducedMotion()
+  const enter = (delay: number) =>
+    reduce
+      ? {}
+      : {
+          initial: { opacity: 0, y: 24 },
+          animate: isInView ? { opacity: 1, y: 0 } : {},
+          transition: { duration: 0.6, delay },
+        }
 
   return (
-    <section className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8" ref={ref}>
-      <div className="max-w-4xl mx-auto">
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.7 }}
-          className="relative"
-        >
-          {/* Glow Background */}
-          <div className="absolute inset-0 bg-gradient-to-r from-violet/20 to-teal/20 rounded-3xl blur-3xl" />
+    <section ref={ref} className="relative px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+      <div className="mx-auto max-w-4xl">
+        <motion.div {...enter(0)} className="relative">
+          {/* Halo de fondo */}
+          <div
+            className="absolute inset-0 rounded-3xl bg-gradient-to-r from-violet/20 to-teal/20 blur-3xl"
+            aria-hidden="true"
+          />
 
-          {/* Card */}
-          <div className="relative rounded-3xl p-[1px] bg-gradient-to-r from-violet-light to-teal">
-            <div className="rounded-3xl bg-deep p-8 sm:p-12 lg:p-16 text-center backdrop-blur-xl">
-              {/* Icon */}
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={isInView ? { scale: 1 } : {}}
-                transition={{ duration: 0.5, delay: 0.2, type: "spring" }}
-                className="w-16 h-16 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-violet-light to-teal flex items-center justify-center"
-              >
-                <Sparkles className="w-8 h-8 text-cream" />
-              </motion.div>
-
-              {/* Headline */}
+          <div className="from-violet-light relative rounded-3xl bg-gradient-to-r to-teal p-[1px]">
+            <div className="rounded-3xl bg-deep p-8 text-center backdrop-blur-xl sm:p-12 lg:p-16">
               <motion.h2
-                initial={{ opacity: 0, y: 20 }}
-                animate={isInView ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.6, delay: 0.3 }}
-                className="font-syne text-3xl sm:text-4xl lg:text-5xl font-bold text-cream mb-4"
+                {...enter(0.1)}
+                className="font-syne text-3xl font-bold text-cream sm:text-4xl lg:text-5xl"
               >
-                Empieza tu transformación hoy
+                Ve el reporte antes de decidir
               </motion.h2>
 
-              {/* Subheadline */}
               <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={isInView ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.6, delay: 0.4 }}
-                className="text-lg text-muted max-w-xl mx-auto mb-8"
+                {...enter(0.2)}
+                className="mx-auto mt-4 max-w-xl text-lg text-muted"
               >
-                Tu diagnóstico gratuito te mostrará exactamente qué habilidades desarrollar 
-                y cómo Mente Viva puede ayudarte a conseguirlo.
+                En una demo de 20 minutos practicas una simulación real y te llevas el reporte que
+                recibiría tu equipo.
               </motion.p>
 
-              {/* CTA Button */}
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={isInView ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.6, delay: 0.5 }}
+                {...enter(0.3)}
+                className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row"
               >
-                <button
-                  onClick={() => navigate("/registro")}
-                  className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-violet to-teal px-8 py-4 font-semibold text-cream shadow-lg shadow-violet/25 transition-all hover:shadow-xl hover:shadow-violet/40 hover:scale-105"
+                <a
+                  href={`mailto:${CONTACTO}?subject=Demo%20de%20Mente%20Viva`}
+                  className="group shadow-violet/25 hover:shadow-violet/40 relative w-full overflow-hidden rounded-xl bg-gradient-to-r from-violet to-teal px-8 py-4 font-semibold text-cream shadow-lg transition-all hover:shadow-xl sm:w-auto"
                 >
                   <span className="relative z-10 flex items-center justify-center gap-2">
-                    Empezar mi diagnóstico gratis
-                    <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                    Agendar demo
+                    <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
                   </span>
+                </a>
+                <button
+                  onClick={() => navigate("/registro")}
+                  className="w-full rounded-xl border border-white/20 bg-white/5 px-8 py-4 font-semibold text-cream transition-all hover:border-white/30 hover:bg-white/10 sm:w-auto"
+                >
+                  Probar gratis
                 </button>
               </motion.div>
 
-              {/* Trust badges */}
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={isInView ? { opacity: 1 } : {}}
-                transition={{ duration: 0.6, delay: 0.6 }}
-                className="mt-6 text-sm text-subtle"
-              >
+              <motion.p {...enter(0.4)} className="mt-6 text-sm text-muted">
                 Sin tarjeta de crédito · Resultados en 5 minutos · 100% privado
               </motion.p>
             </div>

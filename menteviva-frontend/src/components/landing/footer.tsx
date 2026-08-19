@@ -1,36 +1,47 @@
+import { Link } from "react-router-dom"
+import { CONTACTO } from "../../pages/Legal"
+
 export function Footer() {
   return (
-    <footer className="relative py-12 px-4 sm:px-6 lg:px-8 border-t border-white/10">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+    <footer className="relative border-t border-white/10 px-4 py-12 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl">
+        <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
           {/* Logo */}
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-violet-light to-teal flex items-center justify-center">
-              <span className="font-syne text-cream font-bold text-xs">M</span>
+            <div className="from-violet-light flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br to-teal">
+              <span className="font-syne text-xs font-bold text-cream">M</span>
             </div>
-            <span className="font-syne text-muted font-medium text-sm">
-              Mente Viva
-            </span>
+            <span className="font-syne text-sm font-medium text-muted">Mente Viva</span>
           </div>
 
           {/* Links */}
-          <div className="flex items-center gap-6">
-            <a href="#" className="text-sm text-subtle hover:text-muted transition-colors">
+          <nav className="flex items-center gap-6">
+            <Link to="/privacidad" className="text-sm text-muted transition-colors hover:text-cream">
               Privacidad
-            </a>
-            <a href="#" className="text-sm text-subtle hover:text-muted transition-colors">
+            </Link>
+            <Link to="/terminos" className="text-sm text-muted transition-colors hover:text-cream">
               Términos
-            </a>
-            <a href="#" className="text-sm text-subtle hover:text-muted transition-colors">
+            </Link>
+            <a
+              href={`mailto:${CONTACTO}`}
+              className="text-sm text-muted transition-colors hover:text-cream"
+            >
               Contacto
             </a>
-          </div>
+          </nav>
 
           {/* Copyright */}
-          <p className="text-sm text-subtle">
-            © 2026 Mente Viva. Todos los derechos reservados.
-          </p>
+          <p className="text-sm text-muted">© 2026 Mente Viva. Todos los derechos reservados.</p>
         </div>
+
+        <p className="mt-8 max-w-2xl text-sm text-muted">
+          Las sesiones se transcriben para generar tu reporte. Puedes solicitar la eliminación de tus
+          transcripciones en cualquier momento; el detalle está en el{" "}
+          <Link to="/privacidad" className="text-violet-light hover:underline">
+            aviso de privacidad
+          </Link>
+          .
+        </p>
       </div>
     </footer>
   )

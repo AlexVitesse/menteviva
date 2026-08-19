@@ -1,84 +1,79 @@
-import { motion } from "framer-motion"
-import { useInView } from "framer-motion"
 import { useRef } from "react"
+import { motion, useInView, useReducedMotion } from "framer-motion"
 import { Check, X, Minus } from "lucide-react"
+
+type Estado = boolean | "limited"
 
 type ComparisonRow = {
   feature: string
-  menteViva: boolean | "limited"
-  courses: boolean | "limited"
-  coaches: boolean | "limited"
+  menteViva: Estado
+  taller: Estado
+  elearning: Estado
 }
 
+/**
+ * Las columnas son las alternativas que evalua de verdad un area de formacion:
+ * un taller presencial o una plataforma de e-learning corporativa.
+ */
 const comparisons: ComparisonRow[] = [
-  {
-    feature: "Práctica ilimitada",
-    menteViva: true,
-    courses: false,
-    coaches: "limited"
-  },
-  {
-    feature: "Feedback instantáneo",
-    menteViva: true,
-    courses: false,
-    coaches: false
-  },
-  {
-    feature: "Disponible 24/7",
-    menteViva: true,
-    courses: true,
-    coaches: false
-  },
-  {
-    feature: "Personalización",
-    menteViva: true,
-    courses: false,
-    coaches: true
-  },
-  {
-    feature: "Costo accesible",
-    menteViva: true,
-    courses: true,
-    coaches: false
-  },
-  {
-    feature: "Simulaciones realistas",
-    menteViva: true,
-    courses: false,
-    coaches: true
-  },
-  {
-    feature: "Seguimiento de progreso",
-    menteViva: true,
-    courses: "limited",
-    coaches: "limited"
-  },
-  {
-    feature: "Sin juicio ni vergüenza",
-    menteViva: true,
-    courses: true,
-    coaches: false
-  }
+  { feature: "Práctica ilimitada", menteViva: true, taller: false, elearning: "limited" },
+  { feature: "Feedback instantáneo", menteViva: true, taller: "limited", elearning: false },
+  { feature: "Evidencia por persona", menteViva: true, taller: false, elearning: "limited" },
+  { feature: "Disponible 24/7", menteViva: true, taller: false, elearning: true },
+  { feature: "Escenarios por rol", menteViva: true, taller: "limited", elearning: false },
+  { feature: "Sin logística ni agenda", menteViva: true, taller: false, elearning: true },
+  { feature: "Seguimiento de progreso", menteViva: true, taller: false, elearning: "limited" },
+  { feature: "Sin juicio ni vergüenza", menteViva: true, taller: false, elearning: true },
 ]
 
-function StatusIcon({ status }: { status: boolean | "limited" }) {
+const diferenciadores = [
+  {
+    titulo: "Se practica, no se ve",
+    detalle:
+      "Un curso se consume y se olvida. Aquí la persona sostiene la conversación completa, con las objeciones y los silencios incómodos incluidos.",
+  },
+  {
+    titulo: "Deja evidencia, no asistencia",
+    detalle:
+      "Cada sesión entrega transcripción y puntaje por habilidad. La lista de asistentes de un taller no dice quién mejoró.",
+  },
+  {
+    titulo: "Escala sin agenda",
+    detalle:
+      "Veinte personas pueden practicar el mismo martes a horas distintas. Un coach o un taller no se multiplica.",
+  },
+]
+
+function StatusIcon({ status, label }: { status: Estado; label: string }) {
   if (status === true) {
     return (
-      <div className="w-6 h-6 rounded-full bg-teal-500/20 flex items-center justify-center">
-        <Check className="w-4 h-4 text-teal-400" />
+      <div
+        className="bg-teal/20 mx-auto flex h-6 w-6 items-center justify-center rounded-full"
+        title={`${label}: incluido`}
+      >
+        <Check className="h-4 w-4 text-teal" aria-hidden="true" />
+        <span className="sr-only">{label}: incluido</span>
       </div>
     )
   }
   if (status === "limited") {
     return (
-      <div className="w-6 h-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
-        <Minus className="w-4 h-4 text-yellow-400" />
+      <div
+        className="bg-warning/20 mx-auto flex h-6 w-6 items-center justify-center rounded-full"
+        title={`${label}: limitado`}
+      >
+        <Minus className="h-4 w-4 text-warning" aria-hidden="true" />
+        <span className="sr-only">{label}: limitado</span>
       </div>
     )
   }
   return (
-    <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center">
-      <X className="w-4 h-4 text-subtle" />
+    <div
+      className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-white/10"
+      title={`${label}: no incluido`}
+    >
+      <X className="h-4 w-4 text-muted" aria-hidden="true" />
+      <span className="sr-only">{label}: no incluido</span>
     </div>
   )
 }
@@ -86,97 +81,92 @@ function StatusIcon({ status }: { status: boolean | "limited" }) {
 export function Comparison() {
   const ref = useRef(null)
   const isInView = useInView(ref, { once: true, margin: "-100px" })
+  const reduce = useReducedMotion()
+  const enter = (delay: number) =>
+    reduce
+      ? {}
+      : {
+          initial: { opacity: 0, y: 30 },
+          animate: isInView ? { opacity: 1, y: 0 } : {},
+          transition: { duration: 0.6, delay },
+        }
 
   return (
-    <section className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8" ref={ref}>
-      <div className="max-w-4xl mx-auto">
-        {/* Section Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-16"
-        >
-          <span className="text-sm font-medium text-violet-light uppercase tracking-wider">Comparativa</span>
-          <h2 className="font-syne text-3xl sm:text-4xl md:text-5xl font-bold text-cream mt-3">
+    <section ref={ref} className="relative px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+      <div className="mx-auto max-w-6xl">
+        <motion.div {...enter(0)} className="max-w-2xl">
+          <h2 className="font-syne text-3xl font-bold text-cream sm:text-4xl md:text-5xl">
             Por qué Mente Viva
           </h2>
-          <p className="mt-4 text-lg text-muted max-w-2xl mx-auto">
-            Combinamos lo mejor de los cursos online y el coaching personal.
+          <p className="mt-4 text-lg text-muted">
+            Frente a un taller presencial o una plataforma de e-learning, tres diferencias que
+            importan al momento de aprobar el presupuesto.
           </p>
         </motion.div>
 
-        {/* Comparison Table */}
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="relative rounded-2xl p-[1px] bg-gradient-to-b from-violet-500/50 via-transparent to-teal-500/50"
-        >
-          <div className="rounded-2xl bg-deep overflow-hidden">
-            {/* Table Header */}
-            <div className="grid grid-cols-4 gap-4 p-4 sm:p-6 border-b border-white/10 bg-white/5">
-              <div className="text-sm font-medium text-muted">Característica</div>
-              <div className="text-center">
-                <span className="inline-block px-3 py-1 rounded-full bg-gradient-to-r from-violet-light to-teal text-sm font-bold text-cream">
-                  Mente Viva
-                </span>
-              </div>
-              <div className="text-center text-sm font-medium text-muted">Cursos Online</div>
-              <div className="text-center text-sm font-medium text-muted">Coaches</div>
-            </div>
+        {/* Los tres diferenciadores que deciden la compra */}
+        <div className="mt-14 divide-y divide-white/10 border-y border-white/10">
+          {diferenciadores.map((d, i) => (
+            <motion.article
+              key={d.titulo}
+              {...enter(0.1 + i * 0.1)}
+              className="grid gap-3 py-8 md:grid-cols-[1fr_1.4fr] md:gap-10"
+            >
+              <h3 className="font-syne text-xl font-bold text-cream sm:text-2xl">{d.titulo}</h3>
+              <p className="leading-relaxed text-muted">{d.detalle}</p>
+            </motion.article>
+          ))}
+        </div>
 
-            {/* Table Body */}
-            <div className="divide-y divide-white/5">
-              {comparisons.map((row, index) => (
-                <motion.div
-                  key={row.feature}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={isInView ? { opacity: 1, x: 0 } : {}}
-                  transition={{ duration: 0.4, delay: 0.3 + index * 0.05 }}
-                  className="grid grid-cols-4 gap-4 p-4 sm:p-6 hover:bg-white/5 transition-colors"
-                >
-                  <div className="text-sm text-cream/80">{row.feature}</div>
-                  <div className="flex justify-center">
-                    <StatusIcon status={row.menteViva} />
-                  </div>
-                  <div className="flex justify-center">
-                    <StatusIcon status={row.courses} />
-                  </div>
-                  <div className="flex justify-center">
-                    <StatusIcon status={row.coaches} />
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </motion.div>
+        {/* El detalle completo queda replegado: no compite con lo de arriba */}
+        <motion.div {...enter(0.45)} className="mt-10">
+          <details className="group rounded-2xl border border-white/10 bg-white/5">
+            <summary className="cursor-pointer list-none px-6 py-4 font-semibold text-cream transition-colors hover:bg-white/5">
+              Ver comparativa completa
+              <span className="ml-2 text-sm font-normal text-muted group-open:hidden">
+                (8 criterios)
+              </span>
+            </summary>
 
-        {/* Legend */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={isInView ? { opacity: 1 } : {}}
-          transition={{ duration: 0.6, delay: 0.6 }}
-          className="flex justify-center gap-6 mt-6 text-sm text-subtle"
-        >
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-teal-500/20 flex items-center justify-center">
-              <Check className="w-3 h-3 text-teal-400" />
+            <div className="overflow-x-auto border-t border-white/10 px-2 pb-4">
+              <table className="w-full min-w-[34rem] text-left">
+                <thead>
+                  <tr className="text-sm text-muted">
+                    <th scope="col" className="px-4 py-4 font-medium">
+                      Criterio
+                    </th>
+                    <th scope="col" className="px-4 py-4 text-center font-bold text-cream">
+                      Mente Viva
+                    </th>
+                    <th scope="col" className="px-4 py-4 text-center font-medium">
+                      Taller presencial
+                    </th>
+                    <th scope="col" className="px-4 py-4 text-center font-medium">
+                      E-learning
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  {comparisons.map((row) => (
+                    <tr key={row.feature} className="transition-colors hover:bg-white/5">
+                      <th scope="row" className="px-4 py-4 text-sm font-normal text-cream/80">
+                        {row.feature}
+                      </th>
+                      <td className="px-4 py-4">
+                        <StatusIcon status={row.menteViva} label={`Mente Viva, ${row.feature}`} />
+                      </td>
+                      <td className="px-4 py-4">
+                        <StatusIcon status={row.taller} label={`Taller presencial, ${row.feature}`} />
+                      </td>
+                      <td className="px-4 py-4">
+                        <StatusIcon status={row.elearning} label={`E-learning, ${row.feature}`} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <span>Incluido</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-yellow-500/20 flex items-center justify-center">
-              <Minus className="w-3 h-3 text-yellow-400" />
-            </div>
-            <span>Limitado</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center">
-              <X className="w-3 h-3 text-subtle" />
-            </div>
-            <span>No incluido</span>
-          </div>
+          </details>
         </motion.div>
       </div>
     </section>

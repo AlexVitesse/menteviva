@@ -1,100 +1,76 @@
-import { motion } from "framer-motion"
-import { useInView } from "framer-motion"
 import { useRef } from "react"
+import { motion, useInView, useReducedMotion } from "framer-motion"
 import { ClipboardCheck, Map, Zap } from "lucide-react"
 
 const steps = [
   {
-    number: "01",
     title: "Diagnóstico",
-    description: "Identifica tus áreas de oportunidad con una evaluación rápida basada en situaciones reales.",
+    description:
+      "Una conversación corta detecta las áreas de oportunidad de cada persona a partir de situaciones reales de su puesto.",
     icon: ClipboardCheck,
-    color: "violet"
   },
   {
-    number: "02", 
-    title: "Tu Mapa",
-    description: "Recibe un plan personalizado con las habilidades que debes desarrollar y el orden óptimo.",
+    title: "Tu mapa",
+    description:
+      "Cada quien recibe un plan con las habilidades que debe desarrollar y el orden en que conviene trabajarlas.",
     icon: Map,
-    color: "purple"
   },
   {
-    number: "03",
     title: "Práctica",
-    description: "Entrena con avatares de IA en simulaciones realistas. Obtén feedback inmediato y mejora.",
+    description:
+      "Sesiones de voz con avatares que sostienen el papel. Al terminar, reporte con transcripción y puntaje por habilidad.",
     icon: Zap,
-    color: "teal"
-  }
+  },
 ]
 
+/**
+ * Stepper vertical. Antes eran tres tarjetas iguales, la misma composicion que
+ * usa la seccion de caracteristicas; se separan para que la pagina no repita
+ * dos veces seguidas la misma familia de layout.
+ */
 export function HowItWorks() {
   const ref = useRef(null)
   const isInView = useInView(ref, { once: true, margin: "-100px" })
+  const reduce = useReducedMotion()
 
   return (
-    <section className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8" ref={ref}>
-      <div className="max-w-6xl mx-auto">
-        {/* Section Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={isInView ? { opacity: 1, y: 0 } : {}}
+    <section ref={ref} className="relative px-4 py-24 sm:px-6 sm:py-32 lg:px-8">
+      <div className="mx-auto max-w-6xl">
+        <motion.h2
+          initial={reduce ? undefined : { opacity: 0, y: 30 }}
+          animate={reduce ? undefined : isInView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6 }}
-          className="text-center mb-16"
+          className="font-syne max-w-xl text-3xl font-bold text-cream sm:text-4xl md:text-5xl"
         >
-          <span className="text-sm font-medium text-violet-light uppercase tracking-wider">Proceso</span>
-          <h2 className="font-syne text-3xl sm:text-4xl md:text-5xl font-bold text-cream mt-3">
-            Cómo funciona
-          </h2>
-        </motion.div>
+          Cómo funciona
+        </motion.h2>
 
-        {/* Steps */}
-        <div className="grid md:grid-cols-3 gap-6 lg:gap-8">
+        <ol className="relative mt-14 space-y-12">
+          {/* Riel que conecta los pasos */}
+          <div
+            className="from-violet-500/60 absolute left-6 top-3 bottom-3 hidden w-px bg-gradient-to-b via-teal/40 to-transparent sm:block"
+            aria-hidden="true"
+          />
+
           {steps.map((step, index) => (
-            <motion.div
-              key={step.number}
-              initial={{ opacity: 0, y: 40 }}
-              animate={isInView ? { opacity: 1, y: 0 } : {}}
+            <motion.li
+              key={step.title}
+              initial={reduce ? undefined : { opacity: 0, y: 32 }}
+              animate={reduce ? undefined : isInView ? { opacity: 1, y: 0 } : {}}
               transition={{ duration: 0.6, delay: index * 0.15 }}
-              className="group relative"
+              className="relative flex flex-col gap-5 sm:flex-row sm:gap-8"
             >
-              {/* Gradient Border Card */}
-              <div className="relative rounded-2xl p-[1px] bg-gradient-to-b from-violet-500/50 via-transparent to-teal-500/50 hover:from-violet-500 hover:to-teal-500 transition-all duration-500">
-                <div className="relative rounded-2xl bg-deep p-6 sm:p-8 h-full backdrop-blur-xl">
-                  {/* Step Number */}
-                  <div className="font-syne text-6xl font-bold text-cream/5 absolute top-4 right-4">
-                    {step.number}
-                  </div>
-                  
-                  {/* Icon */}
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-5 ${
-                    step.color === "violet" ? "bg-violet-500/20" :
-                    step.color === "purple" ? "bg-purple-500/20" :
-                    "bg-teal-500/20"
-                  }`}>
-                    <step.icon className={`w-6 h-6 ${
-                      step.color === "violet" ? "text-violet-400" :
-                      step.color === "purple" ? "text-purple-400" :
-                      "text-teal-400"
-                    }`} />
-                  </div>
-
-                  {/* Content */}
-                  <h3 className="font-syne text-xl sm:text-2xl font-bold text-cream mb-3">
-                    {step.title}
-                  </h3>
-                  <p className="text-muted leading-relaxed">
-                    {step.description}
-                  </p>
-
-                  {/* Connector Line (hidden on mobile and last item) */}
-                  {index < steps.length - 1 && (
-                    <div className="hidden md:block absolute top-1/2 -right-4 lg:-right-5 w-8 lg:w-10 h-[2px] bg-gradient-to-r from-violet-500/50 to-transparent" />
-                  )}
-                </div>
+              <div className="bg-violet-500/20 relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ring-8 ring-ink">
+                <step.icon className="text-violet-400 h-6 w-6" />
               </div>
-            </motion.div>
+
+              <div className="sm:pt-1">
+                <h3 className="font-syne text-xl font-bold text-cream sm:text-2xl">{step.title}</h3>
+                <p className="mt-3 max-w-xl leading-relaxed text-muted">{step.description}</p>
+              </div>
+            </motion.li>
           ))}
-        </div>
+        </ol>
       </div>
     </section>
   )
