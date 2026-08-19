@@ -85,3 +85,83 @@ El riesgo queda documentado en el plan.
 - Confirmar `CONTACTO` en `pages/Legal.tsx`.
 - Los textos legales son un punto de partida operativo, no una revisión
   jurídica.
+
+---
+
+# Segunda pasada — el rediseño anterior salió genérico
+
+**Veredicto del usuario sobre la primera versión:** *"La misma vaina, desperdicio
+del cerebro, se veía mejor de fondo. Se ve genérica sin alma, tan de IA."*
+
+Tenía razón. La primera pasada reordenó secciones y metió el cerebro en una
+caja: no era rediseñar, era mover cajas. Y las seis tarjetas de características
+seguían ahí, que es justo lo genérico.
+
+## Qué cambió en la segunda pasada
+
+### El cerebro vuelve a ser la atmósfera
+
+`brain-scene.tsx` regresa a canvas fijo a pantalla completa detrás de todo el
+contenido, pero ya no es papel tapiz: **reacciona al scroll**. Arranca
+desplazado a la derecha (x = 1.7) y conforme baja la página rota, se aleja en z,
+se hunde y encoge. El progreso viaja como `MotionValue` de `useScroll` y se lee
+por frame dentro de `useFrame`: sin listener de scroll y sin re-render de React.
+
+Un primer intento hacía que el cerebro derivara hacia la **izquierda**, y se
+metía debajo del texto. Corregido: ahora se aleja por la derecha, que es donde
+hay aire, y nunca cruza la columna de lectura.
+
+Se añade un **velo de lectura** (`bg-gradient-to-r from-ink via-ink/85 to-transparent`)
+entre el canvas y el contenido: suelo oscuro a la izquierda donde vive el texto,
+cerebro respirando a la derecha.
+
+### El contenido pasa a ser el producto
+
+**Nuevo `conversations.tsx`** — la sección que reemplaza a las tarjetas. Muestra
+**fragmentos textuales de sesiones reales** guardadas en `chatlab_conversations`
+(Neon), con selector entre Ventas (Roberto) y Diagnóstico (Sofía). Cosas que de
+verdad dice el avatar:
+
+> "¿Dos meses? Suena ambicioso. Tuvimos un proyecto previo que no funcionó a
+> pesar de las promesas. ¿Qué los diferencia?"
+
+> "Mi directora de finanzas va a preguntar el ROI en los primeros seis meses."
+
+Es el activo más difícil de copiar que tiene el producto y lo único de la página
+que un competidor no podría escribir. **Solo se publican los turnos del avatar**:
+lo que dijeron las personas que probaron no sale.
+
+**Borrado `features.tsx`** — las seis tarjetas de "Voz natural / Sin clicks /
+Roadmap" con iconito y gradiente distinto cada una. Era lo más intercambiable de
+la página. Lo que valía la pena (BEI + STAR, micro-prácticas) queda como dato
+duro en la ficha de `for-teams.tsx`.
+
+### Hero con punto de vista
+
+De "Practica las conversaciones difíciles, antes de tenerlas" (descripción de
+producto) a:
+
+> **La conversación que estás evitando.**
+> Tenla aquí primero, en voz alta, con alguien que no te la va a poner fácil.
+> Después tenla donde importa.
+
+Sin badge, sin tarjeta, sin centrar: tipografía grande a la izquierda sobre el
+cerebro. Las métricas `10K+` / `95%` se conservan (decisión del usuario, uso de
+demo).
+
+### Navegación
+
+`#caracteristicas` desaparece con las tarjetas; entra `#conversaciones`. Orden
+del menú alineado al orden de la página: Conversaciones, Cómo funciona, Para
+equipos, Comparativa.
+
+## Orden final de la página
+
+Hero → Conversaciones → Cómo funciona → Para equipos → Por qué Mente Viva → CTA
+→ Footer.
+
+## Sigue pendiente
+
+- Confirmar `CONTACTO` en `pages/Legal.tsx`.
+- Capturas reales del producto (bloque 9 del plan).
+- Los textos legales necesitan revisión jurídica.

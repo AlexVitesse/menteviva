@@ -7,9 +7,9 @@ import { CONTACTO } from "../../pages/Legal"
 const DEMO_HREF = `mailto:${CONTACTO}?subject=Demo%20de%20Mente%20Viva`
 
 const navLinks = [
+  { label: "Conversaciones", href: "#conversaciones" },
   { label: "Cómo funciona", href: "#como-funciona" },
   { label: "Para equipos", href: "#para-equipos" },
-  { label: "Características", href: "#caracteristicas" },
   { label: "Comparativa", href: "#comparativa" },
 ]
 

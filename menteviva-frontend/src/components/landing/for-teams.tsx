@@ -74,6 +74,10 @@ export function ForTeams() {
                 </dd>
               </div>
               <div>
+                <dt className="text-sm text-muted">Metodología</dt>
+                <dd className="font-syne mt-1 font-bold text-cream">BEI + STAR</dd>
+              </div>
+              <div>
                 <dt className="text-sm text-muted">Duración de una práctica</dt>
                 <dd className="font-syne mt-1 font-bold text-cream">5 a 10 min</dd>
               </div>

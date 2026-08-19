@@ -1,5 +1,5 @@
 import { Suspense, useRef, useMemo } from "react"
-import { useReducedMotion } from "framer-motion"
+import { useReducedMotion, useScroll, type MotionValue } from "framer-motion"
 import { Canvas, useFrame } from "@react-three/fiber"
 import { Float, useGLTF } from "@react-three/drei"
 import * as THREE from "three"
@@ -135,26 +135,40 @@ function BrainAura() {
   )
 }
 
-function Brain3D() {
+function Brain3D({ progress }: { progress: MotionValue<number> }) {
   const reduce = useReducedMotion()
+  const ref = useRef<THREE.Group>(null)
+
+  // El cerebro deriva y se hunde conforme baja la pagina: deja de ser papel
+  // tapiz y acompaña la lectura. Un solo grupo animado, sin re-renders.
+  useFrame(() => {
+    if (!ref.current) return
+    const t = reduce ? 0 : progress.get()
+    ref.current.rotation.y = t * Math.PI * 1.4
+    ref.current.position.x = 1.7 + t * 0.9
+    ref.current.position.y = -t * 1.6
+    ref.current.position.z = -t * 2.2
+    ref.current.scale.setScalar(1.15 - t * 0.2)
+  })
+
   return (
-    <Float
-      speed={reduce ? 0 : 1.2}
-      rotationIntensity={reduce ? 0 : 0.2}
-      floatIntensity={reduce ? 0 : 0.5}
-    >
-      <group scale={1.15}>
+    <group ref={ref} position={[1.7, 0, 0]} scale={1.15}>
+      <Float
+        speed={reduce ? 0 : 1.2}
+        rotationIntensity={reduce ? 0 : 0.2}
+        floatIntensity={reduce ? 0 : 0.5}
+      >
         <Suspense fallback={null}>
           <Brain />
         </Suspense>
         <NeuralParticles />
         <BrainAura />
-      </group>
-    </Float>
+      </Float>
+    </group>
   )
 }
 
-function Scene() {
+function Scene({ progress }: { progress: MotionValue<number> }) {
   return (
     <>
       <ambientLight intensity={0.35} />
@@ -169,19 +183,24 @@ function Scene() {
         color="#7c3aed"
       />
 
-      <Brain3D />
+      <Brain3D progress={progress} />
     </>
   )
 }
 
 /**
- * El cerebro vive dentro de su propia columna del hero (antes era fondo de
- * pagina completo, donde el titular lo tapaba). El canvas es transparente:
- * el color de fondo lo pone la seccion que lo contiene.
+ * Atmosfera de toda la pagina: canvas fijo a pantalla completa detras del
+ * contenido. El cerebro arranca descentrado a la derecha (para no quedar
+ * detras del titular) y deriva hacia la izquierda conforme se baja.
  */
-export function BrainScene({ className = "absolute inset-0" }: { className?: string }) {
+export function BrainScene() {
+  const { scrollYProgress } = useScroll()
+
   return (
-    <div className={className}>
+    <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
+      {/* Velo de lectura: el contenido vive en la mitad izquierda y necesita
+          suelo oscuro; el cerebro respira en la derecha. */}
+      <div className="absolute inset-0 z-10 bg-gradient-to-r from-ink via-ink/85 to-transparent lg:via-ink/70" />
       <Canvas
         camera={{ position: [0, 0, 7], fov: 50 }}
         dpr={[1, 1.5]}
@@ -191,7 +210,7 @@ export function BrainScene({ className = "absolute inset-0" }: { className?: str
         }}
       >
         <fog attach="fog" args={["#08071A", 6, 18]} />
-        <Scene />
+        <Scene progress={scrollYProgress} />
       </Canvas>
     </div>
   )
