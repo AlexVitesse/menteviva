@@ -1,107 +1,31 @@
-import { useRef, useMemo } from "react"
+import { Suspense, useRef, useMemo } from "react"
 import { Canvas, useFrame } from "@react-three/fiber"
-import { Float } from "@react-three/drei"
+import { Float, useGLTF } from "@react-three/drei"
 import * as THREE from "three"
-import { SimplexNoise } from "three/examples/jsm/math/SimplexNoise.js"
 
-// Cerebro generado proceduralmente: icosfera subdividida con desplazamiento
-// de vertices via simplex noise para producir giros y surcos realistas,
-// mas un surco longitudinal marcado que separa los hemisferios.
-function useBrainGeometry(seed: number = 0) {
-  return useMemo(() => {
-    const g = new THREE.IcosahedronGeometry(1, 6) // 40,962 vertices
-    const noise = new SimplexNoise()
-    const pos = g.attributes.position as THREE.BufferAttribute
-    const v = new THREE.Vector3()
-
-    // seed-like perturbation
-    const s = seed * 13.37
-
-    for (let i = 0; i < pos.count; i++) {
-      v.fromBufferAttribute(pos, i)
-      const n = v.clone().normalize()
-
-      // Forma general: un poco alargado en X (lobulos), aplanado en Y
-      const shapeX = 1.22
-      const shapeY = 0.92
-      const shapeZ = 1.0
-
-      // Octavas de ruido para los pliegues organicos
-      let disp = 0
-      disp += noise.noise3d(n.x * 1.3 + s, n.y * 1.3, n.z * 1.3) * 0.14
-      disp += noise.noise3d(n.x * 3.2, n.y * 3.2 + s, n.z * 3.2) * 0.08
-      disp += noise.noise3d(n.x * 7 + s, n.y * 7, n.z * 7) * 0.04
-      disp += noise.noise3d(n.x * 15, n.y * 15, n.z * 15 + s) * 0.015
-
-      // Cisura longitudinal: surco profundo en x=0 sobre la mitad superior
-      const fissure =
-        Math.exp(-Math.pow(n.x * 5.5, 2)) *
-        Math.max(0, n.y * 1.2) *
-        0.18
-
-      // Pequeno aplanado en la base (donde estaria el tronco)
-      const baseFlatten = Math.max(0, -n.y - 0.5) * 0.15
-
-      const r = 1 + disp - fissure - baseFlatten
-
-      pos.setXYZ(
-        i,
-        n.x * r * shapeX * 1.25,
-        n.y * r * shapeY * 1.25,
-        n.z * r * shapeZ * 1.25,
-      )
-    }
-
-    g.computeVertexNormals()
-    return g
-  }, [seed])
-}
+// Modelo del cerebro (glTF meshopt + texturas WebP, ~2.5 MB). drei enchufa el
+// MeshoptDecoder por defecto, asi que no hace falta configurar nada mas.
+const BRAIN_URL = "/models/brain.glb"
+// Diametro objetivo en unidades de escena: el aura mide 2.6 de radio y las
+// particulas orbitan fuera, asi que el cerebro se normaliza a ~2.4.
+const BRAIN_SIZE = 2.4
 
 function Brain() {
-  const ref = useRef<THREE.Mesh>(null)
-  const wireRef = useRef<THREE.Mesh>(null)
-  const geometry = useBrainGeometry(1)
-
-  useFrame((state) => {
-    if (ref.current) {
-      ref.current.rotation.y = state.clock.elapsedTime * 0.15
-    }
-    if (wireRef.current) {
-      wireRef.current.rotation.y = state.clock.elapsedTime * 0.15
-    }
-  })
-
-  return (
-    <group>
-      {/* Superficie principal del cortex */}
-      <mesh ref={ref} geometry={geometry}>
-        <meshStandardMaterial
-          color="#8b5cf6"
-          metalness={0.25}
-          roughness={0.6}
-          emissive="#7c3aed"
-          emissiveIntensity={0.18}
-        />
-      </mesh>
-
-      {/* Overlay de wireframe tenue para resaltar los pliegues */}
-      <mesh ref={wireRef} geometry={geometry} scale={1.003}>
-        <meshBasicMaterial
-          color="#14b8a6"
-          wireframe
-          transparent
-          opacity={0.08}
-        />
-      </mesh>
-
-      {/* Tronco encefalico / medula, en tono teal */}
-      <BrainStem />
-    </group>
-  )
-}
-
-function BrainStem() {
   const ref = useRef<THREE.Group>(null)
+  const { scene } = useGLTF(BRAIN_URL)
+
+  // El glb trae su propio origen (apoyado en y=0) y su propia escala: lo
+  // centramos y lo normalizamos para que encaje con el resto de la escena.
+  const brain = useMemo(() => {
+    const root = scene.clone(true)
+    const box = new THREE.Box3().setFromObject(root)
+    const size = box.getSize(new THREE.Vector3())
+    const center = box.getCenter(new THREE.Vector3())
+    const k = BRAIN_SIZE / Math.max(size.x, size.y, size.z)
+    root.scale.setScalar(k)
+    root.position.copy(center).multiplyScalar(-k)
+    return root
+  }, [scene])
 
   useFrame((state) => {
     if (ref.current) {
@@ -110,31 +34,13 @@ function BrainStem() {
   })
 
   return (
-    <group ref={ref} position={[0, -1.1, -0.1]}>
-      <mesh position={[0, -0.4, 0]}>
-        <cylinderGeometry args={[0.22, 0.32, 0.9, 24]} />
-        <meshStandardMaterial
-          color="#14b8a6"
-          metalness={0.4}
-          roughness={0.5}
-          emissive="#0d9488"
-          emissiveIntensity={0.18}
-        />
-      </mesh>
-      {/* Cerebelo */}
-      <mesh position={[0, -0.1, -0.5]}>
-        <sphereGeometry args={[0.55, 24, 24]} />
-        <meshStandardMaterial
-          color="#2dd4bf"
-          metalness={0.3}
-          roughness={0.55}
-          emissive="#14b8a6"
-          emissiveIntensity={0.15}
-        />
-      </mesh>
+    <group ref={ref}>
+      <primitive object={brain} />
     </group>
   )
 }
+
+useGLTF.preload(BRAIN_URL)
 
 // Particulas tipo sinapsis alrededor del cerebro
 function NeuralParticles() {
@@ -229,7 +135,9 @@ function Brain3D() {
   return (
     <Float speed={1.2} rotationIntensity={0.2} floatIntensity={0.5}>
       <group scale={1.15}>
-        <Brain />
+        <Suspense fallback={null}>
+          <Brain />
+        </Suspense>
         <NeuralParticles />
         <BrainAura />
       </group>
