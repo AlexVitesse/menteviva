@@ -65,6 +65,39 @@ Notas de campo:
 - El `pgrep` inmediato tras el `kill` todavía lista el pid viejo; cloudflared
   tarda unos segundos en cerrar. Reconfirmar antes de asumir doble proceso.
 
+## Consulta de evidencia: cero pruebas desde el redeploy
+
+Consultado en Neon (`menteviva-piloto`) tras restaurar el acceso.
+
+**El build que corre hoy en prod nunca ha sido probado por un tester.** El
+deploy fue el **12-ago 16:05 local** (commit `22eef1d`) y desde entonces no hay
+**ni una** fila en `chatlab_conversations` ni en `diagnostics`.
+
+| Corte | Sesiones en labs | Diagnosticos |
+|---|---|---|
+| Desde el fix del tunnel (11-ago 21:00 UTC) | 5 | 5 (ids 6-10) |
+| **Desde el deploy a prod (12-ago 22:05 UTC)** | **0** | **0** |
+
+Las 5 sesiones existentes son todas **anteriores** al deploy:
+
+| Cuando (UTC) | Quien | Lab | Avatar | Duracion |
+|---|---|---|---|---|
+| 11-ago 21:21 | Sophia | ChatLab "Prueba 1: General" | entrevistador | 1 s (abandonada, `closed=false`) |
+| 11-ago 21:45 | Sophia | VoiceLab | roberto | 148 s (1 error) |
+| 11-ago 21:55 | Sophia | VoiceLab | roberto | 474 s |
+| 12-ago 00:07 | Brandon | ChatLab "Prueba 1: General" | entrevistador | 211 s |
+| 12-ago 00:43 | Brandon | VoiceLab | roberto | 292 s |
+
+Agravante: el **13 y 14 de agosto si entro gente** (`GET /`, `/chat-lab`,
+`/voice-lab`, `/api/chat/avatars` x2 el 14-ago 08:59) y no quedo ninguna
+conversacion. O se asomaron y se fueron, o la sesion reventaba al arrancar y no
+dejaba registro. Sin revisar los errores de esos dos dias en `backend.log` no
+se puede distinguir.
+
+**Consecuencia:** prod esta sin validar. Hay que pasarle el link nuevo a Sophia
+y Brandon y pedir una prueba de humo sobre el build actual (merge de `dev`:
+avatar-oss, roberto-sales-cases, login/reset password, CORS y WS).
+
 ## Cambios en el repo
 
 - `docs/BATERIA_PRUEBAS.md`: link del piloto
