@@ -18,6 +18,7 @@ Tipos de avatar:
 from typing import Optional
 
 from app.models.user_profile import UserProfile
+from app.prompts.celeste import get_celeste_prompt
 from app.prompts.entrevistador import (
     build_user_context_block,
     get_entrevistador_prompt,
@@ -58,6 +59,33 @@ AVATARS = {
         # avatar con niveles de dificultad por ahora.
         "system_prompt": None,
         "supports_levels": True,
+    },
+
+    "celeste": {
+        "id": "celeste",
+        "name": "Celeste Vargas",
+        "role": "Clienta difícil (se adapta a tu rubro)",
+        "company": "Definida en el Paso 0 de la sesion",
+        "personality": (
+            "Analitica y orientada a numeros: compra por logica, no por simpatia. "
+            "Directa, poca tolerancia al relleno, esceptica con quien habla del "
+            "producto antes de preguntar por su situacion. Un proveedor anterior la "
+            "defraudo. Lanza objeciones escalonadas y sube la presion ante un "
+            "descuento prematuro."
+        ),
+        "voice": "es-MX-DaliaNeural",
+        "avatar_type": "animated",
+        "kind": "practica",
+        # Puerto del GEM de ventas validado a mano. Alterna con Roberto para
+        # comparar dos enfoques de CAT-01: contexto fijo vs. calibrado por el
+        # vendedor. El prompt se resuelve por nivel en get_system_prompt().
+        "system_prompt": None,
+        "supports_levels": True,
+        # Solo el banco de pruebas. En el catalogo de produccion abriria un
+        # flujo de voz que nadie ha probado: el Briefing no le da selector de
+        # nivel ni texto de escenario, y su feedback final es un bloque Markdown
+        # largo que el TTS leeria literal. Quitar cuando se decida promoverla.
+        "lab_only": True,
     },
 
     "maria": {
@@ -105,21 +133,27 @@ def get_avatar(avatar_id: str) -> dict | None:
     return AVATARS.get(avatar_id)
 
 
-def get_all_avatars(include_diagnostico: bool = False) -> list[dict]:
+def get_all_avatars(
+    include_diagnostico: bool = False,
+    include_lab_only: bool = False,
+) -> list[dict]:
     """
     Obtiene avatares sin exponer system_prompt.
 
-    Por defecto solo devuelve los de kind="practica" (son los que el usuario
-    elige en el catalogo). El entrevistador se accede por ruta propia y no
-    aparece en la grilla de escenarios.
+    Por defecto solo devuelve los de kind="practica" que ya estan listos para el
+    catalogo del usuario. El entrevistador se accede por ruta propia y no
+    aparece en la grilla de escenarios; los avatares marcados lab_only solo
+    existen en el banco de pruebas.
 
     Args:
         include_diagnostico: si True, incluye al entrevistador en la lista.
+        include_lab_only: si True, incluye los avatares de solo-laboratorio.
     """
     return [
         {k: v for k, v in avatar.items() if k != "system_prompt"}
         for avatar in AVATARS.values()
-        if include_diagnostico or avatar.get("kind") != "diagnostico"
+        if (include_diagnostico or avatar.get("kind") != "diagnostico")
+        and (include_lab_only or not avatar.get("lab_only"))
     ]
 
 
@@ -163,6 +197,8 @@ def get_system_prompt(
     if avatar.get("supports_levels") and avatar_id == "roberto":
         sales_case = str((session_vars or {}).get("roberto_case", "descubrimiento"))
         base_prompt = get_roberto_prompt(level or "principiante", sales_case)
+    elif avatar.get("supports_levels") and avatar_id == "celeste":
+        base_prompt = get_celeste_prompt(level or "principiante")
     else:
         base_prompt = avatar.get("system_prompt") or ""
 

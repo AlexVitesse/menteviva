@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Check } from "lucide-react";
 import type { Avatar } from "../../types";
-import { AnimatedAvatar, AvatarCharacter } from "./AnimatedAvatar";
+import { AnimatedAvatar, AvatarCharacter, avatarCharacterFor } from "./AnimatedAvatar";
 
 interface Props {
   avatar: Avatar;
@@ -15,10 +15,7 @@ interface Props {
 const AVATARS_WITH_PNG = new Set(["roberto", "maria"]);
 
 export function AvatarCard({ avatar, isSelected, onClick }: Props) {
-  const avatarCharacter: AvatarCharacter =
-    avatar.id === "roberto" ? "roberto" :
-    avatar.id === "maria" ? "maria" :
-    "roberto"; // fallback
+  const avatarCharacter: AvatarCharacter = avatarCharacterFor(avatar.id);
 
   const [imgErrored, setImgErrored] = useState(false);
   const showPng = AVATARS_WITH_PNG.has(avatar.id) && !imgErrored;

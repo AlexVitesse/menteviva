@@ -109,8 +109,11 @@ def _strip_stage_directions(text: str) -> str:
     if not text:
         return text
     t = text
-    # 1) Apartes con asteriscos: *asiente*, *hace una pausa*.
-    t = re.sub(r"\*[^*\n]{1,80}\*", " ", t)
+    # 1) Apartes con asteriscos: *asiente*, *hace una pausa*. Exigimos asterisco
+    #    SIMPLE a ambos lados: el **negrita** de Markdown no es una acotacion y
+    #    borrarlo se come el texto (el feedback final de Celeste quedaba como
+    #    "- * *: 5/10", sin el nombre del KPI).
+    t = re.sub(r"(?<!\*)\*(?!\*)[^*\n]{1,80}(?<!\*)\*(?!\*)", " ", t)
     # 2) Parentesis SOLO si contienen palabra de acotacion (respeta "(por ej...)").
     t = re.sub(
         r"(?i)\([^)\n]*?(pausa|silencio|asiente|sonr[ií]e|espera|en voz|para s[ií])[^)\n]*\)",
@@ -270,8 +273,9 @@ def _classify_provider_error(e: Exception, provider: str) -> tuple[int, str]:
 
 @router.get("/chat/avatars")
 async def list_chat_avatars():
-    """Avatares disponibles para el banco de pruebas (incluye al entrevistador)."""
-    return {"avatars": get_all_avatars(include_diagnostico=True)}
+    """Avatares del banco de pruebas: todos, incluidos el entrevistador y los
+    que aun no salen al catalogo de produccion (lab_only)."""
+    return {"avatars": get_all_avatars(include_diagnostico=True, include_lab_only=True)}
 
 
 @router.post("/chat", response_model=ChatResponse)

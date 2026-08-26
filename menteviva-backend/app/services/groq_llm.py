@@ -196,7 +196,17 @@ async def chat_complete(
             model=model_name,
             messages=full_messages,
             temperature=temperature,
-            max_tokens=500,
+            # OJO: gpt-oss-20b es un modelo de razonamiento y sus tokens de
+            # reasoning se descuentan de este mismo cap. Con 500 un turno que
+            # pide salida larga (el feedback final de Celeste, ~1.7k tokens) se
+            # va entero en razonar: finish_reason="length", content="" y el
+            # caller cae al re-enganche como si el modelo se hubiera trabado.
+            # Es un techo, no un objetivo: los turnos cortos siguen costando
+            # lo mismo. Solo lo usa el banco de texto (produccion va por
+            # chat_stream, que conserva su propio limite de 500).
+            # 3000 = razonamiento + el feedback mas largo observado, y con el
+            # prompt (~2.5k) sigue por debajo de los 8k TPM del free tier.
+            max_tokens=3000,
             frequency_penalty=FREQUENCY_PENALTY,
             presence_penalty=PRESENCE_PENALTY,
             stream=False,

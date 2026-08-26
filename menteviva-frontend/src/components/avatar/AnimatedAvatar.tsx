@@ -3,6 +3,14 @@ import { motion } from "framer-motion";
 
 export type AvatarCharacter = "roberto" | "maria";
 
+// Solo hay dos cuerpos SVG dibujados. Los avatares nuevos se mapean al que les
+// corresponde por genero (Celeste -> maria) en vez de caer al fallback masculino.
+const FEMALE_AVATARS = new Set(["maria", "celeste"]);
+
+export function avatarCharacterFor(avatarId: string): AvatarCharacter {
+  return FEMALE_AVATARS.has(avatarId) ? "maria" : "roberto";
+}
+
 interface AnimatedAvatarProps {
   character: AvatarCharacter;
   isSpeaking?: boolean;

@@ -29,6 +29,7 @@ RETRY_DELAY = 0.5
 AVATAR_VOICES = {
     "roberto": "uPc5TJmLHicJAPs7qpif",        # Masculina
     "maria": "m7yTemJqdIqrcNleANfX",          # Femenina
+    "celeste": "m7yTemJqdIqrcNleANfX",        # Femenina (comparte voz con Maria por ahora)
     "carlos": "Rt1JHkPO27QCUX6Nd5bV",         # Masculina (distinta a Roberto)
     "entrevistador": "1vvbVDm3EpGMyY1WVZ3r",  # Sofia - Femenina (distinta a Maria)
 }

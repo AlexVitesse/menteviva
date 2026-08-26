@@ -2,7 +2,7 @@ import { useEffect, useCallback, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff, Clock, Loader2, Pause, Play } from "lucide-react";
-import { AnimatedAvatar, AvatarCharacter } from "../components/avatar/AnimatedAvatar";
+import { AnimatedAvatar, AvatarCharacter, avatarCharacterFor } from "../components/avatar/AnimatedAvatar";
 import { MicLevelMeter } from "../components/voice/MicLevelMeter";
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
 import { useSessionStore } from "../stores/sessionStore";
@@ -342,10 +342,7 @@ export function Simulation() {
 
   if (!selectedAvatar) return null;
 
-  const avatarCharacter: AvatarCharacter =
-    selectedAvatar.id === "roberto" ? "roberto" :
-    selectedAvatar.id === "maria" ? "maria" :
-    "roberto";
+  const avatarCharacter: AvatarCharacter = avatarCharacterFor(selectedAvatar.id);
 
   // En Gemini el hook refleja "hablando" via status=generating_audio (no usa el
   // useAudioPlayer/isPlaying del modo Groq).

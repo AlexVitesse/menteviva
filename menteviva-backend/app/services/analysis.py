@@ -191,6 +191,14 @@ KPIS_BY_SCENARIO = {
     },
 }
 
+# Celeste (clinica de ventas) evalua exactamente los mismos 6 KPIs con los mismos
+# pesos que Maria — el GEM de ventas y la rubrica de negociacion salieron del
+# mismo marco. Reusamos la definicion y solo cambiamos el encabezado del escenario.
+KPIS_BY_SCENARIO["celeste"] = {
+    **KPIS_BY_SCENARIO["maria"],
+    "scenario_type": "Clinica de Ventas — cliente dificil (rubro definido por el vendedor)",
+}
+
 # El mismo personaje de Roberto tiene dos ejercicios fijos de manufactura. El
 # caso de objeciones conserva la rubrica historica de venta industrial; el caso
 # de descubrimiento evalua solo conductas que el usuario tuvo oportunidad de
