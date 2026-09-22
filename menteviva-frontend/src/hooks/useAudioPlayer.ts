@@ -36,6 +36,12 @@ export function useAudioPlayer() {
   // al final para reproducir — vale la confiabilidad universal.
   const streamChunksRef = useRef<Uint8Array[]>([]);
 
+  // Contenedor del audio del turno en curso. Lo dicta el backend en
+  // assistant_audio_start.mime porque depende de TTS_PROVIDER: ElevenLabs manda
+  // MP3 y Gemini manda WAV. Chrome usa el type del Blob para decodificar, asi
+  // que etiquetar un WAV como audio/mpeg da silencio sin ningun error.
+  const streamMimeRef = useRef<string>("audio/mpeg");
+
   // Crear elemento de audio persistente
   useEffect(() => {
     const audio = new Audio();
@@ -129,8 +135,9 @@ export function useAudioPlayer() {
 
   // Streaming "ligero": acumula chunks, reproduce al cerrar como blob unico.
   const startStream = useCallback(
-    (_mimeType = "audio/mpeg") => {
-      console.log("[Audio] startStream");
+    (mimeType = "audio/mpeg") => {
+      console.log(`[Audio] startStream (${mimeType})`);
+      streamMimeRef.current = mimeType;
       cleanupPreviousSource();
       // Asegurar que el elemento persistente respete el mute actual al
       // arrancar un nuevo stream.
@@ -165,7 +172,9 @@ export function useAudioPlayer() {
       return;
     }
 
-    const blob = new Blob(streamChunksRef.current as BlobPart[], { type: "audio/mpeg" });
+    const blob = new Blob(streamChunksRef.current as BlobPart[], {
+      type: streamMimeRef.current,
+    });
     streamChunksRef.current = [];
 
     if (currentBlobUrl.current) {
@@ -173,7 +182,9 @@ export function useAudioPlayer() {
     }
     const url = URL.createObjectURL(blob);
     currentBlobUrl.current = url;
-    console.log(`[Audio] blob creado: ${blob.size} bytes, url: ${url}`);
+    console.log(
+      `[Audio] blob creado: ${blob.size} bytes, ${blob.type}, url: ${url}`
+    );
 
     audioRef.current.src = url;
     // Aplicar mute persistente al nuevo clip

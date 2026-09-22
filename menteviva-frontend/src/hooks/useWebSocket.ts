@@ -28,7 +28,9 @@ interface UseWebSocketOptions {
   avatarId: string | undefined;
   initPayload?: WsInitPayload;
   // Callbacks para streaming TTS
-  onAudioStart?: () => void;
+  // `mime` lo manda el backend: depende de TTS_PROVIDER (MP3 con ElevenLabs,
+  // WAV con Gemini). Si no viene, el default del player es audio/mpeg.
+  onAudioStart?: (mime?: string) => void;
   onAudioChunk?: (base64Chunk: string) => void;
   onAudioEnd?: () => void;
   // Sofia emitio [CIERRE] -> backend manda closing_intent.
@@ -172,7 +174,7 @@ export function useWebSocket({
           // assistant_audio_end junto con el play() del audio.
           pendingAssistantTextRef.current = data.content || pendingTextRef.current;
           pendingTextRef.current = "";
-          audioCallbacksRef.current.onAudioStart?.();
+          audioCallbacksRef.current.onAudioStart?.(data.mime);
           break;
 
         case "assistant_audio_chunk":

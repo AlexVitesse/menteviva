@@ -45,6 +45,16 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""
     elevenlabs_model: str = "eleven_multilingual_v2"
 
+    # Proveedor de TTS del pipeline CLASICO (conversation_turn -> edge_tts).
+    # No aplica a Gemini Live, que emite audio nativo y no pasa por TTS.
+    # Decision 2026-09-18: el alterno a ElevenLabs es Gemini, NO OpenAI
+    # (ver docs/changelog/2026-09-18_decision_tts_gemini_no_openai.md).
+    # Reusa el pool de GEMINI_API_KEY* que ya rota gemini_live.py.
+    # OJO: el free tier de Gemini es por modelo y Live ya lo consume; medir
+    # cuota antes de poner "gemini" por default en prod.
+    tts_provider: Literal["elevenlabs", "gemini"] = "elevenlabs"
+    gemini_model_tts: str = "gemini-2.5-flash-preview-tts"
+
     # ============ Gemini Live API (audio nativo en tiempo real) ============
     # PoC (Fase 1) para reemplazar el pipeline Whisper+gpt-oss+ElevenLabs por
     # una sola sesion bidireccional. Ver docs/plans/05_gemini_live_voice.md.

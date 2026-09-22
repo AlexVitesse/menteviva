@@ -10,6 +10,7 @@ from fastapi import WebSocket
 
 from app.config import settings
 from app.services.conversation_providers import GroqConversationProvider
+from app.services.edge_tts import output_mime
 from app.services.telemetry import observe_seconds
 
 logger = logging.getLogger("menteviva")
@@ -55,7 +56,13 @@ class TurnProcessor:
         conversation_history.append({"role": "assistant", "content": response})
         await websocket.send_json({"type": "status", "status": "generating_audio"})
 
-        await websocket.send_json({"type": "assistant_audio_start", "content": response})
+        await websocket.send_json({
+            "type": "assistant_audio_start",
+            "content": response,
+            # El contenedor depende de TTS_PROVIDER (MP3 vs WAV). El front arma
+            # el Blob con esto; sin el, un WAV etiquetado audio/mpeg no suena.
+            "mime": output_mime(),
+        })
         started = time.monotonic()
         try:
             async with asyncio.timeout(settings.provider_tts_timeout_seconds):

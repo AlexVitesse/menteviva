@@ -48,12 +48,15 @@ export function Simulation() {
     [selectedAvatar?.id]
   );
 
-  const handleAudioStart = useCallback(() => {
-    // Cada nuevo clip del avatar arranca reproduciendo: resetea el estado de
-    // pausa del usuario (si pauso el turno anterior, este turno suena normal).
-    setIsPaused(false);
-    startStream("audio/mpeg");
-  }, [startStream]);
+  const handleAudioStart = useCallback(
+    (mime?: string) => {
+      // Cada nuevo clip del avatar arranca reproduciendo: resetea el estado de
+      // pausa del usuario (si pauso el turno anterior, este turno suena normal).
+      setIsPaused(false);
+      startStream(mime);
+    },
+    [startStream]
+  );
 
   const handleAudioChunk = useCallback(
     (chunk: string) => {

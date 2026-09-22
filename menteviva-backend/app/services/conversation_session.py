@@ -42,6 +42,7 @@ from app.prompts.scenarios import get_avatar, get_system_prompt
 from app.services.conversation_finalizer import finalize_conversation
 from app.services.conversation_providers import gemini_provider, groq_provider
 from app.services.conversation_turn import TurnProcessor
+from app.services.edge_tts import output_mime
 from app.services.gemini_live import VOCAL_TONE_MAX_BYTES, analyze_vocal_tone
 from app.services.resource_limits import (
     acquire_conversation_slot,
@@ -173,9 +174,16 @@ async def _send_sofia_greeting(
     idx, text = pick_greeting(seed)
     cached = GREETINGS_DIR / f"sofia_greet_{idx}.mp3"
 
-    await websocket.send_json({"type": "assistant_audio_start", "content": text})
+    # El mime se resuelve ANTES de anunciar el audio: el cacheado siempre es MP3,
+    # pero el fallback live sale del proveedor activo (que puede ser WAV).
+    is_cached = cached.exists()
+    await websocket.send_json({
+        "type": "assistant_audio_start",
+        "content": text,
+        "mime": "audio/mpeg" if is_cached else output_mime(),
+    })
 
-    if cached.exists():
+    if is_cached:
         logger.info(f"[Greeting] Sirviendo cacheado: {cached.name}")
         with open(cached, "rb") as f:
             chunks = 0

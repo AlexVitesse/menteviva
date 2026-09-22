@@ -120,7 +120,7 @@ export function Diagnostico() {
 
   const use3DAvatar = useMemo(() => getAvatar3DFlag(), []);
 
-  const handleAudioStart = useCallback(() => startStream("audio/mpeg"), [startStream]);
+  const handleAudioStart = useCallback((mime?: string) => startStream(mime), [startStream]);
   const handleAudioChunk = useCallback((chunk: string) => appendChunk(chunk), [appendChunk]);
   const handleAudioEnd = useCallback(() => endStream(), [endStream]);
   const handleClosingIntent = useCallback(() => setClosingCountdown(5), []);

@@ -4,7 +4,10 @@ export type ServerEvent =
   | { type: "status"; status: ConnectionStatus }
   | { type: "user_message"; content: string }
   | { type: "assistant_token"; content: string }
-  | { type: "assistant_audio_start"; content?: string }
+  // `mime`: contenedor del audio del turno. Depende de TTS_PROVIDER en el
+  // backend (audio/mpeg con ElevenLabs, audio/wav con Gemini). Opcional para
+  // el path de Gemini Live, que manda PCM y lo arma su propio hook.
+  | { type: "assistant_audio_start"; content?: string; mime?: string }
   | { type: "assistant_audio_chunk"; audio: string }
   | { type: "assistant_audio_end" }
   | { type: "output_transcript"; content: string }
