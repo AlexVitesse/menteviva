@@ -1,3 +1,11 @@
+> **⚠️ SUPERSEDED — 2026-09-18.** Este plan propone OpenAI como proveedor de TTS.
+> **Decisión del usuario: no vamos por OpenAI; de momento se usa Gemini.**
+> El dispatcher y el fallback a ElevenLabs siguen siendo válidos tal cual están
+> descritos aquí; lo único que cambia es el proveedor destino y que no hace falta
+> key ni SDK nuevos (`google-genai` y el pool de `GEMINI_API_KEY*` ya existen).
+> Ver `docs/TODO_PILOTO.md` §1.1 y
+> `docs/changelog/2026-09-18_decision_tts_gemini_no_openai.md`.
+
 # Plan: Swap TTS de ElevenLabs a OpenAI
 
 **Motivacion:** OpenAI TTS cuesta $0.015 / 1k chars (vs $0.066–0.10 de ElevenLabs) y la concurrencia depende del usage tier de tu cuenta OpenAI (no de un plan rigido de 2–30 streams). Para 100 usuarios concurrentes en el piloto, OpenAI es ~6× mas barato y mas escalable.

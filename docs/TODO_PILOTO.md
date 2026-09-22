@@ -66,16 +66,40 @@ Tareas ordenadas por urgencia para shipear el piloto. Convención: `[x]` hecho, 
 
 **Meta: que el demo aguante 100 usuarios sin reventar costos o caer.**
 
-### 1.1 TTS swap a OpenAI (~1.5h) — Plan 02
-- [ ] `poetry add openai` (si no está)
-- [ ] `TTS_PROVIDER` + `OPENAI_API_KEY` en `.env` y `Settings`
-- [ ] Refactor `services/edge_tts.py` con dispatcher OpenAI/ElevenLabs
-- [ ] Mapeo voces: sofia→`alloy`, roberto→`onyx`, maria→`nova`
-- [ ] A/B con `scripts/test_tts.py` (calidad español, latencia)
-- [ ] Sesión de 5 min en `/diagnostico` y `/simulation` para validar
-- [ ] Default `TTS_PROVIDER=openai` con fallback EL automático si error
+### 1.1 TTS swap a Gemini (~1.5h) — Plan 02 (revisado)
 
-**Justificación:** $0.015/1k chars vs $0.066-0.10 → ~6× más barato. A 100 usuarios concurrentes la diferencia es material.
+> **Decisión 2026-09-18: no vamos por OpenAI.** De momento el proveedor
+> alterno es **Gemini**. `google-genai` ya es dependencia y el pool de 4
+> `GEMINI_API_KEY*` ya existe en `config.py` (Gemini Live) — no entra un
+> proveedor nuevo al stack, se reusa el que ya está pagado y rotando.
+
+- [x] `TTS_PROVIDER` en `.env` y `Settings` (reusa `gemini_api_keys`, sin key nueva)
+- [x] Refactor `services/edge_tts.py` con dispatcher Gemini/ElevenLabs
+      (`text_to_speech` **y** `text_to_speech_stream`) + WAV + `mime` al front
+- [x] Voces: se reusan las de `gemini_live.GEMINI_VOICES`, ya validadas por escucha
+- [x] A/B con `scripts/test_tts.py --live` (TTFB, latencia total)
+- [ ] ~~Default `TTS_PROVIDER=gemini`~~ — **descartado por latencia, ver abajo**
+- [ ] Sin medir: la cuota bajo tráfico real (el free tier es por modelo y Live ya lo usa)
+
+> **⛔ Resultado del A/B (2026-09-22): Gemini no sirve para el turno en vivo.**
+> TTFB 17.1s (roberto) y 33.7s (Sofía) contra 2.4s / 2.0s de ElevenLabs, para
+> ~8.5s de audio. El modelo de TTS no expone streaming incremental, así que el
+> TTFB *es* el total. **El default se queda en `elevenlabs`.**
+> El dispatcher queda listo y probado para uso offline (pre-generar audio, como
+> los saludos cacheados de Sofía). Si el objetivo sigue siendo bajar el costo del
+> turno en vivo, hay que medir otro modelo — no este.
+> Detalle: `docs/changelog/2026-09-22_tts_dispatcher_gemini.md`.
+
+**Justificación:** ElevenLabs es el renglón caro del turno y a 100 usuarios
+concurrentes la diferencia es material. Gemini gana sobre OpenAI por consolidación:
+una sola cuenta, un solo pool de keys, un solo lugar donde vigilar cuota.
+
+**Alcance real:** esto sólo aplica al **pipeline clásico** (`conversation.py` →
+`edge_tts.py`). El path realtime de Gemini Live ya emite audio nativo y no pasa
+por TTS — ahí no hay nada que cambiar.
+
+**Ojo con la cuota:** el free tier de Gemini es por modelo y Gemini Live ya lo
+consume. Medir antes de poner `gemini` por default en prod.
 
 ### 1.2 Observabilidad mínima
 - [ ] logrotate config con `copytruncate` para `menteviva-backend/logs/*.log`
