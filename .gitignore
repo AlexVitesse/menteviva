@@ -52,3 +52,4 @@ menteviva-frontend/*.png
 menteviva-frontend/tpose-*.png
 *.png
 !menteviva-frontend/public/avatars/*.png
+docs/landing-assets/*.glb

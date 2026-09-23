@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "shots": "node scripts/landing-shots.cjs"
   },
   "dependencies": {
     "@lottiefiles/react-lottie-player": "^3.5.0",

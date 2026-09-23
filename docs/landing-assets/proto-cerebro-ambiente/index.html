@@ -1,0 +1,589 @@
+<title>Mente Viva Cerebro</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+  /* Propuesta: el cerebro deja de ser un objeto a un lado y pasa a ser el
+     ambiente. Un solo tema (oscuro): es la marca y el 3D vive ahi. */
+  :root {
+    color-scheme: dark;
+    --ink: #08071A;
+    --deep: #110F2B;
+    --violet: #7C3AED;
+    --violet-l: #A855F7;
+    --teal: #06B6D4;
+    --danger: #DC2626;
+    --cream: #F5F3FF;
+    --cream-75: rgba(245, 243, 255, 0.75);
+    --cream-55: rgba(245, 243, 255, 0.55);
+    --line: rgba(245, 243, 255, 0.12);
+    --syne: "Syne", "Arial Black", Impact, sans-serif;
+    --sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+    --bx: 50%;
+    --by: 30%;
+    --bc: rgba(124, 58, 237, 0.35);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 5rem; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--cream);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* --- capas de ambiente (fijas, detras del contenido) --- */
+  #gl, .bleed, .grain, .vignette, .poster {
+    position: fixed; inset: 0; pointer-events: none;
+  }
+  #gl { z-index: 0; }
+  #gl canvas { display: block; width: 100%; height: 100%; }
+  .poster {
+    z-index: 1;
+    background: url("landing/brain-poster.webp") center 22% / auto 78vh no-repeat;
+    opacity: 1; transition: opacity 0.8s ease;
+  }
+  .poster.off { opacity: 0; }
+  /* La luz del cerebro se derrama sobre la pagina: el centro se calcula por
+     frame desde el 3D (--bx/--by) y el color por acto (--bc). */
+  .bleed {
+    z-index: 2;
+    background: radial-gradient(60vmax 60vmax at var(--bx) var(--by), var(--bc), transparent 60%);
+    mix-blend-mode: screen;
+    transition: background 0.4s linear;
+  }
+  .vignette {
+    z-index: 3;
+    background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(8, 7, 26, 0.85) 100%);
+  }
+  .grain {
+    z-index: 4; opacity: 0.07; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* --- contenido --- */
+  .page { position: relative; z-index: 10; }
+  .wrap { width: min(1120px, 100% - 2rem); margin-inline: auto; }
+
+  nav {
+    position: fixed; inset: 0 0 auto 0; z-index: 50;
+    padding-top: env(safe-area-inset-top, 0px);
+    background: linear-gradient(to bottom, rgba(8, 7, 26, 0.9), rgba(8, 7, 26, 0));
+    backdrop-filter: none;
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 4rem; }
+  .mark { font-family: var(--syne); font-weight: 800; font-size: 1.1rem; letter-spacing: -0.01em; color: var(--cream); text-decoration: none; }
+  nav ul { display: none; list-style: none; margin: 0; padding: 0; gap: 2rem; }
+  nav ul a { color: var(--cream-55); text-decoration: none; font-size: 0.92rem; }
+  nav ul a:hover { color: var(--cream); }
+  .btn {
+    display: inline-block; background: var(--cream); color: var(--ink);
+    font-weight: 600; text-decoration: none; padding: 0.8rem 1.6rem; border-radius: 6px;
+    transition: opacity 0.2s;
+  }
+  .btn:hover { opacity: 0.9; }
+  .btn.sm { padding: 0.5rem 1rem; font-size: 0.9rem; }
+  @media (min-width: 900px) { nav ul { display: flex; } }
+
+  section { position: relative; }
+  .display {
+    font-family: var(--syne); font-weight: 800; letter-spacing: -0.035em; line-height: 0.98;
+    font-size: clamp(2.5rem, 7.6vw, 6.5rem); margin: 0; text-wrap: balance;
+  }
+  h2 {
+    font-family: var(--syne); font-weight: 800; letter-spacing: -0.03em; line-height: 1.02;
+    font-size: clamp(2rem, 4.6vw, 3.6rem); margin: 0; text-wrap: balance;
+  }
+  .lead { font-size: clamp(1.05rem, 1.4vw, 1.3rem); color: var(--cream-75); margin: 1.25rem 0 0; max-width: 34em; }
+  .note { font-size: 0.86rem; color: var(--cream-55); margin: 1.5rem 0 0; }
+  .label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; }
+
+  /* Acto 1 */
+  .hero { min-height: 100svh; display: flex; align-items: flex-end; padding-block: 8rem 5rem; }
+  .hero .wrap { text-align: center; display: flex; flex-direction: column; align-items: center; }
+  .hero .lead { margin-inline: auto; max-width: 30em; text-align: center; }
+  .hero .cta { margin-top: 2.25rem; display: flex; flex-direction: column; align-items: center; gap: 0.9rem; }
+  .hero .alt { color: var(--cream-55); font-size: 0.95rem; text-decoration: none; }
+  .hero .alt:hover { color: var(--cream); text-decoration: underline; text-underline-offset: 4px; }
+
+  /* Actos con texto a un lado. En movil el cerebro queda arriba y el texto abajo. */
+  .act { min-height: 100svh; display: flex; align-items: center; padding-block: 44svh 5rem; }
+  .act::before { content: ""; position: absolute; inset: 30svh 0 0 0; pointer-events: none;
+    background: linear-gradient(to top, var(--ink) 35%, rgba(8, 7, 26, 0.85) 65%, transparent); }
+  .act .col { width: 100%; position: relative; }
+  @media (min-width: 900px) {
+    .act { padding-block: 7rem; }
+    .act::before { inset: 0; width: 62%; }
+    .act.right::before { right: 0; left: auto; background: linear-gradient(to left, rgba(8, 7, 26, 0.92) 30%, rgba(8, 7, 26, 0.6) 65%, transparent); }
+    .act.left::before { left: 0; right: auto; background: linear-gradient(to right, rgba(8, 7, 26, 0.92) 30%, rgba(8, 7, 26, 0.6) 65%, transparent); }
+    .act .col { width: 50%; }
+    .act.right .col { margin-left: auto; }
+    .act.left .col { margin-right: auto; }
+  }
+
+  /* Acto 2: frase grande + dos columnas bajo una linea. */
+  .why { display: grid; gap: 1.5rem; margin-top: 2.5rem; border-left: 2px solid var(--line); padding-left: 1.5rem; }
+  .why p { margin: 0; color: var(--cream-75); }
+  @media (min-width: 640px) { .why { grid-template-columns: 1fr 1fr; } }
+
+  /* Actos 3-4: guion. Las lineas aparecen una a una (y el cerebro late con cada una). */
+  .script { display: grid; gap: 1.4rem; margin-top: 2.5rem; }
+  .line { display: grid; grid-template-columns: 5.5rem 1fr; gap: 1rem; align-items: start; }
+  .line .label { padding-top: 0.55rem; }
+  .line p { margin: 0; font-size: clamp(1.15rem, 1.8vw, 1.6rem); line-height: 1.32; }
+  .line.red .label { color: #F87171; }
+  .line.teal .label { color: #22D3EE; }
+  .r { opacity: 0; transform: translateY(10px); transition: opacity 0.7s ease, transform 0.7s ease; transition-delay: calc(var(--i, 0) * 0.55s); }
+  .in .r { opacity: 1; transform: none; }
+
+  /* Acto 5: hoja de resultados. El punto de cada habilidad se enciende con su zona. */
+  .sheet { margin-top: 2.25rem; border-top: 1px solid var(--line); }
+  .row { display: flex; align-items: center; gap: 1rem; padding: 1.05rem 0; border-bottom: 1px solid rgba(245, 243, 255, 0.07); }
+  .row .dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(245, 243, 255, 0.18); flex: none; box-shadow: 0 0 0 0 transparent; transition: background 0.8s, box-shadow 0.8s; transition-delay: calc(var(--i, 0) * 0.25s); }
+  .in .row .dot { background: var(--c); box-shadow: 0 0 14px var(--c); }
+  .row .name { flex: 1; }
+  .row .score { font-family: var(--syne); font-weight: 700; font-size: 1.4rem; color: var(--cream-55); }
+  .row.head { border-bottom: 1px solid var(--line); }
+  .row.head .label { color: var(--cream-55); }
+  .legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; margin-top: 1.25rem; font-size: 0.86rem; color: var(--cream-55); }
+  .legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c); margin-right: 0.5rem; vertical-align: 1px; }
+
+  /* Actos 6-7: el cerebro queda al fondo; el texto toma todo el ancho. */
+  .wide { padding-block: 7rem; }
+  .two { display: grid; gap: 1px; background: var(--line); margin-top: 3.5rem; border-radius: 6px; overflow: hidden; }
+  .two > div { background: rgba(8, 7, 26, 0.82); padding: 2.25rem; }
+  .two ul { list-style: none; margin: 1.4rem 0 0; padding: 0; display: grid; gap: 0.9rem; }
+  .two .no ul { color: var(--cream-75); }
+  .two .label.teal { color: #22D3EE; }
+  @media (min-width: 760px) { .two { grid-template-columns: 1fr 1fr; } }
+  .three { display: grid; gap: 2.5rem; margin-top: 3.5rem; }
+  .three article { border-top: 2px solid var(--cream); padding-top: 1.4rem; }
+  .three h3 { font-family: var(--syne); font-weight: 700; font-size: 1.35rem; margin: 0; letter-spacing: -0.01em; }
+  .three p { color: var(--cream-75); margin: 0.9rem 0 0; }
+  @media (min-width: 760px) { .three { grid-template-columns: repeat(3, 1fr); } }
+  .link { color: var(--cream); font-weight: 600; text-decoration: underline; text-decoration-color: rgba(245, 243, 255, 0.3); text-underline-offset: 8px; display: inline-block; margin-top: 2.5rem; }
+  .link:hover { text-decoration-color: var(--cream); }
+
+  /* Acto 8 */
+  .end { min-height: 100svh; display: flex; align-items: flex-end; padding-block: 8rem 6rem; text-align: center; }
+  .hero::before, .end::before { content: ""; position: absolute; inset: 45% 0 0 0; pointer-events: none;
+    background: linear-gradient(to top, rgba(8, 7, 26, 0.9) 30%, rgba(8, 7, 26, 0.55) 70%, transparent); }
+  .end .wrap { display: flex; flex-direction: column; align-items: center; }
+  .end .btn { margin-top: 2.25rem; }
+
+  footer { border-top: 1px solid var(--line); padding-block: 3rem; background: var(--ink); font-size: 0.9rem; color: var(--cream-55); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2.5rem; align-items: baseline; }
+  footer a { color: var(--cream-55); text-decoration: none; }
+  footer a:hover { color: var(--cream); }
+
+  :focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) {
+    .r, .row .dot { transition: none; opacity: 1; transform: none; }
+    .grain { display: none; }
+  }
+</style>
+
+<div id="gl" aria-hidden="true"></div>
+<div class="poster" id="poster" aria-hidden="true"></div>
+<div class="bleed" aria-hidden="true"></div>
+<div class="vignette" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
+
+<div class="page">
+  <nav>
+    <div class="wrap">
+      <a class="mark" href="#inicio">Mente Viva</a>
+      <ul>
+        <li><a href="#presion">La presión</a></li>
+        <li><a href="#reporte">El reporte</a></li>
+        <li><a href="#equipos">Para equipos</a></li>
+        <li><a href="#comparativa">Comparativa</a></li>
+      </ul>
+      <a class="btn sm" href="#cta">Agendar demo</a>
+    </div>
+  </nav>
+
+  <section class="hero" id="inicio" data-act="1">
+    <div class="wrap">
+      <h1 class="display">La conversación<br>que estás evitando.</h1>
+      <p class="lead">Tu equipo practica ventas, negociación y entrevistas en voz alta, con un avatar que no se la pone fácil. Al terminar, cada quien recibe un reporte con puntaje por habilidad.</p>
+      <div class="cta">
+        <a class="btn" href="#cta">Agendar demo</a>
+        <a class="alt" href="#cta">o prueba una conversación gratis</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="act left" data-act="2">
+    <div class="wrap"><div class="col">
+      <h2>Nadie practica la conversación difícil antes de tenerla.</h2>
+      <div class="why">
+        <p>Los cursos se ven y se olvidan: nadie te pone a prueba.</p>
+        <p>El roleplay con un colega no da feedback: te trata con cariño y no mide nada.</p>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="act right" id="presion" data-act="3" data-kick="amygdala">
+    <div class="wrap"><div class="col">
+      <h2>Así suena la presión.</h2>
+      <p class="lead">Roberto Garza, director de operaciones. Sesión real del piloto.</p>
+      <div class="script">
+        <div class="line red r" style="--i:0"><span class="label">Roberto</span><p>Tuvimos un proyecto de transformación digital el año pasado que no funcionó.</p></div>
+        <div class="line red r" style="--i:1"><span class="label">Roberto</span><p>No podemos parar producción para implementar nada.</p></div>
+        <div class="line red r" style="--i:2"><span class="label">Roberto</span><p>Mi directora de finanzas va a preguntar el ROI en los primeros seis meses. ¿Tienen alguna estimación?</p></div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="act right" data-act="4" data-kick="pfc">
+    <div class="wrap"><div class="col">
+      <h2>Así suena sostenerla.</h2>
+      <div class="script">
+        <div class="line teal r" style="--i:0"><span class="label">Tú</span><p>Si el proyecto anterior no funcionó, primero quiero entender por qué: ¿fue la herramienta o cómo se implementó?</p></div>
+        <div class="line teal r" style="--i:1"><span class="label">Tú</span><p>No le voy a pedir que pare producción. Empezamos con una sola línea, en paralelo, y medimos antes y después.</p></div>
+        <div class="line teal r" style="--i:2"><span class="label">Tú</span><p>El ROI lo armamos con sus números, no con los míos. ¿Cuánto le cuesta una hora de paro?</p></div>
+      </div>
+      <p class="note">Respuesta de ejemplo. La de tu equipo será la suya.</p>
+    </div></div>
+  </section>
+
+  <section class="act left" id="reporte" data-act="5">
+    <div class="wrap"><div class="col">
+      <h2>Y esto es lo que queda.</h2>
+      <p class="lead">Puntaje por habilidad y la frase exacta de la conversación que lo justifica. Cada habilidad enciende su zona.</p>
+      <div class="sheet">
+        <div class="row head"><span class="label">Roberto Garza · Venta consultiva</span><span class="score">—</span></div>
+        <div class="row" style="--i:0; --c:#A855F7"><span class="dot"></span><span class="name">Diagnóstico técnico</span><span class="score">—</span></div>
+        <div class="row" style="--i:1; --c:#22D3EE"><span class="dot"></span><span class="name">Habla el idioma del cliente</span><span class="score">—</span></div>
+        <div class="row" style="--i:2; --c:#F87171"><span class="dot"></span><span class="name">Control bajo presión técnica</span><span class="score">—</span></div>
+        <div class="row" style="--i:3; --c:#22D3EE"><span class="dot"></span><span class="name">ROI calculado y defendible</span><span class="score">—</span></div>
+      </div>
+      <div class="legend"><span style="--c:#16A34A">75 o más</span><span style="--c:#F97316">50 a 75</span><span style="--c:#DC2626">menos de 50</span></div>
+      <p class="note">Puntajes de una sesión real del piloto: pendientes de aprobación para publicarse. Con ellos, cada zona toma el color del semáforo.</p>
+    </div></div>
+  </section>
+
+  <section class="wide" id="equipos" data-act="6">
+    <div class="wrap">
+      <h2 style="max-width: 16em">Lo que ve RH y un taller no le da</h2>
+      <p class="lead">Corre en el navegador, con micrófono. No hay nada que instalar ni que desplegar.</p>
+      <div class="two">
+        <div>
+          <span class="label teal">RH ve</span>
+          <ul><li>Qué habilidad está más baja en el equipo</li><li>Quién practicó y cuándo</li><li>Quién avanzó y quién se estancó</li></ul>
+        </div>
+        <div class="no">
+          <span class="label" style="color: var(--cream-55)">RH no ve</span>
+          <ul><li>La transcripción de cada conversación</li><li>Lo que alguien dijo mientras practicaba</li></ul>
+          <p class="note">El detalle individual no se comparte sin consentimiento expreso de la persona.</p>
+        </div>
+      </div>
+      <a class="link" href="#cta">Agendar demo para mi equipo</a>
+    </div>
+  </section>
+
+  <section class="wide" id="comparativa" data-act="7">
+    <div class="wrap">
+      <h2 style="max-width: 16em">Por qué no un taller o un curso en línea</h2>
+      <div class="three">
+        <article><h3>Se practica, no se ve</h3><p>Un curso se consume y se olvida. Aquí la persona sostiene la conversación completa, con las objeciones y los silencios incómodos incluidos.</p></article>
+        <article><h3>Deja evidencia, no asistencia</h3><p>Cada sesión entrega transcripción y puntaje por habilidad. La lista de asistentes de un taller no dice quién mejoró.</p></article>
+        <article><h3>Escala sin agenda</h3><p>Veinte personas pueden practicar el mismo martes a horas distintas. Un coach o un taller no se multiplica.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="end" id="cta" data-act="8">
+    <div class="wrap">
+      <h2 class="display">Ve el reporte antes de decidir.</h2>
+      <a class="btn" href="#inicio">Agendar demo</a>
+      <p class="note">Una práctica dura de 5 a 10 minutos · El reporte llega al terminar</p>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <span class="mark" style="font-size: 0.95rem">Mente Viva</span>
+      <a href="#inicio">Privacidad</a><a href="#inicio">Términos</a><a href="#inicio">Contacto</a>
+      <span style="margin-left: auto">© 2026 Mente Viva</span>
+    </div>
+  </footer>
+</div>
+
+<script src="models/brain.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+
+// ---- Guion por acto. La perilla de calibracion: numeros, no codigo. ----
+// cam/look en unidades de escena (cerebro de diametro 2.4 en el origen).
+// El cerebro NO se mueve: se mueve la camara. Eso da los primeros planos.
+const ANCHORS = {
+  amygdala: [-0.35, -0.3, 0.35],
+  pfc: [-0.95, 0.3, 0.2],
+  broca: [-0.6, 0.0, 0.6],
+  temporal: [0.05, -0.35, 0.6],
+  parietal: [0.35, 0.65, 0.3],
+};
+const V = "#A855F7", T = "#22D3EE", R = "#EF4444";
+const ACTS = {
+  1: { cam: [0, -0.45, 3.1], look: [0, -0.45, 0], rot: 0.0, fresnel: 1.0, syn: 1.0, bloom: 0.75,
+       zones: {}, bleed: ["center", "rgba(124,58,237,0.30)"] },
+  2: { cam: [-1.4, 0.1, 5.2], look: [-1.4, 0, 0], rot: 0.6, fresnel: 0.35, syn: 0.15, bloom: 0.5,
+       zones: {}, bleed: ["center", "rgba(124,58,237,0.16)"] },
+  // Primer plano: la camara se acerca a la amigdala; la corteza llena la pantalla.
+  3: { cam: [-0.3, -0.3, 2.5], look: [0.3, -0.3, 0], rot: -0.5, fresnel: 0.55, syn: 0.25, bloom: 0.8,
+       zones: { amygdala: [R, 1.5] }, bleed: ["amygdala", "rgba(220,38,38,0.16)"] },
+  // El cerebro gira para dar la cara: el lobulo frontal se enciende en teal.
+  4: { cam: [-0.2, 0.2, 2.9], look: [0.35, 0.15, 0], rot: 0.9, fresnel: 0.65, syn: 0.6, bloom: 0.8,
+       zones: { amygdala: [R, 0.4], pfc: [T, 1.5] }, bleed: ["pfc", "rgba(6,182,212,0.16)"] },
+  5: { cam: [-1.3, 0.05, 4.3], look: [-1.3, 0, 0], rot: 0.4, fresnel: 0.55, syn: 0.5, bloom: 0.9,
+       zones: { pfc: [V, 1.1], broca: [T, 1.1], amygdala: [R, 0.9], temporal: [T, 1.1] },
+       bleed: ["center", "rgba(124,58,237,0.22)"] },
+  6: { cam: [0, -1.1, 7.5], look: [0, -1.1, 0], rot: 0.8, fresnel: 0.25, syn: 0.15, bloom: 0.45,
+       zones: {}, bleed: ["center", "rgba(124,58,237,0.14)"] },
+  7: { cam: [0, -1.1, 7.5], look: [0, -1.1, 0], rot: 1.1, fresnel: 0.25, syn: 0.15, bloom: 0.45,
+       zones: {}, bleed: ["center", "rgba(124,58,237,0.14)"] },
+  8: { cam: [0, -0.4, 3.4], look: [0, -0.4, 0], rot: 1.5, fresnel: 1.0, syn: 1.0, bloom: 0.95,
+       zones: { amygdala: [V, 0.8], pfc: [T, 1.1], broca: [V, 0.8], parietal: [T, 0.8] },
+       bleed: ["center", "rgba(124,58,237,0.26)"] },
+};
+const ZONE_IDS = Object.keys(ANCHORS);
+
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const root = document.documentElement;
+const glEl = document.getElementById("gl");
+const poster = document.getElementById("poster");
+
+// ---- Revelado de lineas + latido del cerebro por linea ----
+const kicks = {}; // zona -> energia extra que decae
+const io = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    e.target.classList.add("in");
+    const z = e.target.dataset.kick;
+    if (z && !reduce) {
+      e.target.querySelectorAll(".r").forEach((_, i) => setTimeout(() => { kicks[z] = 1.6; }, 550 * i + 150));
+    }
+  }
+}, { rootMargin: "-20% 0px -20% 0px" });
+document.querySelectorAll("[data-act]").forEach((s) => io.observe(s));
+
+let webgl = false;
+try { webgl = !!document.createElement("canvas").getContext("webgl2"); } catch {}
+if (!webgl) { throw new Error("sin webgl2: se queda el poster"); }
+
+// ---- Escena ----
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+glEl.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#08071A");
+scene.fog = new THREE.Fog("#08071A", 6, 16);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 40);
+
+// Reflejos: sin esto el material se ve de plastico. RoomEnvironment es
+// procedural (no descarga nada).
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+scene.add(new THREE.AmbientLight("#4C3A8A", 0.35));
+const key = new THREE.DirectionalLight("#FFF4E6", 1.6); key.position.set(3, 4, 5); scene.add(key);
+const rimV = new THREE.PointLight("#7C3AED", 14, 12, 2); rimV.position.set(-4, 2, 3); scene.add(rimV);
+const rimT = new THREE.PointLight("#06B6D4", 9, 12, 2); rimT.position.set(4, -2, -3); scene.add(rimT);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.8, 0.55, 0.62);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
+const group = new THREE.Group();
+scene.add(group);
+
+// Fresnel aditivo: borde de luz que sigue la silueta.
+const fresnel = new THREE.ShaderMaterial({
+  uniforms: { uColor: { value: new THREE.Color("#A855F7") }, uPower: { value: 2.6 }, uIntensity: { value: 0.9 } },
+  vertexShader: `uniform float uPower; varying float vF;
+    void main(){ vec3 n = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0);
+      vF = pow(1.0 - abs(dot(n, normalize(-mv.xyz))), uPower); gl_Position = projectionMatrix * mv; }`,
+  fragmentShader: `uniform vec3 uColor; uniform float uIntensity; varying float vF;
+    void main(){ gl_FragColor = vec4(uColor * vF * uIntensity, vF); }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+
+const loader = new GLTFLoader();
+loader.setMeshoptDecoder(MeshoptDecoder);
+const b64 = window.BRAIN_B64; const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
+loader.parse(bin, "", (gltf) => {
+  const rootObj = gltf.scene;
+  const meshes = [];
+  rootObj.traverse((o) => o.isMesh && meshes.push(o));
+  meshes.forEach((m) => {
+    const old = m.material;
+    m.material = new THREE.MeshPhysicalMaterial({
+      color: "#170E48", roughness: 0.62, metalness: 0.0,
+      clearcoat: 0.45, clearcoatRoughness: 0.4,
+      iridescence: 0.18, iridescenceIOR: 1.3,
+      emissive: "#5B21B6", emissiveIntensity: 0.12,
+      normalMap: old.normalMap, normalScale: old.normalScale, envMapIntensity: 0.4,
+    });
+    m.add(new THREE.Mesh(m.geometry, fresnel));
+  });
+  const box = new THREE.Box3().setFromObject(rootObj);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const k = 2.4 / Math.max(size.x, size.y, size.z);
+  rootObj.scale.setScalar(k);
+  rootObj.position.copy(center).multiplyScalar(-k);
+  group.add(rootObj);
+  poster.classList.add("off");
+});
+
+// Sinapsis alrededor.
+const N = innerWidth < 900 ? 70 : 140;
+const pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
+const cA = new THREE.Color("#8B5CF6"), cB = new THREE.Color("#14B8A6");
+for (let i = 0; i < N; i++) {
+  const th = Math.random() * Math.PI * 2, ph = Math.random() * Math.PI, r = 2.0 + Math.random() * 1.8;
+  pos.set([r * Math.sin(ph) * Math.cos(th), r * Math.cos(ph) * 0.75, r * Math.sin(ph) * Math.sin(th)], i * 3);
+  const c = Math.random() > 0.5 ? cA : cB; col.set([c.r, c.g, c.b], i * 3);
+}
+const pgeo = new THREE.BufferGeometry();
+pgeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+pgeo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+const pmat = new THREE.PointsMaterial({ size: 0.035, vertexColors: true, transparent: true, opacity: 0.85, sizeAttenuation: true, depthWrite: false });
+const points = new THREE.Points(pgeo, pmat);
+group.add(points);
+
+// Zonas: sprite con degradado radial (se ve a traves de la corteza) + luz.
+const gc = document.createElement("canvas"); gc.width = gc.height = 128;
+const g2 = gc.getContext("2d"); const grd = g2.createRadialGradient(64, 64, 0, 64, 64, 64);
+grd.addColorStop(0, "rgba(255,255,255,1)"); grd.addColorStop(0.35, "rgba(255,255,255,0.45)"); grd.addColorStop(1, "rgba(255,255,255,0)");
+g2.fillStyle = grd; g2.fillRect(0, 0, 128, 128);
+const glowTex = new THREE.CanvasTexture(gc);
+const zones = {};
+for (const id of ZONE_IDS) {
+  const holder = new THREE.Group(); holder.position.fromArray(ANCHORS[id]);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+  sp.scale.setScalar(0.7);
+  const li = new THREE.PointLight("#000000", 0, 1.5, 2);
+  holder.add(sp, li); group.add(holder);
+  zones[id] = { sp, li, level: 0, color: new THREE.Color(), tmp: new THREE.Color() };
+}
+
+// ---- Scroll -> pose continua entre actos ----
+const sections = [...document.querySelectorAll("[data-act]")];
+let centers = [];
+function measure() {
+  centers = sections.map((s) => s.offsetTop + s.offsetHeight / 2);
+  const w = glEl.clientWidth, h = glEl.clientHeight;
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h); composer.setSize(w, h);
+}
+addEventListener("resize", measure);
+measure(); setTimeout(measure, 800); setTimeout(measure, 3000);
+
+const smooth = (t) => t * t * (3 - 2 * t);
+const lerp = (a, b, t) => a + (b - a) * t;
+const v3 = (a, b, t, out) => out.set(lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t));
+
+const target = { cam: new THREE.Vector3(), look: new THREE.Vector3(), rot: 0, fresnel: 1, syn: 1, bloom: 0.8, zones: {}, bleed: null };
+const cur = { cam: new THREE.Vector3(0, -0.45, 3.1), look: new THREE.Vector3(0, -0.45, 0), rot: 0, fresnel: 1, syn: 1, bloom: 0.8 };
+const tmpC = new THREE.Color();
+
+function sample() {
+  const sc = scrollY + innerHeight / 2;
+  let i = 0;
+  while (i < centers.length - 1 && sc > centers[i + 1]) i++;
+  const a = sections[i].dataset.act, b = sections[Math.min(i + 1, sections.length - 1)].dataset.act;
+  const A = ACTS[a], B = ACTS[b];
+  const span = Math.max(1, (centers[i + 1] ?? centers[i] + 1) - centers[i]);
+  const t = i === centers.length - 1 ? 0 : smooth(Math.min(1, Math.max(0, (sc - centers[i]) / span)));
+  v3(A.cam, B.cam, t, target.cam); v3(A.look, B.look, t, target.look);
+  // En movil el cerebro vive arriba y mas lejos; el texto va debajo.
+  if (camera.aspect < 1) {
+    target.look.y -= 0.85;
+    target.cam.sub(target.look).multiplyScalar(1.75).add(target.look);
+    target.cam.y -= 0.85;
+  }
+  target.rot = lerp(A.rot, B.rot, t);
+  target.fresnel = lerp(A.fresnel, B.fresnel, t);
+  target.syn = lerp(A.syn, B.syn, t);
+  target.bloom = lerp(A.bloom, B.bloom, t);
+  for (const id of ZONE_IDS) {
+    const za = A.zones[id], zb = B.zones[id];
+    const ia = za ? za[1] : 0, ib = zb ? zb[1] : 0;
+    const col = (t < 0.5 ? (za || zb) : (zb || za))?.[0] ?? "#000000";
+    target.zones[id] = [col, lerp(ia, ib, t)];
+  }
+  target.bleed = t < 0.5 ? A.bleed : B.bleed;
+}
+
+const clock = new THREE.Clock();
+let idle = 0;
+const proj = new THREE.Vector3();
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  sample();
+  const lam = reduce ? 30 : 4.5;
+  const d = (a, b) => THREE.MathUtils.damp(a, b, lam, dt);
+  cur.cam.set(d(cur.cam.x, target.cam.x), d(cur.cam.y, target.cam.y), d(cur.cam.z, target.cam.z));
+  cur.look.set(d(cur.look.x, target.look.x), d(cur.look.y, target.look.y), d(cur.look.z, target.look.z));
+  cur.rot = d(cur.rot, target.rot);
+  cur.fresnel = d(cur.fresnel, target.fresnel);
+  cur.syn = d(cur.syn, target.syn);
+  cur.bloom = d(cur.bloom, target.bloom);
+  if (!reduce) idle += dt * 0.1;
+
+  camera.position.copy(cur.cam); camera.lookAt(cur.look);
+  group.rotation.y = cur.rot + idle;
+  fresnel.uniforms.uIntensity.value = cur.fresnel * 0.9;
+  pmat.opacity = cur.syn * 0.85;
+  points.rotation.y = idle * 0.5;
+  bloom.strength = cur.bloom;
+
+  const el = clock.elapsedTime;
+  for (const id of ZONE_IDS) {
+    const z = zones[id]; const [c, i] = target.zones[id];
+    z.level = d(z.level, i);
+    if (i > 0) z.color.lerp(z.tmp.set(c), 1 - Math.exp(-lam * dt));
+    kicks[id] = Math.max(0, (kicks[id] || 0) - dt * 2.2);
+    const pulse = i > 0 && !reduce ? 1 + 0.18 * Math.sin(el * 3.2) : 1;
+    const lvl = z.level * pulse + (kicks[id] || 0);
+    z.sp.material.color.copy(z.color); z.sp.material.opacity = Math.min(1, lvl / 4.5);
+    z.li.color.copy(z.color); z.li.intensity = lvl * 4;
+  }
+
+  // La luz del cerebro cae sobre la pagina.
+  if (target.bleed) {
+    const [where, color] = target.bleed;
+    if (where === "center") proj.set(0, 0, 0); else proj.fromArray(ANCHORS[where]);
+    group.localToWorld(proj); proj.project(camera);
+    root.style.setProperty("--bx", `${(proj.x * 0.5 + 0.5) * 100}%`);
+    root.style.setProperty("--by", `${(-proj.y * 0.5 + 0.5) * 100}%`);
+    root.style.setProperty("--bc", color);
+  }
+  composer.render();
+}
+frame();
+</script>

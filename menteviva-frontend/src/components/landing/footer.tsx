@@ -7,12 +7,7 @@ export function Footer() {
       <div className="mx-auto max-w-6xl">
         <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
           {/* Logo */}
-          <div className="flex items-center gap-2">
-            <div className="from-violet-light flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br to-teal">
-              <span className="font-syne text-xs font-bold text-cream">M</span>
-            </div>
-            <span className="font-syne text-sm font-medium text-muted">Mente Viva</span>
-          </div>
+          <span className="font-syne text-sm font-bold text-cream">Mente Viva</span>
 
           {/* Links */}
           <nav className="flex items-center gap-6">
