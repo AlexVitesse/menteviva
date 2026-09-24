@@ -23,6 +23,7 @@ Si el reintento tambien falla (error real), se propaga la excepcion y el WS hand
 mostrara el error al cliente (try/except por turno ya existe en conversation.py).
 """
 
+import asyncio
 import logging
 import random
 from typing import AsyncGenerator
@@ -83,6 +84,19 @@ def _build_stream(client, model: str, messages: list[dict], temperature: float):
     )
 
 
+async def _astream(client, model: str, messages: list[dict], temperature: float):
+    """El SDK de Groq es sincrono: abrir el stream y leer cada chunk en un hilo
+    para no congelar el event loop (con 2+ usuarios, un turno bloqueaba todos
+    los WebSockets del proceso). Mismo patron que edge_tts.py."""
+    stream = await asyncio.to_thread(_build_stream, client, model, messages, temperature)
+    iterator = iter(stream)
+    while True:
+        chunk = await asyncio.to_thread(next, iterator, None)
+        if chunk is None:
+            return
+        yield chunk
+
+
 async def chat_stream(
     messages: list[dict],
     system_prompt: str
@@ -114,7 +128,7 @@ async def chat_stream(
         # 0.6: en 0.4 Sofia calcaba frases entre turnos (muy deterministico);
         # en 0.7 parafraseaba de mas y encadenaba preguntas "creativas". 0.6 +
         # las penalizaciones de repeticion dan variedad sin perder foco.
-        for chunk in _build_stream(client, primary, full_messages, 0.6):
+        async for chunk in _astream(client, primary, full_messages, 0.6):
             if chunk.choices[0].delta.content:
                 yielded += 1
                 yield chunk.choices[0].delta.content
@@ -139,7 +153,7 @@ async def chat_stream(
     # Reintento con el MISMO modelo a temperatura mas alta (rompe el patron de
     # vacio y suele esquivar el glitch intermitente). yielded==0 garantizado aqui.
     try:
-        for chunk in _build_stream(client, primary, full_messages, 0.85):
+        async for chunk in _astream(client, primary, full_messages, 0.85):
             if chunk.choices[0].delta.content:
                 yielded += 1
                 yield chunk.choices[0].delta.content
@@ -227,7 +241,7 @@ async def chat_complete(
         return (response.choices[0].message.content or "").strip()
 
     try:
-        text = _call(primary, 0.6)
+        text = await asyncio.to_thread(_call, primary, 0.6)
     except Exception as e:
         if not _is_tool_use_glitch(e):
             raise
@@ -246,7 +260,7 @@ async def chat_complete(
         # real aqui se propaga; si vuelve vacio, re-enganche para no devolver "".
         logger.warning(f"[LLM] {primary} sin texto en chat_complete; reintentando")
         try:
-            text = _call(primary, 0.85)
+            text = await asyncio.to_thread(_call, primary, 0.85)
         except Exception as e:
             if not _is_tool_use_glitch(e):
                 raise
@@ -270,7 +284,8 @@ async def get_conversation_starter(system_prompt: str, avatar_name: str) -> str:
     messages = [{"role": "user", "content": starter_prompt}]
 
     client = get_groq_client()
-    response = client.chat.completions.create(
+    response = await asyncio.to_thread(
+        client.chat.completions.create,
         model=settings.groq_model_llm,
         messages=[
             {"role": "system", "content": system_prompt},

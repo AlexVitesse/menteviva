@@ -118,3 +118,48 @@ def test_classic_audio_session_transcribes_before_shared_turn(monkeypatch):
             assert ws.receive_json()["status"] == "transcribing"
             assert ws.receive_json()["status"] == "ready"
     assert process_mock.await_args.kwargs["user_text"] == "texto transcrito"
+
+
+def _run_turns_then_drop(monkeypatch, turns):
+    """Abre la sesion, manda `turns` turnos de texto y cierra SIN end_session.
+    Devuelve los argumentos con los que se llamo al finalizer (o None)."""
+    import threading
+
+    app = _authorized_app(monkeypatch)
+
+    async def process(ws, **kwargs):
+        kwargs["conversation_history"].extend([
+            {"role": "user", "content": kwargs["user_text"]},
+            {"role": "assistant", "content": "respuesta"},
+        ])
+        await ws.send_json({"type": "status", "status": "ready"})
+
+    called = threading.Event()
+    seen = {}
+
+    async def finalize(ws, *args):
+        seen["ws"], seen["history"] = ws, args[2]
+        called.set()
+
+    monkeypatch.setattr(conversation, "_process_classic_turn", AsyncMock(side_effect=process))
+    monkeypatch.setattr(conversation, "finalize_conversation", finalize)
+    with TestClient(app) as client:
+        with client.websocket_connect("/api/conversation/roberto?ticket=valid") as ws:
+            for i in range(turns):
+                ws.send_json({"type": "text", "text": f"turno {i}"})
+                assert ws.receive_json()["status"] == "ready"
+        # Pestaña cerrada: el analisis corre en segundo plano.
+        called.wait(timeout=2)
+    return seen or None
+
+
+def test_dropped_session_is_analyzed_without_client(monkeypatch):
+    seen = _run_turns_then_drop(monkeypatch, turns=4)
+    assert seen is not None
+    assert seen["ws"] is None  # no intenta escribirle a un socket cerrado
+    assert len(seen["history"]) == 8
+
+
+def test_short_dropped_session_is_not_saved(monkeypatch):
+    # < 4 intercambios: analyze_conversation daria puntajes demo aleatorios.
+    assert _run_turns_then_drop(monkeypatch, turns=2) is None

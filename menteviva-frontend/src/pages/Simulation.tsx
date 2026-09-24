@@ -1,7 +1,7 @@
 import { useEffect, useCallback, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Mic, MicOff, PhoneOff, AlertCircle, Video, VideoOff, Clock, Loader2, Pause, Play } from "lucide-react";
+import { Mic, MicOff, PhoneOff, AlertCircle, Clock, Loader2, Pause, Play, WifiOff } from "lucide-react";
 import { AnimatedAvatar, AvatarCharacter, avatarCharacterFor } from "../components/avatar/AnimatedAvatar";
 import { MicLevelMeter } from "../components/voice/MicLevelMeter";
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
@@ -19,8 +19,9 @@ import { getAvatar3DFlag, getAvatarModelUrl, getAvatarGender } from "../utils/av
 
 export function Simulation() {
   const navigate = useNavigate();
-  const { selectedAvatar, selectedLevel, selectedRobertoCase, messages, status, metrics, serverError, userProfile, setServerError, setMetrics } = useSessionStore();
-  const [isCameraOn, setIsCameraOn] = useState(true);
+  const { selectedAvatar, selectedLevel, selectedRobertoCase, messages, status, metrics, serverError, userProfile, setServerError, setMetrics, clearMessages } = useSessionStore();
+  // El store arranca en "disconnected": solo es una caida si antes hubo conexion.
+  const [hasConnected, setHasConnected] = useState(false);
   const [isMicMuted, setIsMicMuted] = useState(false);
   // Ref espejo de isMicMuted: handleVoiceButton lo lee de forma sincrona para no
   // depender del valor (posiblemente stale) capturado en el closure de render.
@@ -117,21 +118,25 @@ export function Simulation() {
     clearError,
   } = useAudioRecorder({ onAutoStop: handleAutoStop });
 
+  // Conectar y arrancar la captura continua del mic. El playback del avatar
+  // y el barge-in los maneja el hook internamente.
+  function startGemini() {
+    gemini
+      .connect()
+      .then(() => gemini.startMic())
+      .catch((e) => {
+        console.error("[Simulation] inicio Gemini fallo:", e);
+        setServerError("No se pudo iniciar el micrófono. Revisa los permisos del navegador.");
+      });
+  }
+
   useEffect(() => {
     if (!selectedAvatar) {
       navigate("/");
       return;
     }
     if (IS_GEMINI) {
-      // Conectar y arrancar la captura continua del mic. El playback del avatar
-      // y el barge-in los maneja el hook internamente.
-      gemini
-        .connect()
-        .then(() => gemini.startMic())
-        .catch((e) => {
-          console.error("[Simulation] inicio Gemini fallo:", e);
-          setServerError("No se pudo iniciar el micrófono. Revisa los permisos del navegador.");
-        });
+      startGemini();
       return () => gemini.disconnect();
     }
     connect();
@@ -140,6 +145,39 @@ export function Simulation() {
     initMic();
     return () => disconnect();
   }, [selectedAvatar]);
+
+  useEffect(() => {
+    if (status === "ready") setHasConnected(true);
+  }, [status]);
+
+  const isDisconnected = hasConnected && status === "disconnected" && !isEnding && !metrics;
+
+  // La conversacion vive en el servidor: cerrar o recargar la pestaña la corta.
+  // (El backend igual guarda el reporte si hubo 4+ intercambios.)
+  useEffect(() => {
+    if (messages.length === 0 || metrics || isEnding) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [messages.length, metrics, isEnding]);
+
+  // Tras una caida el servidor ya no tiene el historial: la conversacion
+  // empieza de nuevo, y la franja lo dice (no se finge continuidad).
+  function handleReconnect() {
+    clearMessages();
+    setServerError(null);
+    sessionStartRef.current = Date.now();
+    setElapsedTime(0);
+    if (IS_GEMINI) {
+      gemini.disconnect();
+      startGemini();
+    } else {
+      connect();
+    }
+  }
 
   useEffect(() => {
     if (metrics) {
@@ -360,7 +398,7 @@ export function Simulation() {
       {/* Header estilo Zoom */}
       <header className="bg-[#232323] px-3 sm:px-4 py-2 flex items-center justify-between border-b border-white/10 gap-2">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shrink-0" />
+          <div className={`w-2 h-2 rounded-full shrink-0 ${isDisconnected ? "bg-danger" : "bg-success animate-pulse"}`} />
           <span className="text-white/80 text-xs sm:text-sm font-medium truncate">
             <span className="hidden sm:inline">Mente Viva - </span>Simulación
           </span>
@@ -375,6 +413,16 @@ export function Simulation() {
           </div>
         </div>
       </header>
+
+      {isDisconnected && (
+        <div role="alert" className="bg-danger/20 border-b border-danger/40 px-3 sm:px-4 py-2 shrink-0 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs sm:text-sm text-cream">
+          <WifiOff className="w-4 h-4 text-danger shrink-0" aria-hidden />
+          <span>Se perdió la conexión. Si reconectas, la conversación empieza de nuevo.</span>
+          <button onClick={handleReconnect} className="font-semibold underline underline-offset-2 hover:no-underline">
+            Reconectar
+          </button>
+        </div>
+      )}
 
       {/* Main - Stack en movil, side-by-side en desktop */}
       <main className="flex-1 flex flex-col md:flex-row gap-2 p-2 overflow-hidden min-h-0">
@@ -473,38 +521,6 @@ export function Simulation() {
 
         {/* Sidebar: video tuyo + chat. Stack en movil debajo del avatar */}
         <div className="md:w-64 flex flex-col gap-2 min-h-0 flex-1 md:flex-none">
-          {/* Tu video — oculto en movil para dar espacio al chat */}
-          <div className="relative h-32 md:h-48 rounded-xl overflow-hidden bg-gradient-to-br from-[#3a3a4a] to-[#2a2a3a] border border-white/10 hidden sm:block">
-            {isCameraOn ? (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-20 h-20 rounded-full bg-violet/20 flex items-center justify-center">
-                  <span className="text-3xl font-bold text-violet">Tú</span>
-                </div>
-              </div>
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#1a1a1a]">
-                <VideoOff className="w-8 h-8 text-white/30" />
-              </div>
-            )}
-
-            {/* Tu nombre */}
-            <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 rounded text-xs text-white">
-              Tú {isRecording && <span className="text-red-400 ml-1">● Grabando</span>}
-              {isMicMuted && !isRecording && <span className="text-red-400 ml-1">● Mic silenciado</span>}
-            </div>
-
-            {/* Indicador de micrófono */}
-            {isRecording && (
-              <div className="absolute top-2 right-2">
-                <motion.div
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ repeat: Infinity, duration: 0.5 }}
-                  className="w-3 h-3 bg-red-500 rounded-full"
-                />
-              </div>
-            )}
-          </div>
-
           {/* Chat/Historial compacto */}
           <div className="flex-1 rounded-xl bg-[#232323] border border-white/10 overflow-hidden flex flex-col">
             <div className="px-3 py-2 border-b border-white/10 text-xs text-white/60 font-medium">
@@ -540,7 +556,7 @@ export function Simulation() {
       </main>
 
       {/* Footer - Controles estilo Zoom */}
-      <footer className="bg-[#232323] px-6 py-3 flex items-center justify-center gap-4 border-t border-white/10">
+      <footer className="bg-[#232323] px-2 sm:px-6 py-3 flex items-center justify-center gap-1 sm:gap-4 border-t border-white/10">
         {/* Botón Micrófono (Push to Talk). Pointer events unifican mouse y
             touch sin el "click sintetico" duplicado de mobile; la captura del
             pointer garantiza que el pointerup llegue al boton aunque el dedo
@@ -558,9 +574,9 @@ export function Simulation() {
           title="Mantén presionado para hablar (o la barra espaciadora)"
           className={`
             touch-none select-none
-            flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all
+            flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg transition-all
             ${IS_GEMINI
-              ? isMicMuted
+              ? isMicMuted || isDisconnected
                 ? "bg-white/5 text-white/40"
                 : "bg-green-500/15 text-green-400"
               : isRecording
@@ -572,14 +588,14 @@ export function Simulation() {
         >
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
             IS_GEMINI
-              ? isMicMuted ? "bg-white/10" : "bg-green-500"
+              ? isMicMuted || isDisconnected ? "bg-white/10" : "bg-green-500"
               : isRecording ? "bg-red-500" : "bg-white/10"
           }`}>
             <Mic className="w-5 h-5" />
           </div>
           <span className="text-[10px]">
             {IS_GEMINI
-              ? isMicMuted ? "Mic off" : "En vivo"
+              ? isDisconnected ? "Sin conexión" : isMicMuted ? "Mic off" : "En vivo"
               : isRecording ? "Suelta" : "Hablar"}
           </span>
         </motion.button>
@@ -587,7 +603,8 @@ export function Simulation() {
         {/* Botón Silenciar mi micrófono */}
         <button
           onClick={handleToggleMicMute}
-          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all ${
+          aria-pressed={isMicMuted}
+          className={`flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg transition-all ${
             isMicMuted
               ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
               : "bg-white/10 text-white hover:bg-white/20"
@@ -605,11 +622,13 @@ export function Simulation() {
           <span className="text-[10px]">{isMicMuted ? "Muteado" : "Silenciar"}</span>
         </button>
 
-        {/* Botón Pausa/Reanudar voz del avatar */}
+        {/* Botón Pausa/Reanudar voz del avatar. En Gemini la voz sale del player
+            PCM del hook (isPlaying no aplica) y el boton quedaba siempre muerto. */}
+        {!IS_GEMINI && (
         <button
           onClick={handleTogglePause}
           disabled={!isPlaying && !isPaused}
-          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all ${
+          className={`flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg transition-all ${
             !isPlaying && !isPaused
               ? "bg-white/5 text-white/30 cursor-not-allowed"
               : "bg-white/10 text-white hover:bg-white/20"
@@ -624,27 +643,13 @@ export function Simulation() {
           </div>
           <span className="text-[10px]">{isPaused ? "Reanudar" : "Pausa"}</span>
         </button>
-
-        {/* Botón Cámara */}
-        <button
-          onClick={() => setIsCameraOn(!isCameraOn)}
-          className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all"
-        >
-          <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-            {isCameraOn ? (
-              <Video className="w-5 h-5" />
-            ) : (
-              <VideoOff className="w-5 h-5 text-red-400" />
-            )}
-          </div>
-          <span className="text-[10px]">Video</span>
-        </button>
+        )}
 
         {/* Botón Terminar */}
         <button
           onClick={handleEndSession}
           disabled={isEnding}
-          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg transition-all ${
+          className={`flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg transition-all ${
             isEnding
               ? "bg-red-500/10 text-red-300 cursor-wait"
               : "bg-red-500/20 text-red-400 hover:bg-red-500/30"

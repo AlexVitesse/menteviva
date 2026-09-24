@@ -11,6 +11,7 @@ Dos entry points principales:
   con evidencia textual, conforme a la seccion 11 del prompt maestro).
 """
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -415,7 +416,8 @@ async def analyze_conversation(
         logger.info(f"[Analysis] Llamando a Groq con modelo: {settings.groq_model_analysis}")
 
         client = get_groq_client()
-        response = client.chat.completions.create(
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
             model=settings.groq_model_analysis,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,  # Baja temperatura para respuestas mas consistentes
@@ -1137,7 +1139,8 @@ async def generate_user_profile(
     try:
         logger.info(f"[UserProfile] Llamando Groq modelo {settings.groq_model_analysis}")
         client = get_groq_client()
-        response = client.chat.completions.create(
+        response = await asyncio.to_thread(
+            client.chat.completions.create,
             model=settings.groq_model_analysis,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,

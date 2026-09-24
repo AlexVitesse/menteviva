@@ -12,8 +12,6 @@ import {
   VolumeX,
   Brain,
   PauseCircle,
-  Video,
-  VideoOff,
 } from "lucide-react";
 import { useMicVAD, utils as vadUtils } from "@ricky0123/vad-react";
 
@@ -76,7 +74,6 @@ export function Diagnostico() {
   const [closingCountdown, setClosingCountdown] = useState<number | null>(null);
   // Toggle visual de "tu camara" — placeholder, no abre webcam real.
   // Match con la UI de Simulation.tsx para que ambas vistas se vean iguales.
-  const [isCameraOn, setIsCameraOn] = useState(true);
   const startRef = useRef<number>(Date.now());
   const closingTimerRef = useRef<number | null>(null);
   // Pending failsafe setTimeouts (mock-fallback). Se cancelan en cuanto llega
@@ -602,17 +599,11 @@ export function Diagnostico() {
         <div className="md:w-64 flex flex-col gap-2 min-h-0 flex-1 md:flex-none">
           {/* Tu video — oculto en movil para dar espacio al chat */}
           <div className="relative h-32 md:h-48 rounded-xl overflow-hidden bg-gradient-to-br from-[#3a3a4a] to-[#2a2a3a] border border-white/10 hidden sm:block">
-            {isCameraOn ? (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-20 h-20 rounded-full bg-violet/20 flex items-center justify-center">
-                  <span className="text-3xl font-bold text-violet">Tú</span>
-                </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-20 h-20 rounded-full bg-violet/20 flex items-center justify-center">
+                <span className="text-3xl font-bold text-violet">Tú</span>
               </div>
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#1a1a1a]">
-                <VideoOff className="w-8 h-8 text-white/30" />
-              </div>
-            )}
+            </div>
 
             {/* Tu nombre + indicador de voz */}
             <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/60 rounded text-xs text-white">
@@ -663,11 +654,11 @@ export function Diagnostico() {
         </div>
       </main>
 
-      {/* Footer estilo Zoom — Mic state-display, Camara, Mute (nuevo), Terminar */}
-      <footer className="bg-[#232323] px-6 py-3 flex items-center justify-center gap-4 border-t border-white/10">
+      {/* Footer estilo Zoom — Mic state-display, Mute, Terminar */}
+      <footer className="bg-[#232323] px-2 sm:px-6 py-3 flex items-center justify-center gap-1 sm:gap-4 border-t border-white/10">
         {/* Mic — solo display del estado VAD, no push-to-talk (la captura es automatica) */}
         <div
-          className={`flex flex-col items-center gap-1 px-4 py-2 rounded-lg ${micStyle}`}
+          className={`flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg ${micStyle}`}
           aria-label="Estado del microfono"
         >
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
@@ -686,21 +677,6 @@ export function Diagnostico() {
           </span>
         </div>
 
-        {/* Camara — toggle placeholder, no abre webcam real */}
-        <button
-          onClick={() => setIsCameraOn(!isCameraOn)}
-          className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all"
-        >
-          <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-            {isCameraOn ? (
-              <Video className="w-5 h-5" />
-            ) : (
-              <VideoOff className="w-5 h-5 text-red-400" />
-            )}
-          </div>
-          <span className="text-[10px]">Video</span>
-        </button>
-
         {/* Mute — Groq: silencia el audio del avatar. Gemini: silencia TU mic
             (deja de enviar audio sin cortar la sesion; el reproductor PCM no usa
             el toggleMute del player viejo). */}
@@ -714,7 +690,7 @@ export function Diagnostico() {
               toggleMute();
             }
           }}
-          className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all"
+          className="flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-all"
           aria-label={IS_GEMINI ? "Silenciar microfono" : isMuted ? "Activar audio del avatar" : "Silenciar audio del avatar"}
         >
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
@@ -732,7 +708,7 @@ export function Diagnostico() {
         {/* Terminar */}
         <button
           onClick={handleTerminate}
-          className="flex flex-col items-center gap-1 px-4 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+          className="flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
         >
           <div className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center">
             <PhoneOff className="w-5 h-5 text-white" />

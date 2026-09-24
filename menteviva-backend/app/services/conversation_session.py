@@ -332,6 +332,45 @@ async def _gemini_upstream(websocket, state: dict, history: list, initial: dict 
             return "end"
 
 
+# Mismo umbral que analyze_conversation: con menos intercambios devuelve un
+# analisis demo con puntajes aleatorios, que no queremos guardar sin que el
+# usuario lo pida.
+_MIN_EXCHANGES_ORPHAN = 4
+# Referencias fuertes a las tareas en vuelo (asyncio solo guarda debiles).
+_orphan_tasks: set[asyncio.Task] = set()
+
+
+def _finalize_without_client(
+    avatar: dict,
+    avatar_id: str,
+    history: list[dict],
+    session_start_time: float,
+    user_profile: UserProfile | None,
+    session_vars: dict | None,
+    level: str | None,
+) -> None:
+    """La sesion termino sin end_session (caida, pestaña cerrada, limite de
+    duracion/turnos): analiza y persiste en segundo plano para que el reporte
+    aparezca en el historial. En tarea aparte para liberar ya el cupo de
+    sesion concurrente (si el usuario recarga, puede volver a entrar)."""
+    if len(history) // 2 < _MIN_EXCHANGES_ORPHAN:
+        return
+
+    async def _run() -> None:
+        try:
+            await finalize_conversation(
+                None, avatar, avatar_id, list(history),
+                session_start_time, user_profile, session_vars, level,
+            )
+            logger.info("[WS] sesion sin end_session analizada y guardada avatar=%s", avatar_id)
+        except Exception as e:
+            logger.error("[WS] finalize sin cliente fallo type=%s", type(e).__name__)
+
+    task = asyncio.create_task(_run())
+    _orphan_tasks.add(task)
+    task.add_done_callback(_orphan_tasks.discard)
+
+
 def _flush_partial_transcripts(state: dict, history: list) -> None:
     """Vuelca al historial los transcripts PARCIALES que quedaron en el state.
 
@@ -715,7 +754,13 @@ async def _run_gemini_conversation(
             except Exception:
                 pass
     else:
-        logger.info(f"[WS-Gemini] Sesion terminada sin analisis (motivo={result})")
+        logger.info(f"[WS-Gemini] Sesion terminada sin end_session (motivo={result})")
+        if finalize:
+            _flush_partial_transcripts(state, history)
+            _finalize_without_client(
+                avatar, avatar_id, history, session_start_time,
+                user_profile, session_vars, level,
+            )
 
 
 @router.websocket("/conversation/{avatar_id}")
@@ -843,6 +888,7 @@ async def conversation_websocket(
     conversation_history = []
     exchange_count = 0
     session_start_time = time.time()
+    finalized = False
 
     try:
         while True:
@@ -999,6 +1045,7 @@ async def conversation_websocket(
                     session_vars,
                     level,
                 )
+                finalized = True
                 break
 
     except PayloadLimitError as e:
@@ -1033,6 +1080,11 @@ async def conversation_websocket(
         except Exception:
             pass
     finally:
+        if not finalized:
+            _finalize_without_client(
+                avatar, avatar_id, conversation_history, session_start_time,
+                user_profile, session_vars, level,
+            )
         await record_conversation_usage(uid, time.monotonic() - usage_started_at)
         await release_conversation_slot(uid)
         await increment("ws_sessions_finished")

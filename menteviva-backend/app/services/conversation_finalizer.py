@@ -19,7 +19,7 @@ logger = logging.getLogger("menteviva")
 
 
 async def finalize_conversation(
-    websocket: WebSocket,
+    websocket: WebSocket | None,
     avatar: dict,
     avatar_id: str,
     conversation_history: list[dict],
@@ -35,7 +35,14 @@ async def finalize_conversation(
         total_exchanges,
         duration_seconds,
     )
-    await websocket.send_json({"type": "status", "status": "analyzing"})
+
+    # websocket=None: el cliente ya se fue (caida, pestaña cerrada, limite).
+    # Se analiza y persiste igual para que la sesion aparezca en el historial.
+    async def send(payload: dict) -> None:
+        if websocket is not None:
+            await websocket.send_json(payload)
+
+    await send({"type": "status", "status": "analyzing"})
     base_metrics = {
         "total_exchanges": total_exchanges,
         "duration_seconds": duration_seconds,
@@ -77,7 +84,7 @@ async def finalize_conversation(
             except Exception as exc:
                 await increment("persistence_failures", provider="postgres")
                 logger.error("[WS] save_diagnostic fallo: %s", type(exc).__name__)
-        await websocket.send_json({
+        await send({
             "type": "session_end",
             "metrics": {**base_metrics, "user_profile_update": diagnostico},
         })
@@ -118,4 +125,4 @@ async def finalize_conversation(
     metrics = {**base_metrics, "analysis": analysis}
     if session_id:
         metrics["session_id"] = session_id
-    await websocket.send_json({"type": "session_end", "metrics": metrics})
+    await send({"type": "session_end", "metrics": metrics})

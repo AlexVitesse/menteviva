@@ -58,3 +58,19 @@ async def test_finalizes_diagnostic_with_placeholder(monkeypatch):
     )
 
     assert ws.events[-1]["metrics"]["user_profile_update"]["is_demo"] is True
+
+
+@pytest.mark.asyncio
+async def test_persists_without_client(monkeypatch):
+    # Pestaña cerrada: websocket=None, pero la sesion igual se analiza y guarda.
+    monkeypatch.setattr(finalizer, "analyze_conversation", AsyncMock(return_value={"overall_score": 70}))
+    save = AsyncMock(return_value=7)
+    monkeypatch.setattr(finalizer, "save_practice_session", save)
+
+    await finalizer.finalize_conversation(
+        None, {"kind": "practice"}, "roberto",
+        [{"role": "user", "content": "hola"}, {"role": "assistant", "content": "ok"}],
+        0, profile(), None, None,
+    )
+
+    save.assert_awaited_once()

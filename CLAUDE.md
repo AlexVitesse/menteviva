@@ -57,7 +57,9 @@ npm run preview        # serve the production build
 ```
 
 ### Tests
-Backend has `pytest` + `pytest-asyncio` + `httpx` declared as dev deps, **but there is no `pytest` suite** (no `tests/` directory). Instead, `menteviva-backend/scripts/test_*.py` are runnable dev harnesses that call the services directly with synthetic conversations:
+Two kinds of backend tests:
+- **`menteviva-backend/tests/`**: pytest suite, offline (providers mocked). Run it after any backend change: `poetry run pytest -q`. Frontend: `npm test` (vitest) + `npm run build`.
+- **`menteviva-backend/scripts/test_*.py`**: runnable dev harnesses that call the services directly with synthetic conversations against the live APIs:
 ```bash
 cd menteviva-backend
 poetry run python -m scripts.test_repetition       # repetición de Sofia (Jaccard turno-a-turno)

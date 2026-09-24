@@ -108,16 +108,53 @@ async def test_whisper_normalizes_all_sdk_shapes(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_whisper_details(monkeypatch):
-    result = SimpleNamespace(text="hola", language="es", duration=1.25)
-    api = SimpleNamespace(create=lambda **_kwargs: result)
+async def test_whisper_drops_silent_segments_and_hallucinations(monkeypatch):
+    result = SimpleNamespace(
+        text="Nos cuesta mucho el paro. Gracias por ver el video.",
+        segments=[
+            {"text": " Nos cuesta mucho el paro.", "no_speech_prob": 0.05, "avg_logprob": -0.2},
+            {"text": " Gracias por ver el video.", "no_speech_prob": 0.9, "avg_logprob": -1.4},
+        ],
+    )
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return result
+
     monkeypatch.setattr(
         groq_whisper,
         "get_groq_client",
-        lambda: SimpleNamespace(audio=SimpleNamespace(transcriptions=api)),
+        lambda: SimpleNamespace(audio=SimpleNamespace(transcriptions=SimpleNamespace(create=create))),
     )
-    assert await groq_whisper.transcribe_audio_with_details(b"x") == {
-        "text": "hola",
-        "language": "es",
-        "duration": 1.25,
-    }
+    assert await groq_whisper.transcribe_audio(b"x") == "Nos cuesta mucho el paro"
+    assert calls[0]["response_format"] == "verbose_json"
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # Voz normal: intacta, con su puntuacion.
+        ("¿Cuánto cuesta la implementación?", "¿Cuánto cuesta la implementación?"),
+        # "gracias por verme" es habla real, no la alucinacion "gracias por ver".
+        ("Gracias por verme hoy.", "Gracias por verme hoy."),
+        # Alucinaciones completas -> vacio (el turno se salta).
+        ("Subtítulos realizados por la comunidad de Amara.org", ""),
+        ("¡Gracias por ver el video!", ""),
+        ("Suscríbete al canal.", ""),
+        # Alucinacion pegada a voz real: se quita solo la cola.
+        ("Sí, el paro fue de tres horas. Subtítulos por la comunidad de Amara.org",
+         "Sí, el paro fue de tres horas"),
+    ],
+)
+def test_clean_transcription(text, expected):
+    assert groq_whisper.clean_transcription(text) == expected
+
+
+def test_clean_transcription_keeps_confident_segments():
+    segments = [
+        # no_speech alto pero logprob bueno: Whisper lo considera voz.
+        {"text": "Hola Roberto.", "no_speech_prob": 0.7, "avg_logprob": -0.3},
+        {"text": " ...", "no_speech_prob": 0.95, "avg_logprob": -1.8},
+    ]
+    assert groq_whisper.clean_transcription("Hola Roberto. ...", segments) == "Hola Roberto"
