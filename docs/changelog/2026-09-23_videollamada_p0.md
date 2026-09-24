@@ -24,4 +24,9 @@ Fuente: `docs/auditoria-videollamada-2026-09-23/README.md` (tabla "Orden de arre
 - Orphan finalize en Gemini no se probó con una sesión real; el test cubre la rama Groq.
 - P1 de la auditoría sin tocar: reporte de respaldo que culpa al usuario, indicador de turno en Simulation, `redemptionMs` del diagnóstico, barge-in en push-to-talk, VAD de Gemini en el `.env` de prod, aviso de audífonos.
 - `CLAUDE.md` corregido: sí existe una suite de pytest en `menteviva-backend/tests/` (decía que no).
-- Sin commit ni deploy.
+## Deploy (mismo día)
+
+Commits `ec44d23` (fix) y `f79856f` (docs) en `main`, push y `git pull` en el server. El reloader de uvicorn tomó los
+cambios del backend (`Application startup complete`, `/health` 200). Frontend: `npm run build` (nvm, 4.65 s).
+Túnel sin cambios: `https://adelaide-benchmark-information-calcium.trycloudflare.com` responde 200 visto desde el server
+(el curl de Windows local falla con "bad argument"; no es el túnel). El zombi 4006219 sigue vivo, pendiente de `kill` manual.
