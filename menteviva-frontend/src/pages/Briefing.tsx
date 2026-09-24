@@ -180,7 +180,7 @@ export function Briefing() {
         >
           {/* Left Column - Avatar Info */}
           <div className="md:col-span-1">
-            <div className="bg-surface rounded-2xl p-6 border border-white/5">
+            <div className="bg-card rounded-2xl p-6 border border-white/5">
               {/* Avatar — mismo PNG snapshot que el Dashboard, con fallback al SVG. */}
               <div className="flex justify-center mb-4">
                 {AVATARS_WITH_PNG.has(selectedAvatar.id) && !imgErrored ? (
@@ -254,7 +254,7 @@ export function Briefing() {
             )}
 
             {selectedAvatar.id === "roberto" && (
-              <div className="bg-surface rounded-xl p-6 border border-white/5">
+              <div className="bg-card rounded-xl p-6 border border-white/5">
                 <div className="flex items-center gap-2 mb-1">
                   <Target className="w-5 h-5 text-teal" />
                   <h3 className="font-syne font-bold">Elige el caso de práctica</h3>
@@ -288,7 +288,7 @@ export function Briefing() {
             )}
 
             {supportsLevels && (
-              <div className="bg-surface rounded-xl p-6 border border-white/5">
+              <div className="bg-card rounded-xl p-6 border border-white/5">
                 <div className="flex items-center gap-2 mb-1">
                   <Gauge className="w-5 h-5 text-violet-light" />
                   <h3 className="font-syne font-bold">Nivel de dificultad</h3>
@@ -320,7 +320,7 @@ export function Briefing() {
             )}
 
             {/* Objective */}
-            <div className="bg-surface rounded-xl p-6 border border-white/5">
+            <div className="bg-card rounded-xl p-6 border border-white/5">
               <div className="flex items-center gap-2 mb-3">
                 <Target className="w-5 h-5 text-teal" />
                 <h3 className="font-syne font-bold">Tu Objetivo</h3>
@@ -329,7 +329,7 @@ export function Briefing() {
             </div>
 
             {/* Context */}
-            <div className="bg-surface rounded-xl p-6 border border-white/5">
+            <div className="bg-card rounded-xl p-6 border border-white/5">
               <h3 className="font-syne font-bold mb-4">Contexto del Escenario</h3>
               <ul className="space-y-3">
                 {scenario.context.map((item, i) => (
@@ -348,7 +348,7 @@ export function Briefing() {
             </div>
 
             {/* Skills Evaluated */}
-            <div className="bg-surface rounded-xl p-6 border border-white/5">
+            <div className="bg-card rounded-xl p-6 border border-white/5">
               <h3 className="font-syne font-bold mb-4">Habilidades a Evaluar</h3>
               <div className="grid grid-cols-2 gap-3">
                 {scenario.skills.map((skill, i) => (
@@ -379,16 +379,23 @@ export function Briefing() {
               </ul>
             </div>
 
-            {/* Start Button */}
-            <motion.button
-              onClick={() => navigate("/simulation")}
-              className="w-full btn-primary flex items-center justify-center gap-3 text-lg py-4"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <Play className="w-5 h-5" />
-              Iniciar Simulacion
-            </motion.button>
+            {/* Start Button: fijo abajo en movil (la pagina mide ~2800px y el
+                CTA quedaba al final). Sin audifonos el mic capta al avatar y
+                corta su voz: se avisa antes de entrar. */}
+            <div className="sticky bottom-0 -mx-8 px-8 pt-3 pb-4 bg-ink/95 backdrop-blur-sm lg:static lg:mx-0 lg:p-0 lg:bg-transparent lg:backdrop-blur-none">
+              <p className="text-xs text-muted text-center mb-2">
+                Te pediremos el micrófono. Usa audífonos para que {selectedAvatar.name.split(" ")[0]} no se escuche a sí mismo.
+              </p>
+              <motion.button
+                onClick={() => navigate("/simulation")}
+                className="w-full btn-primary flex items-center justify-center gap-3 text-lg py-4"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <Play className="w-5 h-5" />
+                Iniciar simulación
+              </motion.button>
+            </div>
           </div>
         </motion.div>
       </main>

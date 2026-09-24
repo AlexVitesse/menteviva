@@ -72,6 +72,41 @@ export function Report() {
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   }
 
+  // El analisis no llego a tiempo (Simulation espero 30 s). No es culpa del
+  // usuario: el servidor lo termina y lo guarda igual, y aparece en Mi plan.
+  if (!analysis && metrics?.is_fallback) {
+    return (
+      <div className="min-h-screen bg-ink">
+        <header className="border-b border-white/5 px-8 py-6">
+          <h1 className="font-syne text-2xl font-bold bg-gradient-to-r from-violet-light to-teal bg-clip-text text-transparent">
+            Mente Viva
+          </h1>
+        </header>
+        <main className="max-w-xl mx-auto px-6 py-16 text-center">
+          <Clock className="w-12 h-12 text-violet-light mx-auto mb-4" />
+          <h2 className="font-syne text-2xl font-bold mb-3">
+            Tu reporte está tardando más de lo normal
+          </h2>
+          <p className="text-muted mb-8">
+            La sesión quedó registrada ({metrics.total_exchanges}{" "}
+            {metrics.total_exchanges === 1 ? "intercambio" : "intercambios"}). El análisis sigue en proceso
+            y tu puntaje aparecerá en el historial de Mi plan en cuanto termine, normalmente en menos de un minuto.
+          </p>
+          <div className="flex gap-4 justify-center">
+            <button onClick={() => navigate("/")} className="btn-secondary flex items-center gap-2">
+              <Home className="w-5 h-5" />
+              Inicio
+            </button>
+            <button onClick={() => navigate("/mi-plan")} className="btn-primary flex items-center gap-2">
+              <BarChart3 className="w-5 h-5" />
+              Ir a Mi plan
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   // Si no hay analisis, mostrar version simple
   if (!analysis || analysis.error) {
     return (

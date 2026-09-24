@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Mic, MicOff, PhoneOff, AlertCircle, Clock, Loader2, Pause, Play, WifiOff } from "lucide-react";
 import { AnimatedAvatar, AvatarCharacter, avatarCharacterFor } from "../components/avatar/AnimatedAvatar";
 import { MicLevelMeter } from "../components/voice/MicLevelMeter";
+import { ConversationIndicator, type IndicatorState } from "../components/voice/ConversationIndicator";
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
 import { useSessionStore } from "../stores/sessionStore";
 import { useWebSocket, type WsInitPayload } from "../hooks/useWebSocket";
@@ -36,7 +37,7 @@ export function Simulation() {
   const prevMessagesLenRef = useRef(messages.length);
 
   // Hook de audio y sonidos
-  const { audioRef, isPlaying, startStream, appendChunk, endStream, unlockAudio, pauseAudio, resumeAudio } = useAudioPlayer();
+  const { audioRef, isPlaying, startStream, appendChunk, endStream, unlockAudio, stopAudio, pauseAudio, resumeAudio } = useAudioPlayer();
   const { play: playSound } = useSoundEffects();
 
   const use3DAvatar = useMemo(() => getAvatar3DFlag(), []);
@@ -285,6 +286,10 @@ export function Simulation() {
     if (status !== "ready") return;
 
     pressActiveRef.current = true;
+    // Barge-in: el backend manda `ready` con el ultimo chunk, asi que el boton
+    // se habilita mientras el avatar aun suena. Cortarlo evita voces encimadas
+    // y que el avatar quede grabado si falla la cancelacion de eco.
+    stopAudio();
     // El usuario pasa a hablar: si habia pausado la voz del avatar, ese clip
     // ya quedo atras. Limpiamos isPaused para no dejar el subtitulo anterior
     // clavado en pantalla durante el resto de la sesion.
@@ -358,20 +363,21 @@ export function Simulation() {
     if (IS_GEMINI) gemini.endSession();
     else endSession();
 
-    // Fallback: si no hay respuesta en 10 segundos, forzar navegacion
-    // (el análisis toma ~3-5 segundos, damos margen amplio)
+    // Fallback: si no hay respuesta en 30 s, ir al reporte sin analisis. El
+    // analisis con gpt-oss-120b puede pasar de 10 s; el servidor lo termina y
+    // lo guarda igual (aparece en Mi plan), y el reporte lo dice asi.
     endTimeoutRef.current = window.setTimeout(() => {
       // Crear metricas basicas con los mensajes que tenemos
       const durationSeconds = Math.floor((Date.now() - sessionStartRef.current) / 1000);
       setMetrics({
-        total_exchanges: Math.floor(messages.length / 2),
+        total_exchanges: messages.filter((m) => m.role === "user").length,
         duration_seconds: durationSeconds,
         conversation: messages,
         is_fallback: true // Marcar que es fallback sin análisis real
       });
       disconnect();
       navigate("/report");
-    }, 10000);
+    }, 30000);
   }
 
   // Limpiar timeout si metrics llegan antes
@@ -389,6 +395,15 @@ export function Simulation() {
   // useAudioPlayer/isPlaying del modo Groq).
   const isAvatarActive = IS_GEMINI ? false : (status === "thinking" || status === "generating_audio");
   const isSpeaking = IS_GEMINI ? status === "generating_audio" : isPlaying;
+
+  // De quien es el turno (mismo indicador que el diagnostico).
+  let indicatorState: IndicatorState;
+  if (status === "connecting") indicatorState = "preparing";
+  else if (isDisconnected || isMicMuted) indicatorState = "paused";
+  else if (isSpeaking) indicatorState = "avatarSpeaking";
+  else if (["transcribing", "thinking", "generating_audio", "analyzing"].includes(status)) indicatorState = "processing";
+  else if (IS_GEMINI) indicatorState = gemini.hasGreeted ? "listening" : "preparing";
+  else indicatorState = isRecording ? "userSpeaking" : "yourTurn";
 
   // Obtener último mensaje del chat para mostrar subtítulos
   const lastAssistantMessage = [...messages].reverse().find(m => m.role === "assistant");
@@ -409,7 +424,10 @@ export function Simulation() {
             <span className="text-white font-mono text-xs sm:text-sm">{formatTime(elapsedTime)}</span>
           </div>
           <div className="text-white/50 text-xs sm:text-sm hidden sm:block">
-            {messages.length > 0 ? `${Math.ceil(messages.length / 2)} intercambios` : "Esperando..."}
+            {(() => {
+              const turns = messages.filter((m) => m.role === "user").length;
+              return turns === 0 ? "Esperando…" : `${turns} ${turns === 1 ? "intercambio" : "intercambios"}`;
+            })()}
           </div>
         </div>
       </header>
@@ -455,50 +473,12 @@ export function Simulation() {
             <span className="text-white/60 text-xs ml-2">{selectedAvatar.role}</span>
           </div>
 
-          {/* Indicador de estado */}
-          <AnimatePresence>
-            {(status !== "ready" && status !== "disconnected") && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/70 rounded-full backdrop-blur-sm"
-              >
-                <span className="text-sm text-white flex items-center gap-2">
-                  {status === "connecting" && (
-                    <>
-                      <span className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
-                      Conectando...
-                    </>
-                  )}
-                  {status === "transcribing" && (
-                    <>
-                      <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
-                      Procesando audio...
-                    </>
-                  )}
-                  {status === "thinking" && (
-                    <>
-                      <span className="w-2 h-2 bg-violet rounded-full animate-pulse" />
-                      Pensando...
-                    </>
-                  )}
-                  {status === "generating_audio" && (
-                    <>
-                      <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-                      Generando respuesta...
-                    </>
-                  )}
-                  {status === "analyzing" && (
-                    <>
-                      <span className="w-2 h-2 bg-teal rounded-full animate-pulse" />
-                      Analizando tu desempeno...
-                    </>
-                  )}
-                </span>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Indicador de turno */}
+          {!isEnding && (
+            <div className="absolute top-3 left-3 right-3 sm:left-auto sm:right-3 sm:max-w-xs z-10 rounded-2xl bg-ink/75">
+              <ConversationIndicator state={indicatorState} avatarName={selectedAvatar.name.split(" ")[0]} />
+            </div>
+          )}
 
           {/* Subtítulos del avatar */}
           <AnimatePresence>
@@ -530,7 +510,7 @@ export function Simulation() {
               {messages.length === 0 ? (
                 <p className="text-white/40 text-xs text-center py-4">
                   {IS_GEMINI
-                    ? "Habla cuando quieras, te escucho"
+                    ? gemini.hasGreeted ? "Habla cuando quieras, te escucho" : `${selectedAvatar.name.split(" ")[0]} te va a saludar…`
                     : "Mantén presionado el micrófono (o la barra espaciadora) para hablar"}
                 </p>
               ) : (

@@ -10,8 +10,6 @@ import {
   AlertCircle,
   Volume2,
   VolumeX,
-  Brain,
-  PauseCircle,
 } from "lucide-react";
 import { useMicVAD, utils as vadUtils } from "@ricky0123/vad-react";
 
@@ -31,19 +29,11 @@ import { ENTREVISTADOR_AVATAR } from "../utils/entrevistador";
 import { formatDuration, isSecureOriginForMic } from "../utils/audio";
 import { buildMockDiagnostico } from "../utils/mockDiagnostico";
 import { getAvatar3DFlag } from "../utils/avatar3dFlag";
+import { ConversationIndicator, type IndicatorState } from "../components/voice/ConversationIndicator";
 
 // "gemini" = audio nativo continuo (sin VAD: Gemini trae su propio VAD del lado
 // servidor). Cualquier otro valor = flujo Groq con VAD + push-to-talk WAV.
 const IS_GEMINI = (import.meta.env.VITE_REALTIME_PROVIDER || "groq") === "gemini";
-
-type IndicatorState =
-  | "loading"
-  | "preparing"
-  | "listening"
-  | "userSpeaking"
-  | "processing"
-  | "sofiaSpeaking"
-  | "paused";
 
 export function Diagnostico() {
   const navigate = useNavigate();
@@ -240,7 +230,9 @@ export function Diagnostico() {
     positiveSpeechThreshold: 0.5,
     negativeSpeechThreshold: 0.35,
     minSpeechMs: 200,        // descartar audios <200ms (toses, ruidos)
-    redemptionMs: 600,       // esperar 600ms de silencio antes de cerrar segment
+    // 1200ms: con 600 una pausa para pensar cerraba el turno y Sofia
+    // contestaba a media frase (auditoria 2026-09-23, A3).
+    redemptionMs: 1200,      // silencio antes de cerrar el segmento
     preSpeechPadMs: 200,     // incluir 200ms previos al inicio del speech
   });
 
@@ -468,7 +460,7 @@ export function Diagnostico() {
     if (IS_GEMINI) {
       // Gemini: sin VAD local. Sofia hablando = status generating_audio.
       if (micMuted) return "paused";
-      if (geminiSpeaking) return "sofiaSpeaking";
+      if (geminiSpeaking) return "avatarSpeaking";
       if (status === "thinking" || status === "analyzing") return "processing";
       if (status === "disconnected") return "paused";
       // Aún no llega el saludo inicial: pide esperar (no "te escucho"), así el
@@ -477,7 +469,7 @@ export function Diagnostico() {
       return "listening";
     }
     if (vad.loading) return "loading";
-    if (isPlaying) return "sofiaSpeaking";
+    if (isPlaying) return "avatarSpeaking";
     if (
       status === "transcribing" ||
       status === "thinking" ||
@@ -591,7 +583,7 @@ export function Diagnostico() {
               simple de Simulation). Lo posicionamos top-right para no chocar
               con el nombre del avatar abajo. */}
           <div className="absolute top-3 left-3 right-3 sm:left-auto sm:right-3 sm:max-w-xs z-10">
-            <ConversationIndicator state={indicatorState} />
+            <ConversationIndicator state={indicatorState} avatarName="Sofía" />
           </div>
         </div>
 
@@ -834,88 +826,6 @@ export function Diagnostico() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
-  );
-}
-
-const INDICATOR_CONFIG: Record<
-  IndicatorState,
-  { label: string; sublabel: string; icon: typeof Mic; color: string; pulse: boolean }
-> = {
-  loading: {
-    label: "Iniciando microfono",
-    sublabel: "Cargando detector de voz...",
-    icon: Loader2,
-    color: "text-muted bg-white/5 border-white/10",
-    pulse: false,
-  },
-  preparing: {
-    label: "Conectando con Sofia",
-    sublabel: "Ella te va a saludar, escucha un momento...",
-    icon: Loader2,
-    color: "text-violet-light bg-violet/10 border-violet/30",
-    pulse: false,
-  },
-  listening: {
-    label: "Te escucho",
-    sublabel: "Habla cuando quieras, sin presionar nada",
-    icon: Mic,
-    color: "text-success bg-success/10 border-success/30",
-    pulse: true,
-  },
-  userSpeaking: {
-    label: "Estas hablando",
-    sublabel: "Te enviare cuando hagas una pausa",
-    icon: Mic,
-    color: "text-success bg-success/20 border-success/50",
-    pulse: true,
-  },
-  processing: {
-    label: "Procesando",
-    sublabel: "Sofia esta pensando tu respuesta...",
-    icon: Brain,
-    color: "text-violet-light bg-violet/10 border-violet/30",
-    pulse: false,
-  },
-  sofiaSpeaking: {
-    label: "Sofia esta hablando",
-    sublabel: "Espera a que termine para responder",
-    icon: Volume2,
-    color: "text-teal bg-teal/10 border-teal/30",
-    pulse: true,
-  },
-  paused: {
-    label: "En pausa",
-    sublabel: "El microfono esta inactivo",
-    icon: PauseCircle,
-    color: "text-muted bg-white/5 border-white/10",
-    pulse: false,
-  },
-};
-
-function ConversationIndicator({ state }: { state: IndicatorState }) {
-  const cfg = INDICATOR_CONFIG[state];
-  const Icon = cfg.icon;
-  const isLoading = state === "loading" || state === "preparing";
-  return (
-    <div className={`shrink-0 rounded-2xl border p-3 flex items-center gap-3 backdrop-blur-md ${cfg.color} transition-colors`}>
-      <div className="relative shrink-0">
-        {cfg.pulse && (
-          <motion.div
-            initial={{ scale: 1, opacity: 0.4 }}
-            animate={{ scale: 1.6, opacity: 0 }}
-            transition={{ repeat: Infinity, duration: 1.4 }}
-            className="absolute inset-0 rounded-full bg-current"
-          />
-        )}
-        <div className="relative w-10 h-10 rounded-full bg-current/20 flex items-center justify-center">
-          <Icon className={`w-5 h-5 ${isLoading ? "animate-spin" : ""}`} />
-        </div>
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="font-syne font-bold text-sm">{cfg.label}</p>
-        <p className="text-xs opacity-70 truncate">{cfg.sublabel}</p>
-      </div>
     </div>
   );
 }
