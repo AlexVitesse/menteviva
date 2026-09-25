@@ -163,3 +163,10 @@ def test_dropped_session_is_analyzed_without_client(monkeypatch):
 def test_short_dropped_session_is_not_saved(monkeypatch):
     # < 4 intercambios: analyze_conversation daria puntajes demo aleatorios.
     assert _run_turns_then_drop(monkeypatch, turns=2) is None
+
+
+def test_stt_language_from_session_vars():
+    assert conversation._stt_language(None) == "es"
+    assert conversation._stt_language({"idioma": "es-MX"}) == "es"
+    assert conversation._stt_language({"idioma": "en"}) == "en"
+    assert conversation._stt_language({"idioma": "??"}) == "es"

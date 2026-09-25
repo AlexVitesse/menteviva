@@ -17,6 +17,7 @@ import { AnimatedAvatar } from "../components/avatar/AnimatedAvatar";
 import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
 import { VideoAvatar } from "../components/avatar/VideoAvatar";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
+import { micErrorMessage } from "../hooks/useAudioRecorder";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { useGeminiLive } from "../hooks/useGeminiLive";
 import { useSimliAvatar } from "../hooks/useSimliAvatar";
@@ -62,8 +63,6 @@ export function Diagnostico() {
   const [forceEnter, setForceEnter] = useState(false);
   const [showConnectingEscape, setShowConnectingEscape] = useState(false);
   const [closingCountdown, setClosingCountdown] = useState<number | null>(null);
-  // Toggle visual de "tu camara" — placeholder, no abre webcam real.
-  // Match con la UI de Simulation.tsx para que ambas vistas se vean iguales.
   const startRef = useRef<number>(Date.now());
   const closingTimerRef = useRef<number | null>(null);
   // Pending failsafe setTimeouts (mock-fallback). Se cancelan en cuanto llega
@@ -271,7 +270,7 @@ export function Diagnostico() {
         await gemini.startMic();
       })().catch((e) => {
         console.error("[Diagnostico] inicio Gemini fallo:", e);
-        setServerError("No se pudo iniciar el micrófono. Revisa los permisos del navegador.");
+        setServerError(micErrorMessage(e));
       });
       return () => {
         gemini.disconnect();
@@ -487,20 +486,20 @@ export function Diagnostico() {
   const micStyle = IS_GEMINI
     ? micMuted
       ? "bg-white/5 text-white/30"
-      : "bg-green-500/15 text-green-400"
+      : "bg-success/15 text-green-400"
     : vad.userSpeaking
-    ? "bg-red-500/20 text-red-400"
+    ? "bg-danger/20 text-red-400"
     : !vad.listening
     ? "bg-white/5 text-white/30"
     : "bg-white/10 text-white";
 
   return (
-    <div className="h-screen bg-[#1a1a1a] flex flex-col overflow-hidden">
+    <div className="h-screen bg-ink flex flex-col overflow-hidden">
       {/* Header estilo Zoom — alineado con Simulation.tsx */}
-      <header className="bg-[#232323] px-3 sm:px-4 py-2 border-b border-white/10 shrink-0">
+      <header className="bg-deep px-3 sm:px-4 py-2 border-b border-white/10 shrink-0">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shrink-0" />
+            <div className="w-2 h-2 bg-success rounded-full animate-pulse shrink-0" />
             <span className="text-white/80 text-xs sm:text-sm font-medium truncate">
               <span className="hidden sm:inline">Mente Viva - </span>Diagnóstico
             </span>
@@ -547,7 +546,7 @@ export function Diagnostico() {
       {/* Main: avatar grande + sidebar (tu video + chat). Mismo grid que Simulation. */}
       <main className="flex-1 flex flex-col md:flex-row gap-2 p-2 overflow-hidden min-h-0">
         {/* Panel principal con avatar 3D */}
-        <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[#2a2a3a] to-[#1a1a2e] h-[40vh] md:h-auto md:flex-1">
+        <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-card to-deep h-[40vh] md:h-auto md:flex-1">
           <div className="absolute inset-0 flex items-center justify-center">
             {videoEnabled && videoAvatar && !videoAvatar.failed ? (
               <VideoAvatar
@@ -590,7 +589,7 @@ export function Diagnostico() {
         {/* Sidebar: video tuyo + chat compacto inline (igual que Simulation). */}
         <div className="md:w-64 flex flex-col gap-2 min-h-0 flex-1 md:flex-none">
           {/* Tu video — oculto en movil para dar espacio al chat */}
-          <div className="relative h-32 md:h-48 rounded-xl overflow-hidden bg-gradient-to-br from-[#3a3a4a] to-[#2a2a3a] border border-white/10 hidden sm:block">
+          <div className="relative h-32 md:h-48 rounded-xl overflow-hidden bg-gradient-to-br from-card to-panel border border-white/10 hidden sm:block">
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-20 h-20 rounded-full bg-violet/20 flex items-center justify-center">
                 <span className="text-3xl font-bold text-violet">Tú</span>
@@ -608,14 +607,14 @@ export function Diagnostico() {
                 <motion.div
                   animate={{ scale: [1, 1.2, 1] }}
                   transition={{ repeat: Infinity, duration: 0.5 }}
-                  className="w-3 h-3 bg-red-500 rounded-full"
+                  className="w-3 h-3 bg-danger rounded-full"
                 />
               </div>
             )}
           </div>
 
           {/* Chat compacto inline */}
-          <div className="flex-1 rounded-xl bg-[#232323] border border-white/10 overflow-hidden flex flex-col">
+          <div className="flex-1 rounded-xl bg-deep border border-white/10 overflow-hidden flex flex-col">
             <div className="px-3 py-2 border-b border-white/10 text-xs text-white/60 font-medium">
               Chat
             </div>
@@ -647,7 +646,7 @@ export function Diagnostico() {
       </main>
 
       {/* Footer estilo Zoom — Mic state-display, Mute, Terminar */}
-      <footer className="bg-[#232323] px-2 sm:px-6 py-3 flex items-center justify-center gap-1 sm:gap-4 border-t border-white/10">
+      <footer className="bg-deep px-2 sm:px-6 py-3 flex items-center justify-center gap-1 sm:gap-4 border-t border-white/10">
         {/* Mic — solo display del estado VAD, no push-to-talk (la captura es automatica) */}
         <div
           className={`flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg ${micStyle}`}
@@ -655,8 +654,8 @@ export function Diagnostico() {
         >
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
             IS_GEMINI
-              ? micMuted ? "bg-white/10" : "bg-green-500"
-              : vad.userSpeaking ? "bg-red-500" : "bg-white/10"
+              ? micMuted ? "bg-white/10" : "bg-success"
+              : vad.userSpeaking ? "bg-danger" : "bg-white/10"
           }`}>
             {IS_GEMINI
               ? micMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5 text-white" />
@@ -686,7 +685,7 @@ export function Diagnostico() {
           aria-label={IS_GEMINI ? "Silenciar microfono" : isMuted ? "Activar audio del avatar" : "Silenciar audio del avatar"}
         >
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-            (IS_GEMINI ? micMuted : isMuted) ? "bg-red-500/30" : "bg-white/10"
+            (IS_GEMINI ? micMuted : isMuted) ? "bg-danger/30" : "bg-white/10"
           }`}>
             {IS_GEMINI
               ? micMuted ? <MicOff className="w-5 h-5 text-red-400" /> : <Mic className="w-5 h-5" />
@@ -700,9 +699,9 @@ export function Diagnostico() {
         {/* Terminar */}
         <button
           onClick={handleTerminate}
-          className="flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+          className="flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg bg-danger/20 text-red-400 hover:bg-danger/30 transition-all"
         >
-          <div className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-full bg-danger flex items-center justify-center">
             <PhoneOff className="w-5 h-5 text-white" />
           </div>
           <span className="text-[10px]">Terminar</span>

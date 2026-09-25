@@ -19,6 +19,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import { useSessionStore } from "../stores/sessionStore";
+import { scoreTone } from "../lib/score";
 import type { ConversationAnalysis, SkillAnalysis, KeyMoment } from "../types";
 
 export function Report() {
@@ -28,6 +29,9 @@ export function Report() {
   const [animatedScore, setAnimatedScore] = useState(0);
 
   const analysis = metrics?.analysis as ConversationAnalysis | undefined;
+  // Al abrir una sesion del historial, la conversacion viene en metrics; la del
+  // store es la de la llamada en curso.
+  const conversation = metrics?.conversation?.length ? metrics.conversation : messages;
   const score = analysis?.overall_score ?? 0;
 
   // Animar score
@@ -51,20 +55,6 @@ export function Report() {
       return () => clearInterval(timer);
     }
   }, [score]);
-
-  function getScoreColor(score: number) {
-    if (score >= 80) return "text-green-400";
-    if (score >= 60) return "text-yellow-400";
-    if (score >= 40) return "text-orange-400";
-    return "text-red-400";
-  }
-
-  function getScoreLabel(score: number) {
-    if (score >= 80) return "Excelente";
-    if (score >= 60) return "Competente";
-    if (score >= 40) return "En desarrollo";
-    return "Necesita trabajo";
-  }
 
   function formatDuration(seconds: number): string {
     const mins = Math.floor(seconds / 60);
@@ -119,12 +109,12 @@ export function Report() {
 
         <main className="max-w-3xl mx-auto px-8 py-12">
           <div className="text-center mb-10">
-            <AlertTriangle className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
+            <AlertTriangle className="w-12 h-12 text-warning mx-auto mb-4" />
             <h2 className="font-syne text-2xl font-bold mb-2">
-              Sesion muy corta
+              Sesión muy corta
             </h2>
             <p className="text-muted">
-              {analysis?.overall_summary || "Necesitas mas interacciones para generar un analisis completo"}
+              {analysis?.overall_summary || "Necesitas más interacciones para generar un análisis completo"}
             </p>
           </div>
 
@@ -134,7 +124,7 @@ export function Report() {
               {metrics?.total_exchanges || 0}
             </p>
             <p className="text-sm text-muted mt-2">
-              Recomendamos al menos 4-5 intercambios para un buen analisis
+              Recomendamos al menos 4-5 intercambios para un buen análisis
             </p>
           </div>
 
@@ -177,7 +167,7 @@ export function Report() {
           <div className="flex items-center justify-between mb-8">
             <div>
               <h2 className="font-syne text-2xl font-bold mb-1">
-                Analisis de Sesion
+                Análisis de sesión
               </h2>
               <p className="text-muted">
                 {analysis.scenario_type} con {selectedAvatar?.name}
@@ -206,10 +196,10 @@ export function Report() {
           >
             <div className="flex items-center gap-8">
               <div className="text-center">
-                <div className={`font-syne text-6xl font-bold ${getScoreColor(score)}`}>
+                <div className={`font-syne text-6xl font-bold ${scoreTone(score).text}`}>
                   {animatedScore}
                 </div>
-                <div className="text-sm text-muted mt-1">{getScoreLabel(score)}</div>
+                <div className="text-sm text-muted mt-1">{scoreTone(score).label}</div>
               </div>
               <div className="flex-1">
                 <p className="text-lg mb-2">{analysis.overall_summary}</p>
@@ -221,7 +211,7 @@ export function Report() {
           <div className="mb-8">
             <h3 className="font-syne font-bold text-lg mb-4 flex items-center gap-2">
               <Target className="w-5 h-5 text-violet-light" />
-              Habilidades Evaluadas
+              Habilidades evaluadas
             </h3>
             <div className="grid gap-4">
               {analysis.skills.map((skill, index) => (
@@ -233,15 +223,15 @@ export function Report() {
           {/* Strengths & Improvements */}
           <div className="grid md:grid-cols-2 gap-6 mb-8">
             {/* Fortalezas */}
-            <div className="card border-l-4 border-l-green-500">
-              <h3 className="font-syne font-bold mb-4 flex items-center gap-2 text-green-400">
+            <div className="card border-l-4 border-l-success">
+              <h3 className="font-syne font-bold mb-4 flex items-center gap-2 text-success">
                 <TrendingUp className="w-5 h-5" />
                 Fortalezas
               </h3>
               <ul className="space-y-2">
                 {analysis.strengths.map((strength, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm">
-                    <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                    <CheckCircle className="w-4 h-4 text-success mt-0.5 flex-shrink-0" />
                     <span className="text-muted">{strength}</span>
                   </li>
                 ))}
@@ -249,15 +239,15 @@ export function Report() {
             </div>
 
             {/* Areas de mejora */}
-            <div className="card border-l-4 border-l-orange-500">
-              <h3 className="font-syne font-bold mb-4 flex items-center gap-2 text-orange-400">
+            <div className="card border-l-4 border-l-warning">
+              <h3 className="font-syne font-bold mb-4 flex items-center gap-2 text-warning">
                 <AlertTriangle className="w-5 h-5" />
-                Areas de Mejora
+                Áreas de mejora
               </h3>
               <ul className="space-y-2">
                 {analysis.improvements.map((improvement, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm">
-                    <Minus className="w-4 h-4 text-orange-400 mt-0.5 flex-shrink-0" />
+                    <Minus className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
                     <span className="text-muted">{improvement}</span>
                   </li>
                 ))}
@@ -269,7 +259,7 @@ export function Report() {
           {analysis.key_moments.length > 0 && (
             <div className="mb-8">
               <h3 className="font-syne font-bold text-lg mb-4 flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-yellow-400" />
+                <Trophy className="w-5 h-5 text-warning" />
                 Momentos Clave
               </h3>
               <div className="space-y-3">
@@ -284,7 +274,7 @@ export function Report() {
           <div className="card bg-gradient-to-r from-violet/10 to-teal/10 border-violet/20 mb-8">
             <h3 className="font-syne font-bold mb-4 flex items-center gap-2">
               <Lightbulb className="w-5 h-5 text-teal" />
-              Proximos Pasos
+              Próximos pasos
             </h3>
             <ul className="space-y-2">
               {analysis.next_steps.map((step, i) => (
@@ -302,7 +292,7 @@ export function Report() {
               onClick={() => setShowConversation(!showConversation)}
               className="w-full flex items-center justify-between"
             >
-              <h3 className="font-syne font-bold">Conversacion Completa</h3>
+              <h3 className="font-syne font-bold">Conversación completa</h3>
               {showConversation ? (
                 <ChevronUp className="w-5 h-5 text-muted" />
               ) : (
@@ -315,10 +305,10 @@ export function Report() {
                 animate={{ height: "auto", opacity: 1 }}
                 className="mt-4 pt-4 border-t border-white/10 space-y-3 max-h-96 overflow-y-auto"
               >
-                {messages.map((msg, i) => (
+                {conversation.map((msg, i) => (
                   <div key={i} className="text-sm">
                     <span className={msg.role === "user" ? "text-violet-light font-medium" : "text-teal font-medium"}>
-                      {msg.role === "user" ? "Tu: " : `${selectedAvatar?.name}: `}
+                      {msg.role === "user" ? "Tú: " : `${selectedAvatar?.name}: `}
                     </span>
                     <span className="text-muted">{msg.content}</span>
                   </div>
@@ -364,13 +354,6 @@ function SkillCard({ skill, index }: { skill: SkillAnalysis; index: number }) {
     (skill.indicators_met && skill.indicators_met.length > 0) ||
     (skill.indicators_missed && skill.indicators_missed.length > 0);
 
-  function getScoreColor(score: number) {
-    if (score >= 80) return "bg-green-500";
-    if (score >= 60) return "bg-yellow-500";
-    if (score >= 40) return "bg-orange-500";
-    return "bg-red-500";
-  }
-
   return (
     <motion.div
       initial={{ opacity: 0, x: -20 }}
@@ -392,11 +375,7 @@ function SkillCard({ skill, index }: { skill: SkillAnalysis; index: number }) {
                 </span>
               ) : null}
             </div>
-            <span className={`text-sm font-bold ${
-              skill.score >= 80 ? "text-green-400" :
-              skill.score >= 60 ? "text-yellow-400" :
-              skill.score >= 40 ? "text-orange-400" : "text-red-400"
-            }`}>
+            <span className={`text-sm font-bold ${scoreTone(skill.score).text}`}>
               {skill.score}
             </span>
           </div>
@@ -405,7 +384,7 @@ function SkillCard({ skill, index }: { skill: SkillAnalysis; index: number }) {
               initial={{ width: 0 }}
               animate={{ width: `${skill.score}%` }}
               transition={{ delay: 0.3 + 0.1 * index, duration: 0.5 }}
-              className={`h-full rounded-full ${getScoreColor(skill.score)}`}
+              className={`h-full rounded-full ${scoreTone(skill.score).bg}`}
             />
           </div>
         </div>
@@ -427,14 +406,14 @@ function SkillCard({ skill, index }: { skill: SkillAnalysis; index: number }) {
           {hasIndicators && (
             <div className="grid sm:grid-cols-2 gap-3 mb-3">
               {skill.indicators_met && skill.indicators_met.length > 0 && (
-                <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-3">
-                  <p className="text-xs text-green-400 font-bold uppercase mb-2">
+                <div className="bg-success/5 border border-success/20 rounded-lg p-3">
+                  <p className="text-xs text-success font-bold uppercase mb-2">
                     Lo que mostraste
                   </p>
                   <ul className="space-y-1.5">
                     {skill.indicators_met.map((ind, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm">
-                        <CheckCircle className="w-4 h-4 text-green-400 mt-0.5 flex-shrink-0" />
+                        <CheckCircle className="w-4 h-4 text-success mt-0.5 flex-shrink-0" />
                         <span className="text-muted">{ind}</span>
                       </li>
                     ))}
@@ -442,14 +421,14 @@ function SkillCard({ skill, index }: { skill: SkillAnalysis; index: number }) {
                 </div>
               )}
               {skill.indicators_missed && skill.indicators_missed.length > 0 && (
-                <div className="bg-orange-500/5 border border-orange-500/20 rounded-lg p-3">
-                  <p className="text-xs text-orange-400 font-bold uppercase mb-2">
+                <div className="bg-warning/5 border border-warning/20 rounded-lg p-3">
+                  <p className="text-xs text-warning font-bold uppercase mb-2">
                     Lo que faltó
                   </p>
                   <ul className="space-y-1.5">
                     {skill.indicators_missed.map((ind, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm">
-                        <XCircle className="w-4 h-4 text-orange-400 mt-0.5 flex-shrink-0" />
+                        <XCircle className="w-4 h-4 text-warning mt-0.5 flex-shrink-0" />
                         <span className="text-muted">{ind}</span>
                       </li>
                     ))}
@@ -474,18 +453,18 @@ function SkillCard({ skill, index }: { skill: SkillAnalysis; index: number }) {
 // Componente para momentos clave
 function KeyMomentCard({ moment }: { moment: KeyMoment }) {
   const icon = moment.type === "positive" ? (
-    <CheckCircle className="w-5 h-5 text-green-400" />
+    <CheckCircle className="w-5 h-5 text-success" />
   ) : moment.type === "negative" ? (
-    <XCircle className="w-5 h-5 text-red-400" />
+    <XCircle className="w-5 h-5 text-danger" />
   ) : (
-    <Minus className="w-5 h-5 text-yellow-400" />
+    <Minus className="w-5 h-5 text-warning" />
   );
 
   const borderColor = moment.type === "positive"
-    ? "border-l-green-500"
+    ? "border-l-success"
     : moment.type === "negative"
-    ? "border-l-red-500"
-    : "border-l-yellow-500";
+    ? "border-l-danger"
+    : "border-l-warning";
 
   return (
     <div className={`card border-l-4 ${borderColor}`}>

@@ -15,18 +15,21 @@ import {
 } from "lucide-react";
 import { useSessionStore } from "../stores/sessionStore";
 import { apiFetch } from "../lib/api";
-import type { PracticeSessionSummary } from "../types";
+import type { ConversationAnalysis, Message, PracticeSessionSummary } from "../types";
+import { scoreTone } from "../lib/score";
 
 const AVATAR_LABELS: Record<string, string> = {
   roberto: "Roberto Garza · Director de Operaciones",
   maria: "María González · Gerente de Compras",
+  celeste: "Celeste Vargas · Clienta difícil",
   carlos: "Carlos · Entrevistador",
 };
 
 export function MiPlan() {
   const navigate = useNavigate();
-  const { userProfile, setSelectedAvatar, setSelectedLevel, clearDiagnostico } =
+  const { userProfile, setSelectedAvatar, setSelectedLevel, clearDiagnostico, setMetrics } =
     useSessionStore();
+  const [openingId, setOpeningId] = useState<number | null>(null);
   const [sessions, setSessions] = useState<PracticeSessionSummary[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(true);
 
@@ -47,6 +50,44 @@ export function MiPlan() {
 
   const diag = userProfile.diagnostico;
   const firstName = userProfile.registro.nombre.split(" ")[0];
+
+  // Abre el reporte completo de una sesion pasada reusando /report: se carga
+  // en el store igual que si la sesion acabara de terminar.
+  async function openSession(sessionId: number) {
+    if (openingId !== null) return;
+    setOpeningId(sessionId);
+    try {
+      const s = await apiFetch<{
+        avatar_id: string;
+        level: string | null;
+        duration_seconds: number | null;
+        total_exchanges: number | null;
+        analysis: ConversationAnalysis | null;
+        conversation: Message[];
+      }>(`/api/session/${sessionId}`);
+      setSelectedAvatar({
+        id: s.avatar_id,
+        name: (AVATAR_LABELS[s.avatar_id] ?? s.avatar_id).split(" · ")[0],
+        role: "",
+        company: "",
+        personality: "",
+        voice: "",
+        avatar_type: "animated",
+      });
+      if (s.level) setSelectedLevel(s.level as Parameters<typeof setSelectedLevel>[0]);
+      setMetrics({
+        session_id: sessionId,
+        total_exchanges: s.total_exchanges ?? 0,
+        duration_seconds: s.duration_seconds ?? undefined,
+        conversation: s.conversation,
+        analysis: s.analysis ?? undefined,
+      });
+      navigate("/report");
+    } catch (err) {
+      console.error("[MiPlan] abrir sesion fallo:", err);
+      setOpeningId(null);
+    }
+  }
 
   function handleRedoDiagnostic() {
     if (
@@ -242,7 +283,7 @@ export function MiPlan() {
             ) : (
               <div className="space-y-3">
                 {sessions.map((s) => (
-                  <SessionRow key={s.session_id} session={s} />
+                  <SessionRow key={s.session_id} session={s} opening={openingId === s.session_id} onOpen={() => openSession(s.session_id)} />
                 ))}
               </div>
             )}
@@ -253,19 +294,10 @@ export function MiPlan() {
   );
 }
 
-function SessionRow({ session }: { session: PracticeSessionSummary }) {
+function SessionRow({ session, opening, onOpen }: { session: PracticeSessionSummary; opening: boolean; onOpen: () => void }) {
   const date = new Date(session.created_at + "Z"); // SQLite escribe UTC sin zona
   const score = session.overall_score;
-  const scoreColor =
-    score === null || score === undefined
-      ? "text-muted"
-      : score >= 80
-      ? "text-green-400"
-      : score >= 60
-      ? "text-yellow-400"
-      : score >= 40
-      ? "text-orange-400"
-      : "text-red-400";
+  const scoreColor = score === null || score === undefined ? "text-muted" : scoreTone(score).text;
 
   const levelBadge = session.level
     ? session.level.charAt(0).toUpperCase() + session.level.slice(1)
@@ -276,7 +308,13 @@ function SessionRow({ session }: { session: PracticeSessionSummary }) {
     : null;
 
   return (
-    <div className="bg-card/50 border border-white/5 rounded-xl p-4 flex items-center gap-4">
+    <button
+      type="button"
+      onClick={onOpen}
+      disabled={opening}
+      aria-label="Ver reporte de esta sesión"
+      className="w-full text-left bg-card/50 border border-white/5 rounded-xl p-4 flex items-center gap-4 hover:border-violet/40 hover:bg-card transition-colors disabled:opacity-60 disabled:cursor-wait"
+    >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span className="font-medium truncate">
@@ -314,8 +352,8 @@ function SessionRow({ session }: { session: PracticeSessionSummary }) {
         <div className={`font-syne text-2xl font-bold ${scoreColor}`}>
           {score ?? "—"}
         </div>
-        <div className="text-xs text-muted">score</div>
+        <div className="text-xs text-muted">{opening ? "Abriendo…" : "Ver reporte"}</div>
       </div>
-    </div>
+    </button>
   );
 }

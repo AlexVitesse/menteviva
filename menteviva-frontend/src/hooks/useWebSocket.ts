@@ -3,6 +3,7 @@ import { useSessionStore } from "../stores/sessionStore";
 import type { UserProfile } from "../types";
 import { getWebSocketTicket } from "../lib/api";
 import { parseServerEvent } from "../types/wsProtocol";
+import { recordedAudioFilename } from "../utils/audio";
 
 // Si VITE_WS_URL no esta seteado, derivamos del location actual. Asi:
 // - localhost:5173 -> ws://localhost:5173 (vite proxea a backend)
@@ -263,7 +264,7 @@ export function useWebSocket({
     connectRef.current = connect;
   }, [connect]);
 
-  const sendAudio = useCallback((audioBase64: string, format = "audio.webm") => {
+  const sendAudio = useCallback((audioBase64: string, format = recordedAudioFilename()) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: "audio",

@@ -1,5 +1,17 @@
 import { useCallback, useRef } from "react";
 
+// Un solo AudioContext para todos los tonos. Antes se creaba uno por tono
+// (~6 por turno) y nunca se cerraban: fuga de CPU/memoria, y en iOS, pasado el
+// limite de contextos, los sonidos dejaban de sonar.
+let sharedContext: AudioContext | null = null;
+function getContext(): AudioContext {
+  if (!sharedContext) {
+    sharedContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
+  if (sharedContext.state === "suspended") void sharedContext.resume();
+  return sharedContext;
+}
+
 // Generador de tonos usando Web Audio API (sin archivos externos)
 function createTone(
   frequency: number,
@@ -9,7 +21,7 @@ function createTone(
 ): () => void {
   return () => {
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const audioContext = getContext();
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
 

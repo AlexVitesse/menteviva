@@ -84,6 +84,17 @@ export function getBestAudioFormat(): string {
 }
 
 /**
+ * Nombre de archivo para el STT segun el contenedor que graba este navegador
+ * ("audio/mp4" en Safari -> "audio.mp4"). Whisper deduce el formato por la
+ * extension: mandar "audio.webm" con bytes MP4 hace que falle o transcriba mal.
+ */
+export function recordedAudioFilename(): string {
+  if (typeof MediaRecorder === "undefined") return "audio.webm";
+  const container = getBestAudioFormat().split(";")[0].split("/")[1] || "webm";
+  return `audio.${container}`;
+}
+
+/**
  * Formatea la duracion en segundos a MM:SS
  */
 export function formatDuration(seconds: number): string {

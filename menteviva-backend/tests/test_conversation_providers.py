@@ -10,8 +10,8 @@ async def test_groq_adapter_delegates_stt(monkeypatch):
     transcribe = AsyncMock(return_value="hola")
     monkeypatch.setattr(providers, "transcribe_audio", transcribe)
     adapter = providers.GroqConversationProvider()
-    assert await adapter.transcribe(b"audio", "audio.webm") == "hola"
-    transcribe.assert_awaited_once_with(b"audio", filename="audio.webm")
+    assert await adapter.transcribe(b"audio", "audio.mp4", language="en") == "hola"
+    transcribe.assert_awaited_once_with(b"audio", filename="audio.mp4", language="en")
 
 
 @pytest.mark.asyncio

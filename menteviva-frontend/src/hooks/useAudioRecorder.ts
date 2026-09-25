@@ -17,6 +17,24 @@ interface UseAudioRecorderOptions {
   onAutoStop?: (audioBase64: string) => void;
 }
 
+// Mensaje accionable segun el tipo de fallo al abrir el micro. Exportado para
+// que la captura continua (Gemini) no reporte todo como "permiso denegado".
+export function micErrorMessage(err: unknown): string {
+  if (err instanceof DOMException) {
+    if (err.name === "NotAllowedError" || err.name === "SecurityError") {
+      return "Permiso de micrófono denegado. Actívalo en la configuración del navegador (icono de candado junto a la URL).";
+    }
+    if (err.name === "NotFoundError") {
+      return "No se encontró ningún micrófono. Conecta uno e inténtalo de nuevo.";
+    }
+    if (err.name === "NotReadableError") {
+      return "El micrófono está en uso por otra aplicación. Ciérrala e inténtalo de nuevo.";
+    }
+  }
+  const detail = err instanceof Error ? err.message : "Error desconocido";
+  return `Error al acceder al micrófono: ${detail}`;
+}
+
 export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -88,22 +106,6 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
     setAnalyser(node);
     return stream;
   }, []);
-
-  function micErrorMessage(err: unknown): string {
-    if (err instanceof DOMException) {
-      if (err.name === "NotAllowedError" || err.name === "SecurityError") {
-        return "Permiso de micrófono denegado. Actívalo en la configuración del navegador (icono de candado junto a la URL).";
-      }
-      if (err.name === "NotFoundError") {
-        return "No se encontró ningún micrófono. Conecta uno e inténtalo de nuevo.";
-      }
-      if (err.name === "NotReadableError") {
-        return "El micrófono está en uso por otra aplicación. Ciérrala e inténtalo de nuevo.";
-      }
-    }
-    const detail = err instanceof Error ? err.message : "Error desconocido";
-    return `Error al acceder al micrófono: ${detail}`;
-  }
 
   function checkPreconditions(): boolean {
     if (!isAudioRecordingSupported()) {

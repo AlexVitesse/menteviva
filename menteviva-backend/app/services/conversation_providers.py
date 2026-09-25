@@ -9,8 +9,8 @@ from app.services.groq_whisper import transcribe_audio
 
 
 class GroqConversationProvider:
-    async def transcribe(self, audio: bytes, filename: str) -> str:
-        return await transcribe_audio(audio, filename=filename)
+    async def transcribe(self, audio: bytes, filename: str, language: str = "es") -> str:
+        return await transcribe_audio(audio, filename=filename, language=language)
 
     async def stream_reply(
         self, history: list[dict], system_prompt: str

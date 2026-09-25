@@ -11,6 +11,7 @@
  *
  * Ver docs/plans/14_voicelab_division_tareas.md para la arquitectura.
  */
+import { micErrorMessage } from "../hooks/useAudioRecorder";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -802,9 +803,7 @@ export function VoiceLab() {
         await voiceLab.startMic();
       } catch (e) {
         console.error("[VoiceLab] inicio fallo:", e);
-        setServerError(
-          "No se pudo iniciar el microfono. Revisa los permisos del navegador."
-        );
+        setServerError(micErrorMessage(e));
       }
     })();
     return () => {

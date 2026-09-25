@@ -114,6 +114,13 @@ router = APIRouter()
 turn_processor = TurnProcessor(groq_provider)
 
 
+def _stt_language(session_vars: dict | None) -> str:
+    """Idioma de Whisper desde el setup del diagnostico ("es-MX" -> "es",
+    "en" -> "en"). Default espanol: las practicas no mandan idioma."""
+    code = str((session_vars or {}).get("idioma") or "es")[:2].lower()
+    return code if code.isalpha() and len(code) == 2 else "es"
+
+
 def _parse_minutos(session_vars: dict | None) -> int:
     """Duracion objetivo (min) de la sesion de diagnostico; fallback 25."""
     try:
@@ -959,7 +966,11 @@ async def conversation_websocket(
 
                     t_start = time.time()
                     user_text = await asyncio.wait_for(
-                        groq_provider.transcribe(audio_bytes, filename=audio_format),
+                        groq_provider.transcribe(
+                            audio_bytes,
+                            filename=audio_format,
+                            language=_stt_language(session_vars),
+                        ),
                         timeout=settings.provider_stt_timeout_seconds,
                     )
                     t_whisper = time.time() - t_start

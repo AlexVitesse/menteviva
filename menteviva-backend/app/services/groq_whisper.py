@@ -96,13 +96,16 @@ def clean_transcription(text: str, segments: list | None = None) -> str:
     return text if re.search(r"\w", text) else ""
 
 
-async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str:
+async def transcribe_audio(
+    audio_bytes: bytes, filename: str = "audio.webm", language: str = "es"
+) -> str:
     """
     Transcribe audio usando Groq Whisper y descarta silencio/alucinaciones.
 
     Args:
         audio_bytes: Audio en bytes (webm, mp4, ogg, wav, etc.)
         filename: Nombre del archivo con extension para indicar formato
+        language: ISO-639-1 ("es", "en"); fijarlo evita que Whisper traduzca
 
     Returns:
         Texto transcrito ("" si no habia voz)
@@ -117,7 +120,7 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> 
         client.audio.transcriptions.create,
         file=(filename, audio_bytes),
         model=settings.groq_model_whisper,
-        language="es",
+        language=language,
         response_format="verbose_json",
     )
     # El SDK puede devolver str, un objeto con .text/.segments, o raramente

@@ -4,6 +4,7 @@ import type { WsInitPayload } from "./useWebSocket";
 import { PCMStreamPlayer, int16BufferToBase64, pcm16Rms } from "../utils/pcm";
 import { getWebSocketTicket } from "../lib/api";
 import { parseServerEvent } from "../types/wsProtocol";
+import { micErrorMessage } from "./useAudioRecorder";
 
 // Echo-gate: mientras el avatar habla, solo dejamos pasar el mic si su energia
 // supera el "piso de eco" * margen. El piso se adapta al eco real (en audifonos
@@ -355,6 +356,11 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
   }, [avatarId, setStatus, addMessage, setMetrics, setServerError, flushPendingAssistant]);
 
   /** Arranca la captura continua del microfono. */
+  // startMic/stopMic se llaman desde el listener `ended` del track (que vive
+  // dentro de startMic): refs para no crear dependencias circulares.
+  const startMicRef = useRef<() => Promise<void>>(async () => {});
+  const stopMicRef = useRef<() => void>(() => {});
+
   const startMic = useCallback(async () => {
     if (captureCtxRef.current) return; // ya activo
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -365,6 +371,15 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
       },
     });
     micStreamRef.current = stream;
+    // Micro desconectado a media sesion (audifonos Bluetooth/USB): sin esto la
+    // UI sigue "en vivo" pero Gemini ya no oye nada. Se reabre con el
+    // dispositivo por defecto; si no queda ninguno, se avisa.
+    stream.getAudioTracks()[0]?.addEventListener("ended", () => {
+      if (micStreamRef.current !== stream) return; // lo cerro stopMic
+      console.warn("[GeminiLive] el microfono se desconecto; reabriendo");
+      stopMicRef.current();
+      startMicRef.current().catch((e) => setServerError(micErrorMessage(e)));
+    });
 
     // Crear el contexto a 16 kHz: el browser remuestrea el mic a esa tasa, asi
     // el worklet ya recibe 16 kHz (lo que espera Gemini) sin trabajo extra.
@@ -433,7 +448,7 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
     silent.connect(ctx.destination);
     workletRef.current = node;
     console.log("[GeminiLive] mic capture iniciado (16 kHz)");
-  }, []);
+  }, [setServerError]);
 
   const stopMic = useCallback(() => {
     try {
@@ -447,6 +462,9 @@ export function useGeminiLive({ avatarId, initPayload, audioSink, onClosingInten
     micStreamRef.current?.getTracks().forEach((t) => t.stop());
     micStreamRef.current = null;
   }, []);
+
+  startMicRef.current = startMic;
+  stopMicRef.current = stopMic;
 
   /** Mutea/desmutea el mic SIN cerrar la captura (deja de enviar chunks). */
   const setMicMuted = useCallback((muted: boolean) => {

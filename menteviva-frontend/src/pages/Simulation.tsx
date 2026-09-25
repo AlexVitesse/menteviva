@@ -9,7 +9,7 @@ import { TalkingHeadAvatar } from "../components/avatar/TalkingHeadAvatar";
 import { useSessionStore } from "../stores/sessionStore";
 import { useWebSocket, type WsInitPayload } from "../hooks/useWebSocket";
 import { useGeminiLive } from "../hooks/useGeminiLive";
-import { useAudioRecorder } from "../hooks/useAudioRecorder";
+import { micErrorMessage, useAudioRecorder } from "../hooks/useAudioRecorder";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 
 // Proveedor de tiempo real. "gemini" = audio nativo continuo (mic streaming +
@@ -127,7 +127,7 @@ export function Simulation() {
       .then(() => gemini.startMic())
       .catch((e) => {
         console.error("[Simulation] inicio Gemini fallo:", e);
-        setServerError("No se pudo iniciar el micrófono. Revisa los permisos del navegador.");
+        setServerError(micErrorMessage(e));
       });
   }
 
@@ -347,10 +347,10 @@ export function Simulation() {
     };
   }, []);
 
-  // Los errores de audio (grabacion corta, permiso, etc.) se auto-descartan;
-  // no deben quedarse tapando la vista como los errores de servidor.
+  // Solo el aviso de grabacion corta se auto-descarta. Los de acceso al micro
+  // (permiso, sin dispositivo, en uso) se quedan: sin micro no hay sesion.
   useEffect(() => {
-    if (!audioError) return;
+    if (!audioError?.startsWith("Mantén presionado")) return;
     const t = window.setTimeout(() => clearError(), 5000);
     return () => clearTimeout(t);
   }, [audioError, clearError]);
@@ -409,9 +409,9 @@ export function Simulation() {
   const lastAssistantMessage = [...messages].reverse().find(m => m.role === "assistant");
 
   return (
-    <div className="h-screen bg-[#1a1a1a] flex flex-col overflow-hidden">
+    <div className="h-screen bg-ink flex flex-col overflow-hidden">
       {/* Header estilo Zoom */}
-      <header className="bg-[#232323] px-3 sm:px-4 py-2 flex items-center justify-between border-b border-white/10 gap-2">
+      <header className="bg-deep px-3 sm:px-4 py-2 flex items-center justify-between border-b border-white/10 gap-2">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <div className={`w-2 h-2 rounded-full shrink-0 ${isDisconnected ? "bg-danger" : "bg-success animate-pulse"}`} />
           <span className="text-white/80 text-xs sm:text-sm font-medium truncate">
@@ -445,7 +445,7 @@ export function Simulation() {
       {/* Main - Stack en movil, side-by-side en desktop */}
       <main className="flex-1 flex flex-col md:flex-row gap-2 p-2 overflow-hidden min-h-0">
         {/* Video del Avatar (Principal) */}
-        <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[#2a2a3a] to-[#1a1a2e] h-[40vh] md:h-auto md:flex-1">
+        <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-card to-deep h-[40vh] md:h-auto md:flex-1">
           {/* Avatar centrado */}
           <div className="absolute inset-0 flex items-center justify-center">
             {use3DAvatar && avatarModelUrl ? (
@@ -502,7 +502,7 @@ export function Simulation() {
         {/* Sidebar: video tuyo + chat. Stack en movil debajo del avatar */}
         <div className="md:w-64 flex flex-col gap-2 min-h-0 flex-1 md:flex-none">
           {/* Chat/Historial compacto */}
-          <div className="flex-1 rounded-xl bg-[#232323] border border-white/10 overflow-hidden flex flex-col">
+          <div className="flex-1 rounded-xl bg-deep border border-white/10 overflow-hidden flex flex-col">
             <div className="px-3 py-2 border-b border-white/10 text-xs text-white/60 font-medium">
               Chat
             </div>
@@ -536,7 +536,7 @@ export function Simulation() {
       </main>
 
       {/* Footer - Controles estilo Zoom */}
-      <footer className="bg-[#232323] px-2 sm:px-6 py-3 flex items-center justify-center gap-1 sm:gap-4 border-t border-white/10">
+      <footer className="bg-deep px-2 sm:px-6 py-3 flex items-center justify-center gap-1 sm:gap-4 border-t border-white/10">
         {/* Botón Micrófono (Push to Talk). Pointer events unifican mouse y
             touch sin el "click sintetico" duplicado de mobile; la captura del
             pointer garantiza que el pointerup llegue al boton aunque el dedo
@@ -558,9 +558,9 @@ export function Simulation() {
             ${IS_GEMINI
               ? isMicMuted || isDisconnected
                 ? "bg-white/5 text-white/40"
-                : "bg-green-500/15 text-green-400"
+                : "bg-success/15 text-green-400"
               : isRecording
-              ? "bg-red-500/20 text-red-400"
+              ? "bg-danger/20 text-red-400"
               : status !== "ready" || isMicMuted
               ? "bg-white/5 text-white/30 cursor-not-allowed"
               : "bg-white/10 text-white hover:bg-white/20"}
@@ -568,8 +568,8 @@ export function Simulation() {
         >
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
             IS_GEMINI
-              ? isMicMuted || isDisconnected ? "bg-white/10" : "bg-green-500"
-              : isRecording ? "bg-red-500" : "bg-white/10"
+              ? isMicMuted || isDisconnected ? "bg-white/10" : "bg-success"
+              : isRecording ? "bg-danger" : "bg-white/10"
           }`}>
             <Mic className="w-5 h-5" />
           </div>
@@ -586,12 +586,12 @@ export function Simulation() {
           aria-pressed={isMicMuted}
           className={`flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg transition-all ${
             isMicMuted
-              ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+              ? "bg-danger/20 text-red-400 hover:bg-danger/30"
               : "bg-white/10 text-white hover:bg-white/20"
           }`}
         >
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-            isMicMuted ? "bg-red-500" : "bg-white/10"
+            isMicMuted ? "bg-danger" : "bg-white/10"
           }`}>
             {isMicMuted ? (
               <MicOff className="w-5 h-5 text-white" />
@@ -631,12 +631,12 @@ export function Simulation() {
           disabled={isEnding}
           className={`flex flex-col items-center gap-1 px-3 sm:px-4 py-2 rounded-lg transition-all ${
             isEnding
-              ? "bg-red-500/10 text-red-300 cursor-wait"
-              : "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+              ? "bg-danger/10 text-red-300 cursor-wait"
+              : "bg-danger/20 text-red-400 hover:bg-danger/30"
           }`}
         >
           <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-            isEnding ? "bg-red-400 animate-pulse" : "bg-red-500"
+            isEnding ? "bg-danger animate-pulse" : "bg-danger"
           }`}>
             <PhoneOff className="w-5 h-5 text-white" />
           </div>
@@ -653,12 +653,12 @@ export function Simulation() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 12 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2 rounded-full bg-black/80 border border-red-500/40 backdrop-blur-sm shadow-lg"
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2 rounded-full bg-black/80 border border-danger/40 backdrop-blur-sm shadow-lg"
           >
             <motion.span
               animate={{ opacity: [1, 0.3, 1] }}
               transition={{ repeat: Infinity, duration: 1.2 }}
-              className="w-2.5 h-2.5 bg-red-500 rounded-full shrink-0"
+              className="w-2.5 h-2.5 bg-danger rounded-full shrink-0"
             />
             <span className="text-white font-mono text-sm tabular-nums">
               {formatTime(recordingSeconds)}
@@ -696,13 +696,13 @@ export function Simulation() {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 max-w-md p-4 rounded-lg bg-red-500/90 backdrop-blur-sm shadow-xl"
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 max-w-md p-4 rounded-lg bg-danger/90 backdrop-blur-sm shadow-xl"
           >
             <div className="flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-white flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-white font-medium text-sm">
-                  {audioError || "Error del servidor"}
+                  {audioError || "Hubo un problema"}
                 </p>
                 {serverError && (
                   <p className="text-white/80 text-xs mt-1">{serverError}</p>
